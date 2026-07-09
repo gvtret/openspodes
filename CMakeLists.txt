@@ -13,6 +13,9 @@ add_library(openspodes STATIC
     src/ic/register.c
     src/ic/extended_register.c
     src/ic/clock.c
+    src/ic/security_setup.c
+    src/ic/disconnect_control.c
+    src/ic/limiter.c
     src/transport/transport.c
     src/service/service.c
     src/security/security.c
