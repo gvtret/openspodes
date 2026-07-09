@@ -39,6 +39,14 @@ add_library(openspodes STATIC
     src/ic/data_protection.c
     src/ic/push_setup.c
     src/ic/association_ln.c
+    src/ic/mac_address.c
+    src/ic/gprs_modem.c
+    src/ic/gsm_diagnostic.c
+    src/ic/ipv6_setup.c
+    src/ic/register_table.c
+    src/ic/parameter_monitor.c
+    src/ic/mbus_slave.c
+    src/ic/table_manager.c
     src/transport/transport.c
     src/service/service.c
     src/security/security.c
