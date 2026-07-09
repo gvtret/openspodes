@@ -17,10 +17,10 @@ extern "C" {
 /* ── BER read ────────────────────────────────────────────────────────────── */
 
 typedef struct {
-    uint8_t  tag_class;
-    bool     tag_constructed;
-    uint8_t  tag_number;
-    uint32_t length;
+	uint8_t tag_class;
+	bool tag_constructed;
+	uint8_t tag_number;
+	uint32_t length;
 } osp_ber_tag_t;
 
 osp_err_t osp_ber_read_tag(osp_buf_t *buf, osp_ber_tag_t *tag);

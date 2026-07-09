@@ -12,8 +12,8 @@ extern "C" {
 #endif
 
 typedef struct {
-    osp_obis_t   logical_name;
-    osp_value_t  value;
+	osp_obis_t logical_name;
+	osp_value_t value;
 } osp_ic_data_t;
 
 void osp_ic_data_init(osp_ic_data_t *data, osp_obis_t ln);

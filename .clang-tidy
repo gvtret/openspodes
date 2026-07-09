@@ -1,0 +1,13 @@
+---
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-reserved-identifier,
+  clang-analyzer-*,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+  readability-braces-around-statements,
+  readability-inconsistent-declaration-parameter-name
+WarningsAsErrors: ''
+HeaderFilterRegex: 'src/.*\.h$'
+FormatStyle: file

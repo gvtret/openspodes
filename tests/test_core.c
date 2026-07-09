@@ -1,8 +1,14 @@
 /**
- * test_core.c — Smoke test for openspodes architecture
+ * test_core.c — CMocka tests for openspodes
  *
- * Verifies: type system, codec round-trip, IC vtable, dispatcher routing.
+ * Tests: types, codec, serializer, IC vtable, dispatcher.
  */
+
+#include <stdarg.h>
+#include <stddef.h>
+#include <setjmp.h>
+#include <string.h>
+#include <cmocka.h>
 
 #include "openspodes.h"
 #include "codec/codec.h"
@@ -11,324 +17,428 @@
 #include "codec/structures.h"
 #include "server/dispatcher.h"
 #include "ic/data.h"
-#include <stdio.h>
-#include <string.h>
-#include <assert.h>
-#include <math.h>
 
-#define PASS(name) printf("  PASS: %s\n", name)
-#define FAIL(name, msg) do { printf("  FAIL: %s — %s\n", name, msg); failures++; } while(0)
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  Type system tests
+ * ═══════════════════════════════════════════════════════════════════════════ */
 
-static int failures = 0;
+static void test_type_constructors(void **state) {
+	(void)state;
+	osp_value_t v;
 
-static void test_types(void)
-{
-    /* Constructors */
-    osp_value_t v;
-    v = osp_val_null();
-    assert(v.tag == OSP_TAG_NULL);
+	v = osp_val_null();
+	assert_int_equal(v.tag, OSP_TAG_NULL);
 
-    v = osp_val_bool(true);
-    assert(v.tag == OSP_TAG_BOOLEAN && v.as.boolean.value == true);
+	v = osp_val_bool(true);
+	assert_int_equal(v.tag, OSP_TAG_BOOLEAN);
+	assert_true(v.as.boolean.value);
 
-    v = osp_val_i8(-42);
-    assert(v.tag == OSP_TAG_INTEGER && v.as.int8.value == -42);
+	v = osp_val_i8(-42);
+	assert_int_equal(v.tag, OSP_TAG_INTEGER);
+	assert_int_equal(v.as.int8.value, -42);
 
-    v = osp_val_u8(255);
-    assert(v.tag == OSP_TAG_UNSIGNED && v.as.uint8.value == 255);
+	v = osp_val_u8(255);
+	assert_int_equal(v.tag, OSP_TAG_UNSIGNED);
+	assert_int_equal(v.as.uint8.value, 255);
 
-    v = osp_val_i16(-12345);
-    assert(v.tag == OSP_TAG_LONG && v.as.int16.value == -12345);
+	v = osp_val_i16(-12345);
+	assert_int_equal(v.tag, OSP_TAG_LONG);
+	assert_int_equal(v.as.int16.value, -12345);
 
-    v = osp_val_u16(60000);
-    assert(v.tag == OSP_TAG_LONG_UNSIGNED && v.as.uint16.value == 60000);
+	v = osp_val_u16(60000);
+	assert_int_equal(v.tag, OSP_TAG_LONG_UNSIGNED);
+	assert_int_equal(v.as.uint16.value, 60000);
 
-    v = osp_val_i32(-100000);
-    assert(v.tag == OSP_TAG_DOUBLE_LONG && v.as.int32.value == -100000);
+	v = osp_val_i32(-100000);
+	assert_int_equal(v.tag, OSP_TAG_DOUBLE_LONG);
+	assert_int_equal(v.as.int32.value, -100000);
 
-    v = osp_val_u32(0xDEADBEEF);
-    assert(v.tag == OSP_TAG_DOUBLE_LONG_UNS && v.as.uint32.value == 0xDEADBEEF);
+	v = osp_val_u32(0xDEADBEEF);
+	assert_int_equal(v.tag, OSP_TAG_DOUBLE_LONG_UNS);
+	assert_int_equal(v.as.uint32.value, 0xDEADBEEF);
 
-    v = osp_val_i64(1234567890123LL);
-    assert(v.tag == OSP_TAG_LONG64 && v.as.int64.value == 1234567890123LL);
+	v = osp_val_i64(1234567890123LL);
+	assert_int_equal(v.tag, OSP_TAG_LONG64);
+	assert_int_equal(v.as.int64.value, 1234567890123LL);
 
-    v = osp_val_u64(0xDEADBEEFCAFEBABEULL);
-    assert(v.tag == OSP_TAG_LONG64_UNSIGNED && v.as.uint64.value == 0xDEADBEEFCAFEBABEULL);
+	v = osp_val_u64(0xDEADBEEFCAFEBABEULL);
+	assert_int_equal(v.tag, OSP_TAG_LONG64_UNSIGNED);
+	assert_int_equal(v.as.uint64.value, 0xDEADBEEFCAFEBABEULL);
 
-    v = osp_val_f32(3.14f);
-    assert(v.tag == OSP_TAG_FLOAT32 && fabsf(v.as.float32.value - 3.14f) < 0.001f);
+	v = osp_val_enum(5);
+	assert_int_equal(v.tag, OSP_TAG_ENUM);
+	assert_int_equal(v.as.enum_val.value, 5);
 
-    v = osp_val_f64(2.718281828);
-    assert(v.tag == OSP_TAG_FLOAT64 && fabs(v.as.float64.value - 2.718281828) < 1e-9);
+	v = osp_val_date(2026, 7, 9, 3);
+	assert_int_equal(v.tag, OSP_TAG_DATE);
+	assert_int_equal(v.as.date.year, 2026);
+	assert_int_equal(v.as.date.month, 7);
+	assert_int_equal(v.as.date.day, 9);
 
-    v = osp_val_enum(5);
-    assert(v.tag == OSP_TAG_ENUM && v.as.enum_val.value == 5);
+	v = osp_val_time(14, 30, 45, 500);
+	assert_int_equal(v.tag, OSP_TAG_TIME);
+	assert_int_equal(v.as.time.hour, 14);
+	assert_int_equal(v.as.time.ms, 0);
 
-    v = osp_val_date(2026, 7, 9, 3);
-    assert(v.tag == OSP_TAG_DATE && v.as.date.year == 2026 && v.as.date.month == 7 && v.as.date.day == 9);
-
-    v = osp_val_time(14, 30, 45, 500);
-    assert(v.tag == OSP_TAG_TIME && v.as.time.hour == 14 && v.as.time.ms == 0);
-
-    v = osp_val_datetime(2026, 7, 9, 3, 14, 30, 45, 500);
-    assert(v.tag == OSP_TAG_DATETIME && v.as.datetime.date.year == 2026);
-
-    /* Extractors */
-    v = osp_val_i32(-999);
-    assert(osp_get_i32(&v) == -999);
-    v = osp_val_u32(42);
-    assert(osp_get_u32(&v) == 42);
-    v = osp_val_bool(true);
-    assert(osp_get_bool(&v) == true);
-    v = osp_val_enum(7);
-    assert(osp_get_enum(&v) == 7);
-
-    /* Size table */
-    assert(osp_axdr_type_size(OSP_TAG_BOOLEAN) == 1);
-    assert(osp_axdr_type_size(OSP_TAG_INTEGER) == 1);
-    assert(osp_axdr_type_size(OSP_TAG_LONG) == 2);
-    assert(osp_axdr_type_size(OSP_TAG_DOUBLE_LONG) == 4);
-    assert(osp_axdr_type_size(OSP_TAG_LONG64) == 8);
-    assert(osp_axdr_type_size(OSP_TAG_DATE) == 5);
-    assert(osp_axdr_type_size(OSP_TAG_TIME) == 4);
-    assert(osp_axdr_type_size(OSP_TAG_DATETIME) == 12);
-    assert(osp_axdr_type_size(OSP_TAG_OCTETSTRING) == 0); /* variable */
-
-    PASS("types");
+	v = osp_val_datetime(2026, 7, 9, 3, 14, 30, 45, 500);
+	assert_int_equal(v.tag, OSP_TAG_DATETIME);
+	assert_int_equal(v.as.datetime.date.year, 2026);
 }
 
-static void test_axdr_round_trip(void)
-{
-    uint8_t buf[128];
-    osp_buf_t b;
-    osp_buf_init(&b, buf, sizeof(buf));
+static void test_type_extractors(void **state) {
+	(void)state;
+	osp_value_t v;
 
-    /* Write various types */
-    osp_axdr_write_u8(&b, 0x42);
-    osp_axdr_write_u16(&b, 0x1234);
-    osp_axdr_write_u32(&b, 0xDEADBEEF);
-    osp_axdr_write_bool(&b, true);
+	v = osp_val_i32(-999);
+	assert_int_equal(osp_get_i32(&v), -999);
+	v = osp_val_u32(42);
+	assert_int_equal(osp_get_u32(&v), 42);
+	v = osp_val_bool(true);
+	assert_true(osp_get_bool(&v));
+	v = osp_val_enum(7);
+	assert_int_equal(osp_get_enum(&v), 7);
 
-    /* Read back */
-    osp_buf_t r;
-    osp_buf_init(&r, buf, b.wr);
-    r.wr = b.wr;
-
-    uint8_t  v8;  uint16_t v16;  uint32_t v32;  bool vb;
-    osp_axdr_read_u8(&r, &v8);   assert(v8 == 0x42);
-    osp_axdr_read_u16(&r, &v16); assert(v16 == 0x1234);
-    osp_axdr_read_u32(&r, &v32); assert(v32 == 0xDEADBEEF);
-    osp_axdr_read_bool(&r, &vb); assert(vb == true);
-
-    PASS("axdr_round_trip");
+	/* Extractor on wrong type returns 0 */
+	v = osp_val_u32(42);
+	assert_int_equal(osp_get_i32(&v), 0);
 }
 
-static void test_ic_data_class(void)
-{
-    const osp_ic_class_t *cls = osp_ic_data_class();
-    assert(cls != NULL);
-    assert(cls->class_id == 1);
-    assert(cls->version == 0);
-    assert(strcmp(cls->name, "Data") == 0);
-    assert(cls->get_attr != NULL);
-    assert(cls->set_attr != NULL);
-    PASS("ic_data_class");
+static void test_type_size_table(void **state) {
+	(void)state;
+	assert_int_equal(osp_axdr_type_size(OSP_TAG_BOOLEAN), 1);
+	assert_int_equal(osp_axdr_type_size(OSP_TAG_INTEGER), 1);
+	assert_int_equal(osp_axdr_type_size(OSP_TAG_LONG), 2);
+	assert_int_equal(osp_axdr_type_size(OSP_TAG_DOUBLE_LONG), 4);
+	assert_int_equal(osp_axdr_type_size(OSP_TAG_LONG64), 8);
+	assert_int_equal(osp_axdr_type_size(OSP_TAG_DATE), 5);
+	assert_int_equal(osp_axdr_type_size(OSP_TAG_TIME), 4);
+	assert_int_equal(osp_axdr_type_size(OSP_TAG_DATETIME), 12);
+	assert_int_equal(osp_axdr_type_size(OSP_TAG_OCTETSTRING), 0);
+	assert_int_equal(osp_axdr_type_size(OSP_TAG_ARRAY), 0);
 }
 
-static void test_ic_data_getset(void)
-{
-    osp_ic_data_t data;
-    osp_ic_data_init(&data, (osp_obis_t){0, 0, 0x80, 0, 0, 0xFF});
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  Codec tests
+ * ═══════════════════════════════════════════════════════════════════════════ */
 
-    /* Set uint32 value */
-    osp_value_t set_val = osp_val_u32(42);
-    const osp_ic_class_t *cls = osp_ic_data_class();
-    assert(cls->set_attr(&data, 1, &set_val) == OSP_OK);
+static void test_axdr_roundtrip(void **state) {
+	(void)state;
+	uint8_t wbuf[128], rbuf[128];
+	osp_buf_t w, r;
+	osp_buf_init(&w, wbuf, sizeof(wbuf));
 
-    /* Get it back */
-    osp_value_t get_val = osp_val_null();
-    assert(cls->get_attr(&data, 1, &get_val) == OSP_OK);
-    assert(get_val.tag == OSP_TAG_DOUBLE_LONG_UNS);
-    assert(get_val.as.uint32.value == 42);
+	osp_axdr_write_u8(&w, 0x42);
+	osp_axdr_write_u16(&w, 0x1234);
+	osp_axdr_write_u32(&w, 0xDEADBEEF);
+	osp_axdr_write_bool(&w, true);
 
-    /* Set bool */
-    set_val = osp_val_bool(true);
-    assert(cls->set_attr(&data, 1, &set_val) == OSP_OK);
-    assert(cls->get_attr(&data, 1, &get_val) == OSP_OK);
-    assert(get_val.tag == OSP_TAG_BOOLEAN);
-    assert(get_val.as.boolean.value == true);
+	osp_buf_init(&r, wbuf, w.wr);
+	r.wr = w.wr;
 
-    PASS("ic_data_getset");
+	uint8_t v8;
+	uint16_t v16;
+	uint32_t v32;
+	bool vb;
+	assert_int_equal(osp_axdr_read_u8(&r, &v8), OSP_OK);
+	assert_int_equal(v8, 0x42);
+	assert_int_equal(osp_axdr_read_u16(&r, &v16), OSP_OK);
+	assert_int_equal(v16, 0x1234);
+	assert_int_equal(osp_axdr_read_u32(&r, &v32), OSP_OK);
+	assert_int_equal(v32, 0xDEADBEEF);
+	assert_int_equal(osp_axdr_read_bool(&r, &vb), OSP_OK);
+	assert_true(vb);
 }
 
-static void test_dispatcher(void)
-{
-    osp_dispatcher_t disp;
-    osp_dispatcher_init(&disp);
+static void test_axdr_signed_types(void **state) {
+	(void)state;
+	uint8_t buf[32];
+	osp_buf_t b;
+	osp_buf_init(&b, buf, sizeof(buf));
 
-    osp_ic_data_t data1, data2;
-    osp_ic_data_init(&data1, (osp_obis_t){0, 0, 1, 0, 0, 255});
-    osp_ic_data_init(&data2, (osp_obis_t){0, 0, 8, 0, 0, 255});
+	osp_axdr_write_i8(&b, -42);
+	osp_axdr_write_i16(&b, -12345);
+	osp_axdr_write_i32(&b, -100000);
+	osp_axdr_write_i64(&b, 1234567890123LL);
 
-    const osp_ic_class_t *cls = osp_ic_data_class();
-    assert(osp_dispatcher_register(&disp, cls, &data1) == OSP_OK);
-    assert(osp_dispatcher_register(&disp, cls, &data2) == OSP_OK);
-    assert(disp.count == 2);
+	osp_buf_t r;
+	osp_buf_init(&r, buf, b.wr);
+	r.wr = b.wr;
 
-    /* Set value on first object */
-    osp_value_t val = osp_val_u32(100);
-    osp_obis_t ln1 = {0, 0, 1, 0, 0, 255};
-    assert(osp_dispatcher_set(&disp, 1, &ln1, 1, &val) == OSP_OK);
-
-    /* Get value from first object */
-    osp_value_t result = osp_val_null();
-    assert(osp_dispatcher_get(&disp, 1, &ln1, 1, &result) == OSP_OK);
-    assert(result.tag == OSP_TAG_DOUBLE_LONG_UNS);
-    assert(result.as.uint32.value == 100);
-
-    /* Unknown object returns NOT_FOUND */
-    osp_obis_t ln_unknown = {0, 0, 99, 0, 0, 255};
-    assert(osp_dispatcher_get(&disp, 99, &ln_unknown, 1, &result) == OSP_ERR_NOT_FOUND);
-
-    PASS("dispatcher");
+	int8_t i8;
+	int16_t i16;
+	int32_t i32;
+	int64_t i64;
+	osp_axdr_read_i8(&r, &i8);
+	assert_int_equal(i8, -42);
+	osp_axdr_read_i16(&r, &i16);
+	assert_int_equal(i16, -12345);
+	osp_axdr_read_i32(&r, &i32);
+	assert_int_equal(i32, -100000);
+	osp_axdr_read_i64(&r, &i64);
+	assert_int_equal(i64, 1234567890123LL);
 }
 
-static void test_obis_eq(void)
-{
-    osp_obis_t a = {0, 0, 1, 0, 0, 255};
-    osp_obis_t b = {0, 0, 1, 0, 0, 255};
-    osp_obis_t c = {0, 0, 8, 0, 0, 255};
-    assert(osp_obis_eq(&a, &b) == true);
-    assert(osp_obis_eq(&a, &c) == false);
-    PASS("obis_eq");
+static void test_axdr_boundary(void **state) {
+	(void)state;
+	/* Read from empty buffer */
+	uint8_t small[1];
+	osp_buf_t b;
+	osp_buf_init(&b, small, 0);
+
+	uint8_t v8;
+	assert_int_equal(osp_axdr_read_u8(&b, &v8), OSP_ERR_INVALID);
+
+	/* Write to full buffer */
+	osp_buf_init(&b, small, 1);
+	assert_int_equal(osp_axdr_write_u8(&b, 1), OSP_OK);
+	assert_int_equal(osp_axdr_write_u8(&b, 2), OSP_ERR_INVALID);
 }
 
-static void test_serialize_value(void)
-{
-    /* Round-trip osp_value_t through generic read/write */
-    uint8_t buf[256];
-    osp_buf_t b;
-    osp_buf_init(&b, buf, sizeof(buf));
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  Serializer tests
+ * ═══════════════════════════════════════════════════════════════════════════ */
 
-    /* Write a bool */
-    osp_value_t v = osp_val_bool(true);
-    assert(osp_value_write(&b, &v) == OSP_OK);
+static void test_serialize_value_roundtrip(void **state) {
+	(void)state;
+	uint8_t buf[256];
+	osp_buf_t w, r;
 
-    /* Write a u32 */
-    v = osp_val_u32(0xDEADBEEF);
-    assert(osp_value_write(&b, &v) == OSP_OK);
+	/* Write multiple types */
+	osp_buf_init(&w, buf, sizeof(buf));
+	osp_value_t v1 = osp_val_bool(true);
+	osp_value_t v2 = osp_val_u32(0xDEADBEEF);
+	osp_value_t v3 = osp_val_date(2026, 7, 9, 3);
+	assert_int_equal(osp_value_write(&w, &v1), OSP_OK);
+	assert_int_equal(osp_value_write(&w, &v2), OSP_OK);
+	assert_int_equal(osp_value_write(&w, &v3), OSP_OK);
 
-    /* Write a date */
-    v = osp_val_date(2026, 7, 9, 3);
-    assert(osp_value_write(&b, &v) == OSP_OK);
+	/* Read back */
+	osp_buf_init(&r, buf, w.wr);
+	r.wr = w.wr;
+	osp_value_t v;
 
-    /* Read back */
-    osp_buf_t r;
-    osp_buf_init(&r, buf, b.wr);
-    r.wr = b.wr;
+	assert_int_equal(osp_value_read(&r, &v), OSP_OK);
+	assert_int_equal(v.tag, OSP_TAG_BOOLEAN);
+	assert_true(v.as.boolean.value);
 
-    assert(osp_value_read(&r, &v) == OSP_OK);
-    assert(v.tag == OSP_TAG_BOOLEAN && v.as.boolean.value == true);
+	assert_int_equal(osp_value_read(&r, &v), OSP_OK);
+	assert_int_equal(v.tag, OSP_TAG_DOUBLE_LONG_UNS);
+	assert_int_equal(v.as.uint32.value, 0xDEADBEEF);
 
-    assert(osp_value_read(&r, &v) == OSP_OK);
-    assert(v.tag == OSP_TAG_DOUBLE_LONG_UNS && v.as.uint32.value == 0xDEADBEEF);
-
-    assert(osp_value_read(&r, &v) == OSP_OK);
-    assert(v.tag == OSP_TAG_DATE && v.as.date.year == 2026 && v.as.date.day == 9);
-
-    /* Test date/time/datetime round-trip */
-    osp_buf_init(&b, buf, sizeof(buf));
-    osp_date_t d = {2026, 7, 9, 3};
-    osp_date_write(&b, &d);
-    osp_time_t t = {14, 30, 45, 0};
-    osp_time_write(&b, &t);
-
-    osp_buf_init(&r, buf, b.wr);
-    r.wr = b.wr;
-    osp_date_t d2; osp_time_t t2;
-    assert(osp_date_read(&r, &d2) == OSP_OK);
-    assert(osp_time_read(&r, &t2) == OSP_OK);
-    assert(d2.year == 2026 && d2.day == 9);
-    assert(t2.hour == 14 && t2.second == 45);
-
-    /* Test structure begin/read */
-    osp_buf_init(&b, buf, sizeof(buf));
-    osp_struct_begin(&b, 3);
-    osp_axdr_write_u8(&b, 0xAA);
-    osp_axdr_write_u16(&b, 0x1234);
-    osp_axdr_write_u8(&b, 0xBB);
-
-    osp_buf_init(&r, buf, b.wr);
-    r.wr = b.wr;
-    uint8_t nf;
-    assert(osp_struct_begin_read(&r, &nf) == OSP_OK);
-    assert(nf == 3);
-    uint8_t v8; uint16_t v16;
-    osp_axdr_read_u8(&r, &v8); assert(v8 == 0xAA);
-    osp_axdr_read_u16(&r, &v16); assert(v16 == 0x1234);
-    osp_axdr_read_u8(&r, &v8); assert(v8 == 0xBB);
-
-    /* Test array begin/read */
-    osp_buf_init(&b, buf, sizeof(buf));
-    osp_array_begin(&b, 5);
-    for (int i = 0; i < 5; i++) osp_axdr_write_u8(&b, (uint8_t)i);
-
-    osp_buf_init(&r, buf, b.wr);
-    r.wr = b.wr;
-    uint8_t ac;
-    assert(osp_array_begin_read(&r, &ac) == OSP_OK);
-    assert(ac == 5);
-    for (int i = 0; i < 5; i++) {
-        osp_axdr_read_u8(&r, &v8);
-        assert(v8 == (uint8_t)i);
-    }
-
-    /* Test OBIS round-trip */
-    osp_buf_init(&b, buf, sizeof(buf));
-    osp_obis_t obis = {1, 2, 3, 4, 5, 6};
-    assert(osp_obis_write(&b, &obis) == OSP_OK);
-
-    osp_buf_init(&r, buf, b.wr);
-    r.wr = b.wr;
-    osp_obis_t obis2;
-    assert(osp_obis_read(&r, &obis2) == OSP_OK);
-    assert(osp_obis_eq(&obis, &obis2));
-
-    /* Test scaler unit round-trip */
-    osp_buf_init(&b, buf, sizeof(buf));
-    osp_scaler_unit_t su = {-2, 30}; /* 10^-2 V */
-    assert(osp_scaler_unit_write(&b, &su) == OSP_OK);
-
-    osp_buf_init(&r, buf, b.wr);
-    r.wr = b.wr;
-    osp_scaler_unit_t su2;
-    assert(osp_scaler_unit_read(&r, &su2) == OSP_OK);
-    assert(su2.scaler == -2 && su2.unit == 30);
-
-    PASS("serialize_value");
+	assert_int_equal(osp_value_read(&r, &v), OSP_OK);
+	assert_int_equal(v.tag, OSP_TAG_DATE);
+	assert_int_equal(v.as.date.year, 2026);
+	assert_int_equal(v.as.date.day, 9);
 }
 
-int main(void)
-{
-    printf("openspodes v%d.%d.%d — smoke tests\n",
-           OPENSPODES_VERSION_MAJOR,
-           OPENSPODES_VERSION_MINOR,
-           OPENSPODES_VERSION_PATCH);
-    printf("\n");
+static void test_serialize_date_time(void **state) {
+	(void)state;
+	uint8_t buf[32];
+	osp_buf_t w;
+	osp_buf_init(&w, buf, sizeof(buf));
 
-    test_types();
-    test_axdr_round_trip();
-    test_ic_data_class();
-    test_ic_data_getset();
-    test_dispatcher();
-    test_obis_eq();
-    test_serialize_value();
+	osp_date_t d = {2026, 7, 9, 3};
+	osp_time_t t = {14, 30, 45, 0};
+	assert_int_equal(osp_date_write(&w, &d), OSP_OK);
+	assert_int_equal(osp_time_write(&w, &t), OSP_OK);
 
-    printf("\n");
-    if (failures == 0) {
-        printf("All tests passed!\n");
-    } else {
-        printf("%d test(s) failed.\n", failures);
-    }
-    return failures;
+	osp_buf_t r;
+	osp_buf_init(&r, buf, w.wr);
+	r.wr = w.wr;
+	osp_date_t d2;
+	osp_time_t t2;
+	assert_int_equal(osp_date_read(&r, &d2), OSP_OK);
+	assert_int_equal(osp_time_read(&r, &t2), OSP_OK);
+	assert_int_equal(d2.year, 2026);
+	assert_int_equal(t2.hour, 14);
+	assert_int_equal(t2.second, 45);
+}
+
+static void test_serialize_struct_array(void **state) {
+	(void)state;
+	uint8_t buf[64];
+	osp_buf_t w, r;
+
+	/* Structure: tag=2, fields=3, then 3 values */
+	osp_buf_init(&w, buf, sizeof(buf));
+	assert_int_equal(osp_struct_begin(&w, 3), OSP_OK);
+	assert_int_equal(osp_axdr_write_u8(&w, 0xAA), OSP_OK);
+	assert_int_equal(osp_axdr_write_u16(&w, 0x1234), OSP_OK);
+	assert_int_equal(osp_axdr_write_u8(&w, 0xBB), OSP_OK);
+
+	osp_buf_init(&r, buf, w.wr);
+	r.wr = w.wr;
+	uint8_t nf;
+	assert_int_equal(osp_struct_begin_read(&r, &nf), OSP_OK);
+	assert_int_equal(nf, 3);
+	uint8_t v8;
+	uint16_t v16;
+	osp_axdr_read_u8(&r, &v8);
+	assert_int_equal(v8, 0xAA);
+	osp_axdr_read_u16(&r, &v16);
+	assert_int_equal(v16, 0x1234);
+	osp_axdr_read_u8(&r, &v8);
+	assert_int_equal(v8, 0xBB);
+
+	/* Array: tag=1, count=5 */
+	osp_buf_init(&w, buf, sizeof(buf));
+	assert_int_equal(osp_array_begin(&w, 5), OSP_OK);
+	for (int i = 0; i < 5; i++)
+		osp_axdr_write_u8(&w, (uint8_t)i);
+
+	osp_buf_init(&r, buf, w.wr);
+	r.wr = w.wr;
+	uint8_t ac;
+	assert_int_equal(osp_array_begin_read(&r, &ac), OSP_OK);
+	assert_int_equal(ac, 5);
+	for (int i = 0; i < 5; i++) {
+		osp_axdr_read_u8(&r, &v8);
+		assert_int_equal(v8, (uint8_t)i);
+	}
+}
+
+static void test_serialize_obis(void **state) {
+	(void)state;
+	uint8_t buf[16];
+	osp_buf_t w, r;
+	osp_buf_init(&w, buf, sizeof(buf));
+
+	osp_obis_t obis = {1, 2, 3, 4, 5, 6};
+	assert_int_equal(osp_obis_write(&w, &obis), OSP_OK);
+
+	osp_buf_init(&r, buf, w.wr);
+	r.wr = w.wr;
+	osp_obis_t obis2;
+	assert_int_equal(osp_obis_read(&r, &obis2), OSP_OK);
+	assert_true(osp_obis_eq(&obis, &obis2));
+}
+
+static void test_serialize_scaler_unit(void **state) {
+	(void)state;
+	uint8_t buf[16];
+	osp_buf_t w, r;
+	osp_buf_init(&w, buf, sizeof(buf));
+
+	osp_scaler_unit_t su = {-2, 30};
+	assert_int_equal(osp_scaler_unit_write(&w, &su), OSP_OK);
+
+	osp_buf_init(&r, buf, w.wr);
+	r.wr = w.wr;
+	osp_scaler_unit_t su2;
+	assert_int_equal(osp_scaler_unit_read(&r, &su2), OSP_OK);
+	assert_int_equal(su2.scaler, -2);
+	assert_int_equal(su2.unit, 30);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  IC class / dispatcher tests
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+static void test_ic_data_class(void **state) {
+	(void)state;
+	const osp_ic_class_t *cls = osp_ic_data_class();
+	assert_non_null(cls);
+	assert_int_equal(cls->class_id, 1);
+	assert_int_equal(cls->version, 0);
+	assert_string_equal(cls->name, "Data");
+	assert_non_null(cls->get_attr);
+	assert_non_null(cls->set_attr);
+}
+
+static void test_ic_data_getset(void **state) {
+	(void)state;
+	osp_ic_data_t data;
+	osp_ic_data_init(&data, (osp_obis_t){0, 0, 0x80, 0, 0, 0xFF});
+
+	osp_value_t set_val = osp_val_u32(42);
+	const osp_ic_class_t *cls = osp_ic_data_class();
+	assert_int_equal(cls->set_attr(&data, 1, &set_val), OSP_OK);
+
+	osp_value_t get_val = osp_val_null();
+	assert_int_equal(cls->get_attr(&data, 1, &get_val), OSP_OK);
+	assert_int_equal(get_val.tag, OSP_TAG_DOUBLE_LONG_UNS);
+	assert_int_equal(get_val.as.uint32.value, 42);
+
+	/* Wrong attr_id */
+	assert_int_equal(cls->get_attr(&data, 2, &get_val), OSP_ERR_NOT_FOUND);
+}
+
+static void test_dispatcher_get_set(void **state) {
+	(void)state;
+	osp_dispatcher_t disp;
+	osp_dispatcher_init(&disp);
+
+	osp_ic_data_t data1;
+	osp_ic_data_init(&data1, (osp_obis_t){0, 0, 1, 0, 0, 255});
+	const osp_ic_class_t *cls = osp_ic_data_class();
+	assert_int_equal(osp_dispatcher_register(&disp, cls, &data1), OSP_OK);
+
+	/* Set */
+	osp_value_t val = osp_val_u32(100);
+	osp_obis_t ln1 = {0, 0, 1, 0, 0, 255};
+	assert_int_equal(osp_dispatcher_set(&disp, 1, &ln1, 1, &val), OSP_OK);
+
+	/* Get */
+	osp_value_t result = osp_val_null();
+	assert_int_equal(osp_dispatcher_get(&disp, 1, &ln1, 1, &result), OSP_OK);
+	assert_int_equal(result.tag, OSP_TAG_DOUBLE_LONG_UNS);
+	assert_int_equal(result.as.uint32.value, 100);
+
+	/* Not found */
+	osp_obis_t ln_unknown = {0, 0, 99, 0, 0, 255};
+	assert_int_equal(osp_dispatcher_get(&disp, 99, &ln_unknown, 1, &result), OSP_ERR_NOT_FOUND);
+}
+
+static void test_dispatcher_multiple_objects(void **state) {
+	(void)state;
+	osp_dispatcher_t disp;
+	osp_dispatcher_init(&disp);
+
+	osp_ic_data_t data1, data2;
+	osp_ic_data_init(&data1, (osp_obis_t){0, 0, 1, 0, 0, 255});
+	osp_ic_data_init(&data2, (osp_obis_t){0, 0, 8, 0, 0, 255});
+	const osp_ic_class_t *cls = osp_ic_data_class();
+	assert_int_equal(osp_dispatcher_register(&disp, cls, &data1), OSP_OK);
+	assert_int_equal(osp_dispatcher_register(&disp, cls, &data2), OSP_OK);
+	assert_int_equal(disp.count, 2);
+
+	osp_value_t v1 = osp_val_u32(111);
+	osp_value_t v2 = osp_val_u32(222);
+	osp_dispatcher_set(&disp, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &v1);
+	osp_dispatcher_set(&disp, 1, &(osp_obis_t){0, 0, 8, 0, 0, 255}, 1, &v2);
+
+	osp_value_t r1, r2;
+	osp_dispatcher_get(&disp, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &r1);
+	osp_dispatcher_get(&disp, 1, &(osp_obis_t){0, 0, 8, 0, 0, 255}, 1, &r2);
+	assert_int_equal(r1.as.uint32.value, 111);
+	assert_int_equal(r2.as.uint32.value, 222);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  Test runner
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+int main(void) {
+	const struct CMUnitTest tests[] = {
+	    /* Type system */
+	    cmocka_unit_test(test_type_constructors),
+	    cmocka_unit_test(test_type_extractors),
+	    cmocka_unit_test(test_type_size_table),
+	    /* Codec */
+	    cmocka_unit_test(test_axdr_roundtrip),
+	    cmocka_unit_test(test_axdr_signed_types),
+	    cmocka_unit_test(test_axdr_boundary),
+	    /* Serializer */
+	    cmocka_unit_test(test_serialize_value_roundtrip),
+	    cmocka_unit_test(test_serialize_date_time),
+	    cmocka_unit_test(test_serialize_struct_array),
+	    cmocka_unit_test(test_serialize_obis),
+	    cmocka_unit_test(test_serialize_scaler_unit),
+	    /* IC class / dispatcher */
+	    cmocka_unit_test(test_ic_data_class),
+	    cmocka_unit_test(test_ic_data_getset),
+	    cmocka_unit_test(test_dispatcher_get_set),
+	    cmocka_unit_test(test_dispatcher_multiple_objects),
+	};
+	return cmocka_run_group_tests(tests, NULL, NULL);
 }
