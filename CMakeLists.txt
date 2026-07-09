@@ -12,6 +12,7 @@ add_library(openspodes STATIC
     src/ic/data.c
     src/transport/transport.c
     src/service/service.c
+    src/security/security.c
 )
 
 target_include_directories(openspodes PUBLIC src)
