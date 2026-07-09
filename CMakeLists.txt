@@ -10,6 +10,7 @@ add_library(openspodes STATIC
     src/codec/serialize.c
     src/server/dispatcher.c
     src/ic/data.c
+    src/transport/transport.c
 )
 
 target_include_directories(openspodes PUBLIC src)

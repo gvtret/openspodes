@@ -108,7 +108,7 @@ struct osp_ic_class {
 typedef struct {
 	osp_err_t (*open)(void *ctx);
 	osp_err_t (*send)(void *ctx, const uint8_t *data, uint32_t len);
-	osp_err_t (*recv)(void *ctx, uint8_t *buf, uint32_t size, uint32_t timeout_ms);
+	osp_err_t (*recv)(void *ctx, uint8_t *buf, uint32_t size, uint32_t *out_len, uint32_t timeout_ms);
 	void (*close)(void *ctx);
 	bool (*is_connected)(void *ctx);
 	void *ctx;

@@ -17,6 +17,7 @@
 #include "codec/structures.h"
 #include "server/dispatcher.h"
 #include "ic/data.h"
+#include "transport/transport.h"
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  Type system tests
@@ -415,6 +416,66 @@ static void test_dispatcher_multiple_objects(void **state) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+ *  Transport tests
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+static void test_hdlc_crc(void **state) {
+	(void)state;
+	/* Known CRC-16/X.25 vector: "123456789" → 0x906E */
+	const uint8_t data[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
+	assert_int_equal(osp_hdlc_fcs16(data, 9), 0x906E);
+}
+
+static void test_hdlc_frame_roundtrip(void **state) {
+	(void)state;
+	osp_hdlc_frame_t frame;
+	memset(&frame, 0, sizeof(frame));
+	osp_hdlc_address_init(&frame.destination, 1, 1);
+	osp_hdlc_address_init(&frame.source, 1, 1);
+	frame.control.poll_final = true;
+	frame.info_len = 4;
+	frame.info[0] = 0xC0;
+	frame.info[1] = 0x01;
+	frame.info[2] = 0x00;
+	frame.info[3] = 0x80;
+
+	uint8_t out[128];
+	uint32_t out_len;
+	osp_err_t r = osp_hdlc_frame(&frame, out, sizeof(out), &out_len);
+	assert_int_equal(r, OSP_OK);
+	assert_true(out_len > 0);
+	assert_int_equal(out[0], OSP_HDLC_FLAG);
+	assert_int_equal(out[out_len - 1], OSP_HDLC_FLAG);
+
+	osp_hdlc_frame_t decoded;
+	r = osp_hdlc_deframe(out, out_len, &decoded);
+	assert_int_equal(r, OSP_OK);
+	assert_int_equal(decoded.info_len, 4);
+	assert_memory_equal(decoded.info, frame.info, 4);
+}
+
+static void test_wrapper_roundtrip(void **state) {
+	(void)state;
+	const uint8_t apdu[] = {0xC0, 0x01, 0x00, 0x80, 0x00, 0x00};
+	uint8_t out[64];
+	uint32_t out_len;
+	osp_err_t r = osp_wrapper_encode(1, 2, apdu, sizeof(apdu), out, sizeof(out), &out_len);
+	assert_int_equal(r, OSP_OK);
+	assert_int_equal(out_len, 8 + 6);
+
+	osp_wrapper_header_t hdr;
+	const uint8_t *apdu_out;
+	uint32_t apdu_out_len;
+	r = osp_wrapper_decode(out, out_len, &hdr, &apdu_out, &apdu_out_len);
+	assert_int_equal(r, OSP_OK);
+	assert_int_equal(hdr.version, OSP_WRAPPER_VERSION);
+	assert_int_equal(hdr.source, 1);
+	assert_int_equal(hdr.destination, 2);
+	assert_int_equal(apdu_out_len, 6);
+	assert_memory_equal(apdu_out, apdu, 6);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
  *  Test runner
  * ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -439,6 +500,10 @@ int main(void) {
 	    cmocka_unit_test(test_ic_data_getset),
 	    cmocka_unit_test(test_dispatcher_get_set),
 	    cmocka_unit_test(test_dispatcher_multiple_objects),
+	    /* Transport */
+	    cmocka_unit_test(test_hdlc_crc),
+	    cmocka_unit_test(test_hdlc_frame_roundtrip),
+	    cmocka_unit_test(test_wrapper_roundtrip),
 	};
 	return cmocka_run_group_tests(tests, NULL, NULL);
 }
