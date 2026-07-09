@@ -31,6 +31,14 @@ add_library(openspodes STATIC
     src/ic/profile_filter.c
     src/ic/arbitrator.c
     src/ic/demand_register.c
+    src/ic/status_mapping.c
+    src/ic/utility_tables.c
+    src/ic/compact_data.c
+    src/ic/iec_hdlc_setup.c
+    src/ic/iec_local_port_setup.c
+    src/ic/data_protection.c
+    src/ic/push_setup.c
+    src/ic/association_ln.c
     src/transport/transport.c
     src/service/service.c
     src/security/security.c
