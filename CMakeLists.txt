@@ -21,6 +21,16 @@ add_library(openspodes STATIC
     src/ic/special_days.c
     src/ic/register_activation.c
     src/ic/sap_assignment.c
+    src/ic/profile_generic.c
+    src/ic/image_transfer.c
+    src/ic/activity_calendar.c
+    src/ic/register_monitor.c
+    src/ic/single_action_schedule.c
+    src/ic/ipv4_setup.c
+    src/ic/tcp_udp_setup.c
+    src/ic/profile_filter.c
+    src/ic/arbitrator.c
+    src/ic/demand_register.c
     src/transport/transport.c
     src/service/service.c
     src/security/security.c
