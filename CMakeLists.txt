@@ -11,6 +11,7 @@ add_library(openspodes STATIC
     src/server/dispatcher.c
     src/ic/data.c
     src/transport/transport.c
+    src/service/service.c
 )
 
 target_include_directories(openspodes PUBLIC src)
