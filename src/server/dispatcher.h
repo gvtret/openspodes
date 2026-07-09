@@ -32,19 +32,19 @@ osp_err_t osp_dispatcher_register(osp_dispatcher_t *disp,
                                   const osp_ic_class_t *class_def,
                                   void *instance);
 
-/* Dispatch a GET/SET/ACTION request */
+/* Dispatch a GET/SET/ACTION request using osp_value_t */
 osp_err_t osp_dispatcher_get(const osp_dispatcher_t *disp,
                              uint16_t class_id, const osp_obis_t *obis,
-                             uint8_t attr_id, osp_buf_t *result);
+                             uint8_t attr_id, osp_value_t *result);
 
 osp_err_t osp_dispatcher_set(osp_dispatcher_t *disp,
                              uint16_t class_id, const osp_obis_t *obis,
-                             uint8_t attr_id, const osp_buf_t *data);
+                             uint8_t attr_id, const osp_value_t *value);
 
 osp_err_t osp_dispatcher_action(osp_dispatcher_t *disp,
                                 uint16_t class_id, const osp_obis_t *obis,
-                                uint8_t method_id, const osp_buf_t *param,
-                                osp_buf_t *result);
+                                uint8_t method_id, const osp_value_t *param,
+                                osp_value_t *result);
 
 #ifdef __cplusplus
 }
