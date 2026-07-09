@@ -16,6 +16,11 @@ add_library(openspodes STATIC
     src/ic/security_setup.c
     src/ic/disconnect_control.c
     src/ic/limiter.c
+    src/ic/schedule.c
+    src/ic/script_table.c
+    src/ic/special_days.c
+    src/ic/register_activation.c
+    src/ic/sap_assignment.c
     src/transport/transport.c
     src/service/service.c
     src/security/security.c
