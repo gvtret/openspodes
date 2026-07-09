@@ -7,6 +7,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # Library
 add_library(openspodes STATIC
     src/codec/codec.c
+    src/codec/serialize.c
     src/server/dispatcher.c
     src/ic/data.c
 )

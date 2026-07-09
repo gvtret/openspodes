@@ -7,6 +7,8 @@
 #include "openspodes.h"
 #include "codec/codec.h"
 #include "codec/types.h"
+#include "codec/serialize.h"
+#include "codec/structures.h"
 #include "server/dispatcher.h"
 #include "ic/data.h"
 #include <stdio.h>
@@ -201,6 +203,111 @@ static void test_obis_eq(void)
     PASS("obis_eq");
 }
 
+static void test_serialize_value(void)
+{
+    /* Round-trip osp_value_t through generic read/write */
+    uint8_t buf[256];
+    osp_buf_t b;
+    osp_buf_init(&b, buf, sizeof(buf));
+
+    /* Write a bool */
+    osp_value_t v = osp_val_bool(true);
+    assert(osp_value_write(&b, &v) == OSP_OK);
+
+    /* Write a u32 */
+    v = osp_val_u32(0xDEADBEEF);
+    assert(osp_value_write(&b, &v) == OSP_OK);
+
+    /* Write a date */
+    v = osp_val_date(2026, 7, 9, 3);
+    assert(osp_value_write(&b, &v) == OSP_OK);
+
+    /* Read back */
+    osp_buf_t r;
+    osp_buf_init(&r, buf, b.wr);
+    r.wr = b.wr;
+
+    assert(osp_value_read(&r, &v) == OSP_OK);
+    assert(v.tag == OSP_TAG_BOOLEAN && v.as.boolean.value == true);
+
+    assert(osp_value_read(&r, &v) == OSP_OK);
+    assert(v.tag == OSP_TAG_DOUBLE_LONG_UNS && v.as.uint32.value == 0xDEADBEEF);
+
+    assert(osp_value_read(&r, &v) == OSP_OK);
+    assert(v.tag == OSP_TAG_DATE && v.as.date.year == 2026 && v.as.date.day == 9);
+
+    /* Test date/time/datetime round-trip */
+    osp_buf_init(&b, buf, sizeof(buf));
+    osp_date_t d = {2026, 7, 9, 3};
+    osp_date_write(&b, &d);
+    osp_time_t t = {14, 30, 45, 0};
+    osp_time_write(&b, &t);
+
+    osp_buf_init(&r, buf, b.wr);
+    r.wr = b.wr;
+    osp_date_t d2; osp_time_t t2;
+    assert(osp_date_read(&r, &d2) == OSP_OK);
+    assert(osp_time_read(&r, &t2) == OSP_OK);
+    assert(d2.year == 2026 && d2.day == 9);
+    assert(t2.hour == 14 && t2.second == 45);
+
+    /* Test structure begin/read */
+    osp_buf_init(&b, buf, sizeof(buf));
+    osp_struct_begin(&b, 3);
+    osp_axdr_write_u8(&b, 0xAA);
+    osp_axdr_write_u16(&b, 0x1234);
+    osp_axdr_write_u8(&b, 0xBB);
+
+    osp_buf_init(&r, buf, b.wr);
+    r.wr = b.wr;
+    uint8_t nf;
+    assert(osp_struct_begin_read(&r, &nf) == OSP_OK);
+    assert(nf == 3);
+    uint8_t v8; uint16_t v16;
+    osp_axdr_read_u8(&r, &v8); assert(v8 == 0xAA);
+    osp_axdr_read_u16(&r, &v16); assert(v16 == 0x1234);
+    osp_axdr_read_u8(&r, &v8); assert(v8 == 0xBB);
+
+    /* Test array begin/read */
+    osp_buf_init(&b, buf, sizeof(buf));
+    osp_array_begin(&b, 5);
+    for (int i = 0; i < 5; i++) osp_axdr_write_u8(&b, (uint8_t)i);
+
+    osp_buf_init(&r, buf, b.wr);
+    r.wr = b.wr;
+    uint8_t ac;
+    assert(osp_array_begin_read(&r, &ac) == OSP_OK);
+    assert(ac == 5);
+    for (int i = 0; i < 5; i++) {
+        osp_axdr_read_u8(&r, &v8);
+        assert(v8 == (uint8_t)i);
+    }
+
+    /* Test OBIS round-trip */
+    osp_buf_init(&b, buf, sizeof(buf));
+    osp_obis_t obis = {1, 2, 3, 4, 5, 6};
+    assert(osp_obis_write(&b, &obis) == OSP_OK);
+
+    osp_buf_init(&r, buf, b.wr);
+    r.wr = b.wr;
+    osp_obis_t obis2;
+    assert(osp_obis_read(&r, &obis2) == OSP_OK);
+    assert(osp_obis_eq(&obis, &obis2));
+
+    /* Test scaler unit round-trip */
+    osp_buf_init(&b, buf, sizeof(buf));
+    osp_scaler_unit_t su = {-2, 30}; /* 10^-2 V */
+    assert(osp_scaler_unit_write(&b, &su) == OSP_OK);
+
+    osp_buf_init(&r, buf, b.wr);
+    r.wr = b.wr;
+    osp_scaler_unit_t su2;
+    assert(osp_scaler_unit_read(&r, &su2) == OSP_OK);
+    assert(su2.scaler == -2 && su2.unit == 30);
+
+    PASS("serialize_value");
+}
+
 int main(void)
 {
     printf("openspodes v%d.%d.%d — smoke tests\n",
@@ -215,6 +322,7 @@ int main(void)
     test_ic_data_getset();
     test_dispatcher();
     test_obis_eq();
+    test_serialize_value();
 
     printf("\n");
     if (failures == 0) {
