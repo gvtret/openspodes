@@ -79,11 +79,6 @@ typedef enum {
 #define OSP_CTX_SN_CIPHERING 4
 
 /* Authentication mechanism identifiers */
-#define OSP_MECH_LOWEST   0
-#define OSP_MECH_LLS      1
-#define OSP_MECH_HLS_MD5  3
-#define OSP_MECH_HLS_SHA1 4
-#define OSP_MECH_HLS_GMAC 5
 
 /* Association results */
 #define OSP_RESULT_ACCEPTED           0

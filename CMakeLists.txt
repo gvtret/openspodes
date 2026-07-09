@@ -50,6 +50,8 @@ add_library(openspodes STATIC
     src/transport/transport.c
     src/service/service.c
     src/security/security.c
+    src/client/client.c
+    src/server/server.c
 )
 
 target_include_directories(openspodes PUBLIC src)
