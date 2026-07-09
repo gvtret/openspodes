@@ -17,6 +17,9 @@
 #include "codec/structures.h"
 #include "server/dispatcher.h"
 #include "ic/data.h"
+#include "ic/register.h"
+#include "ic/extended_register.h"
+#include "ic/clock.h"
 #include "transport/transport.h"
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -476,6 +479,103 @@ static void test_wrapper_roundtrip(void **state) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+ *  IC class tests (Register, Extended Register, Clock)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+static void test_ic_register(void **state) {
+	(void)state;
+	const osp_ic_class_t *cls = osp_ic_register_class();
+	assert_non_null(cls);
+	assert_int_equal(cls->class_id, 3);
+	assert_int_equal(cls->version, 0);
+	assert_string_equal(cls->name, "Register");
+
+	osp_ic_register_t reg;
+	osp_ic_register_init(&reg, (osp_obis_t){0, 0, 1, 0, 0, 255}, osp_val_u32(12345));
+	assert_int_equal(reg.logical_name.c, 1);
+	assert_int_equal(reg.value.as.uint32.value, 12345);
+
+	/* GET value */
+	osp_value_t v;
+	assert_int_equal(cls->get_attr(&reg, 2, &v), OSP_OK);
+	assert_int_equal(v.as.uint32.value, 12345);
+
+	/* SET value */
+	osp_value_t new_val = osp_val_u32(99999);
+	assert_int_equal(cls->set_attr(&reg, 2, &new_val), OSP_OK);
+	assert_int_equal(cls->get_attr(&reg, 2, &v), OSP_OK);
+	assert_int_equal(v.as.uint32.value, 99999);
+
+	/* Reset method */
+	osp_value_t result;
+	assert_int_equal(cls->invoke(&reg, 1, NULL, &result), OSP_OK);
+	assert_int_equal(cls->get_attr(&reg, 2, &v), OSP_OK);
+	assert_int_equal(v.as.int32.value, 0);
+}
+
+static void test_ic_extended_register(void **state) {
+	(void)state;
+	const osp_ic_class_t *cls = osp_ic_ext_register_class();
+	assert_int_equal(cls->class_id, 4);
+
+	osp_ic_ext_register_t ext;
+	osp_ic_ext_register_init(&ext, (osp_obis_t){0, 0, 2, 0, 0, 255});
+
+	osp_value_t v;
+	assert_int_equal(cls->get_attr(&ext, 2, &v), OSP_OK);
+	assert_int_equal(cls->get_attr(&ext, 4, &v), OSP_OK); /* status */
+}
+
+static void test_ic_clock(void **state) {
+	(void)state;
+	const osp_ic_class_t *cls = osp_ic_clock_class();
+	assert_int_equal(cls->class_id, 8);
+	assert_string_equal(cls->name, "Clock");
+
+	osp_ic_clock_t clock;
+	osp_ic_clock_init(&clock, (osp_obis_t){0, 0, 1, 0, 0, 255});
+
+	osp_value_t v;
+	assert_int_equal(cls->get_attr(&clock, 2, &v), OSP_OK);
+	assert_int_equal(v.tag, OSP_TAG_DATETIME);
+
+	/* Set time */
+	osp_value_t new_time = osp_val_datetime(2026, 7, 9, 3, 14, 30, 0, 0);
+	assert_int_equal(cls->set_attr(&clock, 2, &new_time), OSP_OK);
+	assert_int_equal(cls->get_attr(&clock, 2, &v), OSP_OK);
+	assert_int_equal(v.as.datetime.date.year, 2026);
+
+	/* Methods: adjust_to_quarter, minute, etc. */
+	osp_value_t result;
+	for (uint8_t m = 1; m <= 6; m++) {
+		assert_int_equal(cls->invoke(&clock, m, NULL, &result), OSP_OK);
+	}
+}
+
+static void test_ic_dispatcher_multi(void **state) {
+	(void)state;
+	osp_dispatcher_t disp;
+	osp_dispatcher_init(&disp);
+
+	osp_ic_register_t reg;
+	osp_ic_register_init(&reg, (osp_obis_t){0, 0, 1, 0, 0, 255}, osp_val_u32(42));
+	assert_int_equal(osp_dispatcher_register(&disp, osp_ic_register_class(), &reg), OSP_OK);
+
+	osp_ic_clock_t clk;
+	osp_ic_clock_init(&clk, (osp_obis_t){0, 0, 1, 0, 0, 255});
+	assert_int_equal(osp_dispatcher_register(&disp, osp_ic_clock_class(), &clk), OSP_OK);
+
+	/* GET Register value */
+	osp_value_t v;
+	assert_int_equal(osp_dispatcher_get(&disp, 3, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &v), OSP_OK);
+	assert_int_equal(v.as.uint32.value, 42);
+
+	/* GET Clock time */
+	assert_int_equal(osp_dispatcher_get(&disp, 8, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &v), OSP_OK);
+	assert_int_equal(v.tag, OSP_TAG_DATETIME);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
  *  Test runner
  * ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -500,6 +600,10 @@ int main(void) {
 	    cmocka_unit_test(test_ic_data_getset),
 	    cmocka_unit_test(test_dispatcher_get_set),
 	    cmocka_unit_test(test_dispatcher_multiple_objects),
+	    cmocka_unit_test(test_ic_register),
+	    cmocka_unit_test(test_ic_extended_register),
+	    cmocka_unit_test(test_ic_clock),
+	    cmocka_unit_test(test_ic_dispatcher_multi),
 	    /* Transport */
 	    cmocka_unit_test(test_hdlc_crc),
 	    cmocka_unit_test(test_hdlc_frame_roundtrip),

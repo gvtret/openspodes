@@ -10,6 +10,9 @@ add_library(openspodes STATIC
     src/codec/serialize.c
     src/server/dispatcher.c
     src/ic/data.c
+    src/ic/register.c
+    src/ic/extended_register.c
+    src/ic/clock.c
     src/transport/transport.c
     src/service/service.c
     src/security/security.c
