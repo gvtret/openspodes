@@ -189,16 +189,20 @@ osp_err_t osp_client_connect(osp_client_t *c, uint32_t timeout_ms) {
 		return OSP_ERR_SECURITY;
 	}
 
-	/* Store StoC challenge */
+	/* Store StoC challenge and peer system title */
 	if (aare.responding_auth_value_len > 0) {
 		memcpy(c->security.stoc, aare.responding_auth_value, aare.responding_auth_value_len);
 		c->security.stoc_len = aare.responding_auth_value_len;
 	}
+	if (aare.responding_ap_title_len >= OSP_SEC_SYSTEM_TITLE_SIZE) {
+		memcpy(c->security.peer_system_title, aare.responding_ap_title, OSP_SEC_SYSTEM_TITLE_SIZE);
+	}
 
-	/* HLS pass 3/4 for GMAC */
-	if (c->security.mechanism == OSP_MECH_HLS_GMAC) {
-		uint8_t f_stoc[17];
-		if (osp_hls_pass3_build(&c->security, f_stoc, sizeof(f_stoc)) != 17) {
+	/* HLS pass 3/4 */
+	if (osp_hls_requires_handshake(c->security.mechanism)) {
+		uint8_t f_stoc[32];
+		uint32_t f_len = 0;
+		if (osp_hls_pass3_build(&c->security, f_stoc, sizeof(f_stoc), &f_len) != 0) {
 			return OSP_ERR_SECURITY;
 		}
 
@@ -212,8 +216,8 @@ osp_err_t osp_client_connect(osp_client_t *c, uint32_t timeout_ms) {
 		act_req.as.normal.items[0].method.instance_id = asso_ln;
 		act_req.as.normal.items[0].method.method_id = 1;
 		act_req.as.normal.items[0].data.tag = OSP_TAG_OCTETSTRING;
-		memcpy(act_req.as.normal.items[0].data.as.octetstring.data, f_stoc, 17);
-		act_req.as.normal.items[0].data.as.octetstring.len = 17;
+		memcpy(act_req.as.normal.items[0].data.as.octetstring.data, f_stoc, f_len);
+		act_req.as.normal.items[0].data.as.octetstring.len = f_len;
 
 		osp_buf_t act_buf;
 		osp_buf_init(&act_buf, c->tx_buf, sizeof(c->tx_buf));
@@ -236,8 +240,11 @@ osp_err_t osp_client_connect(osp_client_t *c, uint32_t timeout_ms) {
 			return OSP_ERR_INVALID;
 		}
 
-		if (act_resp.as.normal.items[0].return_data.tag == OSP_TAG_OCTETSTRING && act_resp.as.normal.items[0].return_data.as.octetstring.len >= 17) {
-			if (osp_hls_pass4_verify(&c->security, act_resp.as.normal.items[0].return_data.as.octetstring.data, 17) != 0) {
+		if (act_resp.as.normal.items[0].return_data.tag == OSP_TAG_OCTETSTRING &&
+		    act_resp.as.normal.items[0].return_data.as.octetstring.len > 0) {
+			const uint8_t *f_ctos = act_resp.as.normal.items[0].return_data.as.octetstring.data;
+			uint32_t f_ctos_len = act_resp.as.normal.items[0].return_data.as.octetstring.len;
+			if (osp_hls_pass4_verify(&c->security, f_ctos, f_ctos_len) != 0) {
 				return OSP_ERR_SECURITY;
 			}
 		} else {

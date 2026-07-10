@@ -307,6 +307,64 @@ static void test_hls_handshake(void **state) {
 	assert_int_equal(server.associated, true);
 }
 
+#ifdef OSP_HAVE_OPENSSL_GCM
+
+static void run_hls_hash_handshake(osp_auth_mechanism_t mech, const uint8_t client_st[8], const uint8_t server_st[8], uint32_t init_val) {
+	mock_crypto_init();
+	mock_crypto_init_real_hashes();
+	mock_transport_pair_t pair;
+
+	osp_server_t server;
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
+
+	osp_ic_data_t data_obj;
+	osp_ic_data_init(&data_obj, (osp_obis_t){0, 0, 1, 0, 0, 255});
+	data_obj.value = osp_val_u32(init_val);
+	osp_server_register(&server, osp_ic_data_class(), &data_obj);
+
+	osp_sec_context_t server_sec;
+	osp_sec_context_init(&server_sec, OSP_SUITE_0, mech, server_st);
+	osp_server_set_security(&server, &server_sec);
+	setup(&pair, &server);
+
+	osp_client_t client;
+	osp_client_init(&client, &pair.client_transport, OSP_FRAMING_NONE);
+	osp_sec_context_t client_sec;
+	osp_sec_context_init(&client_sec, OSP_SUITE_0, mech, client_st);
+	osp_client_set_security(&client, &client_sec);
+
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+	assert_true(client.associated);
+
+	osp_value_t result;
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(result.as.uint32.value, init_val);
+	assert_true(server.associated);
+}
+
+static void test_hls_md5_handshake(void **state) {
+	(void)state;
+	static const uint8_t client_st[8] = {0x43, 0x4C, 0x49, 0x00, 0x00, 0x00, 0x00, 0x01};
+	static const uint8_t server_st[8] = {0x53, 0x52, 0x56, 0x00, 0x00, 0x00, 0x00, 0x01};
+	run_hls_hash_handshake(OSP_MECH_HLS_MD5, client_st, server_st, 601);
+}
+
+static void test_hls_sha1_handshake(void **state) {
+	(void)state;
+	static const uint8_t client_st[8] = {0x43, 0x4C, 0x49, 0x00, 0x00, 0x00, 0x00, 0x02};
+	static const uint8_t server_st[8] = {0x53, 0x52, 0x56, 0x00, 0x00, 0x00, 0x00, 0x02};
+	run_hls_hash_handshake(OSP_MECH_HLS_SHA1, client_st, server_st, 602);
+}
+
+static void test_hls_sha256_handshake(void **state) {
+	(void)state;
+	static const uint8_t client_st[8] = {0x43, 0x4C, 0x49, 0x00, 0x00, 0x00, 0x00, 0x03};
+	static const uint8_t server_st[8] = {0x53, 0x52, 0x56, 0x00, 0x00, 0x00, 0x00, 0x03};
+	run_hls_hash_handshake(OSP_MECH_HLS_SHA256, client_st, server_st, 603);
+}
+
+#endif /* OSP_HAVE_OPENSSL_GCM */
+
 /* ── Test: client ACTION (disconnect control) ────────────────────────────── */
 
 static void test_client_action(void **state) {
@@ -772,6 +830,11 @@ int main(void) {
 	    cmocka_unit_test(test_aarq_hls_get), cmocka_unit_test(test_aarq_rejected), cmocka_unit_test(test_multi_object),
 	    cmocka_unit_test(test_client_with_list),
 	    cmocka_unit_test(test_set_get),      	    cmocka_unit_test(test_hls_handshake),
+#ifdef OSP_HAVE_OPENSSL_GCM
+	    cmocka_unit_test(test_hls_md5_handshake),
+	    cmocka_unit_test(test_hls_sha1_handshake),
+	    cmocka_unit_test(test_hls_sha256_handshake),
+#endif
 	    cmocka_unit_test(test_client_action),
 	    cmocka_unit_test(test_client_release_disconnect),
 	    cmocka_unit_test(test_get_block_transfer),

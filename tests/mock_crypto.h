@@ -5,5 +5,6 @@
 
 void mock_crypto_init(void);
 void mock_crypto_init_real_gcm(void);
+void mock_crypto_init_real_hashes(void);
 
 #endif

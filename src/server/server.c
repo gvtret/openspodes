@@ -139,14 +139,19 @@ static osp_err_t handle_aarq(osp_server_t *s, const osp_aarq_t *aarq) {
 	osp_aare_t aare;
 	memset(&aare, 0, sizeof(aare));
 
-	/* Accept if mechanism is lowest or LLS, or if we have matching keys */
+	/* Accept if mechanism is lowest or LLS, or HLS with matching handshake */
 	if (aarq->mechanism == OSP_MECH_LOWEST || aarq->mechanism == OSP_MECH_LLS) {
 		aare.result = OSP_RESULT_ACCEPTED;
 		s->associated = true;
-	} else if (aarq->mechanism == OSP_MECH_HLS_GMAC) {
-		/* Store CtoS challenge for pass 3 verification */
+	} else if (osp_hls_requires_handshake((osp_auth_mechanism_t)aarq->mechanism)) {
+		s->security.mechanism = (osp_auth_mechanism_t)aarq->mechanism;
+
+		/* Store CtoS challenge and client system title for pass 3/4 */
 		memcpy(s->security.ctos, aarq->calling_auth_value, aarq->calling_auth_value_len);
 		s->security.ctos_len = aarq->calling_auth_value_len;
+		if (aarq->calling_ap_title_len >= OSP_SEC_SYSTEM_TITLE_SIZE) {
+			memcpy(s->security.peer_system_title, aarq->calling_ap_title, OSP_SEC_SYSTEM_TITLE_SIZE);
+		}
 
 		/* Generate StoC challenge */
 		s->security.stoc_len = 8;
@@ -586,38 +591,21 @@ static osp_err_t handle_action(osp_server_t *s, const osp_action_request_t *req)
 /* ── Handle HLS pass 3 (from client) ────────────────────────────────────── */
 
 static osp_err_t handle_hls_pass3(osp_server_t *s, const osp_action_request_t *req) {
+	if (req->as.normal.items[0].data.tag != OSP_TAG_OCTETSTRING || req->as.normal.items[0].data.as.octetstring.len == 0) {
+		return OSP_ERR_INVALID;
+	}
+
+	const uint8_t *f_stoc = req->as.normal.items[0].data.as.octetstring.data;
+	uint32_t f_len = req->as.normal.items[0].data.as.octetstring.len;
+
 	/* Verify client's f(StoC) */
-	if (req->as.normal.items[0].data.tag == OSP_TAG_OCTETSTRING && req->as.normal.items[0].data.as.octetstring.len >= 17) {
-		if (osp_hls_pass3_verify(&s->security, req->as.normal.items[0].data.as.octetstring.data, 17) != 0) {
-			/* Auth failed — send error response */
-			osp_action_response_t resp;
-			memset(&resp, 0, sizeof(resp));
-			resp.invoke_id_priority = req->invoke_id_priority;
-			resp.type = OSP_ACTION_RESP_NORMAL;
-			resp.as.normal.items[0].result = OSP_DAR_AUTHORIZATION_FAILURE;
-			resp.as.normal.item_count = 1;
-
-			osp_buf_t buf;
-			osp_buf_init(&buf, s->tx_buf, sizeof(s->tx_buf));
-			osp_action_response_encode(&buf, &resp);
-			return server_send(s, buf.buf, buf.wr);
-		}
-
-		/* Build pass 4: f(CtoS) */
-		uint8_t f_ctos[17];
-		if (osp_hls_pass4_build(&s->security, f_ctos, sizeof(f_ctos)) != 17) {
-			return OSP_ERR_INVALID;
-		}
-
-		/* Send ACTION response with f(CtoS) */
+	if (osp_hls_pass3_verify(&s->security, f_stoc, f_len) != 0) {
+		/* Auth failed — send error response */
 		osp_action_response_t resp;
 		memset(&resp, 0, sizeof(resp));
 		resp.invoke_id_priority = req->invoke_id_priority;
 		resp.type = OSP_ACTION_RESP_NORMAL;
-		resp.as.normal.items[0].result = OSP_DAR_SUCCESS;
-		resp.as.normal.items[0].return_data.tag = OSP_TAG_OCTETSTRING;
-		memcpy(resp.as.normal.items[0].return_data.as.octetstring.data, f_ctos, 17);
-		resp.as.normal.items[0].return_data.as.octetstring.len = 17;
+		resp.as.normal.items[0].result = OSP_DAR_AUTHORIZATION_FAILURE;
 		resp.as.normal.item_count = 1;
 
 		osp_buf_t buf;
@@ -626,7 +614,28 @@ static osp_err_t handle_hls_pass3(osp_server_t *s, const osp_action_request_t *r
 		return server_send(s, buf.buf, buf.wr);
 	}
 
-	return OSP_ERR_INVALID;
+	/* Build pass 4: f(CtoS) */
+	uint8_t f_ctos[32];
+	uint32_t f_ctos_len = 0;
+	if (osp_hls_pass4_build(&s->security, f_ctos, sizeof(f_ctos), &f_ctos_len) != 0) {
+		return OSP_ERR_INVALID;
+	}
+
+	/* Send ACTION response with f(CtoS) */
+	osp_action_response_t resp;
+	memset(&resp, 0, sizeof(resp));
+	resp.invoke_id_priority = req->invoke_id_priority;
+	resp.type = OSP_ACTION_RESP_NORMAL;
+	resp.as.normal.items[0].result = OSP_DAR_SUCCESS;
+	resp.as.normal.items[0].return_data.tag = OSP_TAG_OCTETSTRING;
+	memcpy(resp.as.normal.items[0].return_data.as.octetstring.data, f_ctos, f_ctos_len);
+	resp.as.normal.items[0].return_data.as.octetstring.len = f_ctos_len;
+	resp.as.normal.item_count = 1;
+
+	osp_buf_t buf;
+	osp_buf_init(&buf, s->tx_buf, sizeof(s->tx_buf));
+	osp_action_response_encode(&buf, &resp);
+	return server_send(s, buf.buf, buf.wr);
 }
 
 /* ── Accept one request ──────────────────────────────────────────────────── */

@@ -64,3 +64,24 @@ done:
 void mock_crypto_init_real_gcm(void) {
 	osp_hal_gcm_crypt = real_gcm_crypt;
 }
+
+static void real_md5(const uint8_t *input, uint32_t len, uint8_t output[16]) {
+	unsigned int out_len = 16;
+	EVP_Digest(input, len, output, &out_len, EVP_md5(), NULL);
+}
+
+static void real_sha1(const uint8_t *input, uint32_t len, uint8_t output[20]) {
+	unsigned int out_len = 20;
+	EVP_Digest(input, len, output, &out_len, EVP_sha1(), NULL);
+}
+
+static void real_sha256(const uint8_t *input, uint32_t len, uint8_t output[32]) {
+	unsigned int out_len = 32;
+	EVP_Digest(input, len, output, &out_len, EVP_sha256(), NULL);
+}
+
+void mock_crypto_init_real_hashes(void) {
+	osp_hal_md5 = real_md5;
+	osp_hal_sha1 = real_sha1;
+	osp_hal_sha256 = real_sha256;
+}

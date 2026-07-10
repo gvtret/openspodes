@@ -122,7 +122,12 @@ typedef enum {
 	OSP_MECH_HLS_MD5 = 3,
 	OSP_MECH_HLS_SHA1 = 4,
 	OSP_MECH_HLS_GMAC = 5,
+	OSP_MECH_HLS_SHA256 = 6,
 } osp_auth_mechanism_t;
+
+static inline bool osp_hls_requires_handshake(osp_auth_mechanism_t mech) {
+	return mech >= OSP_MECH_HLS && mech <= OSP_MECH_HLS_SHA256;
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  Security Context (per-association)
@@ -137,6 +142,7 @@ typedef struct {
 	osp_sec_policy_t policy;
 	osp_auth_mechanism_t mechanism;
 	uint8_t system_title[OSP_SEC_SYSTEM_TITLE_SIZE];
+	uint8_t peer_system_title[OSP_SEC_SYSTEM_TITLE_SIZE];
 	uint32_t invocation_counter; /* IC, monotonically increasing */
 	uint32_t last_peer_ic;       /* last received IC from peer */
 	bool ic_valid;               /* true after first successful auth */
@@ -170,16 +176,16 @@ int osp_hls_sha256(const uint8_t *input, uint32_t len, uint8_t output[32]);
 /* GMAC computation using HAL crypto */
 int osp_hls_gmac(const osp_sec_context_t *ctx, const uint8_t *system_title, uint32_t ic, const uint8_t *data, uint32_t data_len, uint8_t tag[OSP_SEC_TAG_SIZE]);
 
-/* Pass 3: build f(StoC) = SC || IC || GMAC(SC || AK || StoC) */
-int osp_hls_pass3_build(const osp_sec_context_t *ctx, uint8_t *out, uint32_t out_size);
+/* Pass 3: client builds f(StoC); *out_len is digest/response size (16/20/32/17) */
+int osp_hls_pass3_build(const osp_sec_context_t *ctx, uint8_t *out, uint32_t out_size, uint32_t *out_len);
 
-/* Pass 3: verify f(StoC) received from client */
+/* Pass 3: server verifies f(StoC) from client */
 int osp_hls_pass3_verify(osp_sec_context_t *ctx, const uint8_t *f_stoc, uint32_t len);
 
-/* Pass 4: build f(CtoS) = SC || IC || GMAC(SC || AK || CtoS) */
-int osp_hls_pass4_build(osp_sec_context_t *ctx, uint8_t *out, uint32_t out_size);
+/* Pass 4: server builds f(CtoS) */
+int osp_hls_pass4_build(osp_sec_context_t *ctx, uint8_t *out, uint32_t out_size, uint32_t *out_len);
 
-/* Pass 4: verify f(CtoS) received from server */
+/* Pass 4: client verifies f(CtoS) from server */
 int osp_hls_pass4_verify(osp_sec_context_t *ctx, const uint8_t *f_ctos, uint32_t len);
 
 /* ═══════════════════════════════════════════════════════════════════════════

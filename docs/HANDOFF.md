@@ -16,7 +16,7 @@ No malloc in core. HAL via function pointers. MCU-pluggable.
 src/codec/     BER/AXDR read/write, serialize/deserialize, compact-array
 src/transport/ HDLC (IEC 62056-46) + COSEM wrapper (IEC 62056-47)
 src/service/   ACSE + xDLMS + notifications + GBT codec
-src/security/  HLS GMAC (pass 3/4) + replay protection + glo stubs
+src/security/  HLS GMAC/MD5/SHA1/SHA256 (pass 3/4) + glo-ciphering + replay (GMAC IC)
 src/server/    RequestDispatcher (class_id+OBIS), osp_server_accept/run
 src/client/    connect/get/set/action + with-list + block transfer + recv notification
 src/ic/        40 IC classes, vtable pattern
@@ -32,7 +32,7 @@ cmake --build build-linux
 ctest --test-dir build-linux --output-on-failure
 ```
 
-### Test suites — all PASS (8/8)
+### Test suites — all PASS (9/9)
 
 | Target | File | Tests | Purpose |
 |--------|------|-------|---------|
@@ -40,7 +40,7 @@ ctest --test-dir build-linux --output-on-failure
 | `openspodes_test_golden` | `tests/test_codec_golden.c` | ~104 | Golden vectors, BER/ACSE/xDLMS, thirdparty cross-check |
 | `openspodes_test_errors` | `tests/test_errors.c` | 34 | Error paths |
 | `openspodes_test_ic` | `tests/test_ic_smoke.c` | 3 | All IC classes smoke |
-| `openspodes_test_integration` | `tests/test_integration.c` | 15 | Client↔server E2E loopback |
+| `openspodes_test_integration` | `tests/test_integration.c` | 18 | Client↔server E2E loopback (+ HLS hash handshakes) |
 | `openspodes_test_phase0` | `tests/test_phase0.c` | 7 | SPODUS helpers |
 | `openspodes_test_phase1` | `tests/test_phase1.c` | 8 | Table manager / profile filter |
 | `openspodes_test_phase2` | `tests/test_phase2.c` | 8 | WithList codec, blocks, GBT, compact data |
@@ -58,12 +58,13 @@ ctest --test-dir build-linux --output-on-failure
 - **Client with-list API**: `osp_client_get/set/action_with_list`
 - **GBT runtime E2E**: `osp_server_enable_gbt` / `osp_client_enable_gbt`, transport send/recv
 - **glo-ciphering**: `osp_glo_protect/unprotect`, `osp_client_set_ciphering`, E.5 vector test
+- **HLS MD5/SHA1/SHA256**: `osp_hls_pass3/4_*`, client/server handshake, OpenSSL hash HAL
 
 ## Client API
 
 | Function | Status |
 |----------|--------|
-| `osp_client_connect` / `release` / `disconnect` | ✅ HLS-GMAC |
+| `osp_client_connect` / `release` / `disconnect` | ✅ HLS GMAC + MD5/SHA1/SHA256 |
 | `osp_client_get` | ✅ + block reassembly |
 | `osp_client_get_with_list` | ✅ |
 | `osp_client_set` | ✅ + auto block transfer |
@@ -73,7 +74,8 @@ ctest --test-dir build-linux --output-on-failure
 | `osp_client_recv_data_notification` | ✅ |
 | GBT runtime (xDLMS only) | ✅ unconfirmed multi-block |
 | glo-ciphering | ✅ protect/unprotect + client/server session |
-| HLS MD5/SHA1/SHA256/GOST | ❌ |
+| HLS MD5/SHA1/SHA256 | ✅ pass 3/4 + E2E loopback |
+| HLS GOST (8–10) | ❌ |
 
 ## IC Classes (40 implemented)
 Data(1) Register(3) ExtRegister(4) DemandRegister(5) RegisterActivation(6)

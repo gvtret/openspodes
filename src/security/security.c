@@ -92,115 +92,254 @@ int osp_hls_gmac(
 	return 0;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════
- *  HLS pass 3/4
- * ═══════════════════════════════════════════════════════════════════════════ */
-
-int osp_hls_pass3_build(const osp_sec_context_t *ctx, uint8_t *out, uint32_t out_size) {
-	if (!ctx || !out || out_size < 17)
+int osp_hls_md5(const uint8_t *input, uint32_t len, uint8_t output[16]) {
+	if (!input || !output || !osp_hal_md5) {
 		return -1;
+	}
+	osp_hal_md5(input, len, output);
+	return 0;
+}
 
-	/* f(StoC) = SC || IC || GMAC(SC || AK || StoC) */
+int osp_hls_sha1(const uint8_t *input, uint32_t len, uint8_t output[20]) {
+	if (!input || !output || !osp_hal_sha1) {
+		return -1;
+	}
+	osp_hal_sha1(input, len, output);
+	return 0;
+}
+
+int osp_hls_sha256(const uint8_t *input, uint32_t len, uint8_t output[32]) {
+	if (!input || !output || !osp_hal_sha256) {
+		return -1;
+	}
+	osp_hal_sha256(input, len, output);
+	return 0;
+}
+
+static int hls_hash_legacy(const osp_sec_context_t *ctx, const uint8_t *challenge, uint32_t challenge_len, uint8_t *out,
+                           uint32_t *out_len) {
+	uint8_t buf[OSP_SEC_CHALLENGE_MAX + OSP_SEC_KEY_MAX];
+	if (!ctx || !challenge || !out || !out_len || challenge_len + 16 > sizeof(buf)) {
+		return -1;
+	}
+	memcpy(buf, challenge, challenge_len);
+	memcpy(&buf[challenge_len], ctx->gak, 16);
+	uint32_t total = challenge_len + 16;
+
+	if (ctx->mechanism == OSP_MECH_HLS_MD5) {
+		if (osp_hls_md5(buf, total, out) != 0) {
+			return -1;
+		}
+		*out_len = 16;
+		return 0;
+	}
+	if (ctx->mechanism == OSP_MECH_HLS_SHA1) {
+		if (osp_hls_sha1(buf, total, out) != 0) {
+			return -1;
+		}
+		*out_len = 20;
+		return 0;
+	}
+	return -1;
+}
+
+static int hls_hash_with_titles(const osp_sec_context_t *ctx, const uint8_t *st_a, const uint8_t *st_b, const uint8_t *challenge_a,
+                                uint32_t challenge_a_len, const uint8_t *challenge_b, uint32_t challenge_b_len, uint8_t *out,
+                                uint32_t *out_len) {
+	if (!ctx || !st_a || !st_b || !challenge_a || !challenge_b || !out || !out_len || ctx->mechanism != OSP_MECH_HLS_SHA256) {
+		return -1;
+	}
+	uint8_t buf[OSP_SEC_KEY_MAX + OSP_SEC_SYSTEM_TITLE_SIZE * 2 + OSP_SEC_CHALLENGE_MAX * 2];
+	uint32_t pos = 0;
+	memcpy(&buf[pos], ctx->gak, 16);
+	pos += 16;
+	memcpy(&buf[pos], st_a, OSP_SEC_SYSTEM_TITLE_SIZE);
+	pos += OSP_SEC_SYSTEM_TITLE_SIZE;
+	memcpy(&buf[pos], st_b, OSP_SEC_SYSTEM_TITLE_SIZE);
+	pos += OSP_SEC_SYSTEM_TITLE_SIZE;
+	memcpy(&buf[pos], challenge_a, challenge_a_len);
+	pos += challenge_a_len;
+	memcpy(&buf[pos], challenge_b, challenge_b_len);
+	pos += challenge_b_len;
+	if (osp_hls_sha256(buf, pos, out) != 0) {
+		return -1;
+	}
+	*out_len = 32;
+	return 0;
+}
+
+static int hls_pass3_gmac_build(const osp_sec_context_t *ctx, uint8_t *out, uint32_t out_size, uint32_t *out_len) {
+	if (!ctx || !out || out_size < 17 || !out_len) {
+		return -1;
+	}
 	uint8_t sc = osp_sec_control_byte(OSP_POLICY_AUTH_ONLY, ctx->suite);
 	uint32_t ic = ctx->invocation_counter;
-
 	uint8_t tag[OSP_SEC_TAG_SIZE];
 	if (osp_hls_gmac(ctx, ctx->system_title, ic, ctx->stoc, ctx->stoc_len, tag) != 0) {
 		return -1;
 	}
-
 	out[0] = sc;
 	out[1] = (uint8_t)(ic >> 24);
 	out[2] = (uint8_t)(ic >> 16);
 	out[3] = (uint8_t)(ic >> 8);
 	out[4] = (uint8_t)(ic);
 	memcpy(&out[5], tag, OSP_SEC_TAG_SIZE);
-
-	return 17;
-}
-
-int osp_hls_pass3_verify(osp_sec_context_t *ctx, const uint8_t *f_stoc, uint32_t len) {
-	if (!ctx || !f_stoc || len < 17)
-		return -1;
-
-	/* Rate limiting */
-	if (ctx->hls_failures >= 5)
-		return -2;
-
-	/* Replay protection: IC must be strictly increasing */
-	uint32_t ic = ((uint32_t)f_stoc[1] << 24) | ((uint32_t)f_stoc[2] << 16) | ((uint32_t)f_stoc[3] << 8) | (uint32_t)f_stoc[4];
-	if (ctx->ic_valid && ic <= ctx->last_peer_ic) {
-		ctx->hls_failures++;
-		return -3;
-	}
-
-	/* Rebuild expected tag: GMAC(SC || AK || StoC) using peer's IC */
-	uint8_t expected_tag[OSP_SEC_TAG_SIZE];
-	if (osp_hls_gmac(ctx, ctx->system_title, ic, ctx->stoc, ctx->stoc_len, expected_tag) != 0) {
-		ctx->hls_failures++;
-		return -4;
-	}
-
-	/* Constant-time comparison */
-	uint8_t diff = 0;
-	for (uint32_t i = 0; i < OSP_SEC_TAG_SIZE; i++) {
-		diff |= f_stoc[5 + i] ^ expected_tag[i];
-	}
-
-	if (diff != 0) {
-		ctx->hls_failures++;
-		return -5;
-	}
-
-	/* Success: update IC tracking */
-	ctx->last_peer_ic = ic;
-	ctx->ic_valid = true;
-	ctx->hls_failures = 0;
+	*out_len = 17;
 	return 0;
 }
 
-int osp_hls_pass4_build(osp_sec_context_t *ctx, uint8_t *out, uint32_t out_size) {
-	if (!ctx || !out || out_size < 17)
+static int hls_pass4_gmac_build(osp_sec_context_t *ctx, uint8_t *out, uint32_t out_size, uint32_t *out_len) {
+	if (!ctx || !out || out_size < 17 || !out_len) {
 		return -1;
-
-	/* f(CtoS) = SC || IC || GMAC(SC || AK || CtoS) */
+	}
 	uint8_t sc = osp_sec_control_byte(OSP_POLICY_AUTH_ONLY, ctx->suite);
 	uint32_t ic = ctx->invocation_counter++;
-	ctx->invocation_counter++;
-
 	uint8_t tag[OSP_SEC_TAG_SIZE];
 	if (osp_hls_gmac(ctx, ctx->system_title, ic, ctx->ctos, ctx->ctos_len, tag) != 0) {
 		return -1;
 	}
-
 	out[0] = sc;
 	out[1] = (uint8_t)(ic >> 24);
 	out[2] = (uint8_t)(ic >> 16);
 	out[3] = (uint8_t)(ic >> 8);
 	out[4] = (uint8_t)(ic);
 	memcpy(&out[5], tag, OSP_SEC_TAG_SIZE);
+	*out_len = 17;
+	return 0;
+}
 
-	return 17;
+int osp_hls_pass3_build(const osp_sec_context_t *ctx, uint8_t *out, uint32_t out_size, uint32_t *out_len) {
+	if (!ctx || !out || !out_len) {
+		return -1;
+	}
+	if (ctx->mechanism == OSP_MECH_HLS_GMAC) {
+		return hls_pass3_gmac_build(ctx, out, out_size, out_len);
+	}
+	if (ctx->mechanism == OSP_MECH_HLS_MD5 || ctx->mechanism == OSP_MECH_HLS_SHA1) {
+		return hls_hash_legacy(ctx, ctx->stoc, ctx->stoc_len, out, out_len);
+	}
+	if (ctx->mechanism == OSP_MECH_HLS_SHA256) {
+		return hls_hash_with_titles(ctx, ctx->system_title, ctx->peer_system_title, ctx->stoc, ctx->stoc_len, ctx->ctos, ctx->ctos_len,
+		                            out, out_len);
+	}
+	return -1;
+}
+
+int osp_hls_pass3_verify(osp_sec_context_t *ctx, const uint8_t *f_stoc, uint32_t len) {
+	if (!ctx || !f_stoc || len == 0) {
+		return -1;
+	}
+
+	if (ctx->mechanism == OSP_MECH_HLS_GMAC) {
+		if (len < 17) {
+			return -1;
+		}
+		if (ctx->hls_failures >= 5) {
+			return -2;
+		}
+		uint32_t ic = ((uint32_t)f_stoc[1] << 24) | ((uint32_t)f_stoc[2] << 16) | ((uint32_t)f_stoc[3] << 8) | (uint32_t)f_stoc[4];
+		if (ctx->ic_valid && ic <= ctx->last_peer_ic) {
+			ctx->hls_failures++;
+			return -3;
+		}
+		uint8_t expected_tag[OSP_SEC_TAG_SIZE];
+		if (osp_hls_gmac(ctx, ctx->system_title, ic, ctx->stoc, ctx->stoc_len, expected_tag) != 0) {
+			ctx->hls_failures++;
+			return -4;
+		}
+		uint8_t diff = 0;
+		for (uint32_t i = 0; i < OSP_SEC_TAG_SIZE; i++) {
+			diff |= f_stoc[5 + i] ^ expected_tag[i];
+		}
+		if (diff != 0) {
+			ctx->hls_failures++;
+			return -5;
+		}
+		ctx->last_peer_ic = ic;
+		ctx->ic_valid = true;
+		ctx->hls_failures = 0;
+		return 0;
+	}
+
+	uint8_t expected[32];
+	uint32_t expected_len = 0;
+	if (ctx->mechanism == OSP_MECH_HLS_SHA256) {
+		if (hls_hash_with_titles(ctx, ctx->peer_system_title, ctx->system_title, ctx->stoc, ctx->stoc_len, ctx->ctos, ctx->ctos_len,
+		                         expected, &expected_len) != 0) {
+			return -1;
+		}
+	} else if (ctx->mechanism == OSP_MECH_HLS_MD5 || ctx->mechanism == OSP_MECH_HLS_SHA1) {
+		if (hls_hash_legacy(ctx, ctx->stoc, ctx->stoc_len, expected, &expected_len) != 0) {
+			return -1;
+		}
+	} else {
+		return -1;
+	}
+	if (len != expected_len) {
+		return -5;
+	}
+	uint8_t diff = 0;
+	for (uint32_t i = 0; i < expected_len; i++) {
+		diff |= f_stoc[i] ^ expected[i];
+	}
+	return (diff == 0) ? 0 : -5;
+}
+
+int osp_hls_pass4_build(osp_sec_context_t *ctx, uint8_t *out, uint32_t out_size, uint32_t *out_len) {
+	if (!ctx || !out || !out_len) {
+		return -1;
+	}
+	if (ctx->mechanism == OSP_MECH_HLS_GMAC) {
+		return hls_pass4_gmac_build(ctx, out, out_size, out_len);
+	}
+	if (ctx->mechanism == OSP_MECH_HLS_MD5 || ctx->mechanism == OSP_MECH_HLS_SHA1) {
+		return hls_hash_legacy(ctx, ctx->ctos, ctx->ctos_len, out, out_len);
+	}
+	if (ctx->mechanism == OSP_MECH_HLS_SHA256) {
+		return hls_hash_with_titles(ctx, ctx->system_title, ctx->peer_system_title, ctx->ctos, ctx->ctos_len, ctx->stoc, ctx->stoc_len,
+		                            out, out_len);
+	}
+	return -1;
 }
 
 int osp_hls_pass4_verify(osp_sec_context_t *ctx, const uint8_t *f_ctos, uint32_t len) {
-	if (!ctx || !f_ctos || len < 17)
-		return -1;
-
-	/* Rebuild expected tag: GMAC(SC || AK || CtoS) using peer's IC */
-	uint32_t ic = ((uint32_t)f_ctos[1] << 24) | ((uint32_t)f_ctos[2] << 16) | ((uint32_t)f_ctos[3] << 8) | (uint32_t)f_ctos[4];
-
-	uint8_t expected_tag[OSP_SEC_TAG_SIZE];
-	if (osp_hls_gmac(ctx, ctx->system_title, ic, ctx->ctos, ctx->ctos_len, expected_tag) != 0) {
+	if (!ctx || !f_ctos || len == 0) {
 		return -1;
 	}
 
-	/* Constant-time comparison */
+	if (ctx->mechanism == OSP_MECH_HLS_GMAC) {
+		if (len < 17) {
+			return -1;
+		}
+		uint32_t ic = ((uint32_t)f_ctos[1] << 24) | ((uint32_t)f_ctos[2] << 16) | ((uint32_t)f_ctos[3] << 8) | (uint32_t)f_ctos[4];
+		uint8_t expected_tag[OSP_SEC_TAG_SIZE];
+		if (osp_hls_gmac(ctx, ctx->system_title, ic, ctx->ctos, ctx->ctos_len, expected_tag) != 0) {
+			return -1;
+		}
+		uint8_t diff = 0;
+		for (uint32_t i = 0; i < OSP_SEC_TAG_SIZE; i++) {
+			diff |= f_ctos[5 + i] ^ expected_tag[i];
+		}
+		return (diff == 0) ? 0 : -1;
+	}
+
+	uint8_t expected[32];
+	uint32_t expected_len = 0;
+	if (ctx->mechanism == OSP_MECH_HLS_SHA256) {
+		if (hls_hash_with_titles(ctx, ctx->peer_system_title, ctx->system_title, ctx->ctos, ctx->ctos_len, ctx->stoc, ctx->stoc_len,
+		                         expected, &expected_len) != 0) {
+			return -1;
+		}
+	} else if (hls_hash_legacy(ctx, ctx->ctos, ctx->ctos_len, expected, &expected_len) != 0) {
+		return -1;
+	}
+	if (len != expected_len) {
+		return -1;
+	}
 	uint8_t diff = 0;
-	for (uint32_t i = 0; i < OSP_SEC_TAG_SIZE; i++) {
-		diff |= f_ctos[5 + i] ^ expected_tag[i];
+	for (uint32_t i = 0; i < expected_len; i++) {
+		diff |= f_ctos[i] ^ expected[i];
 	}
-
 	return (diff == 0) ? 0 : -1;
 }
 

@@ -574,9 +574,11 @@ static void test_security_hls_errors(void **state) {
 	memset(ctx.stoc, 0x55, 8);
 
 	uint8_t out[17];
-	assert_int_equal(osp_hls_pass3_build(NULL, out, sizeof(out)), -1);
-	assert_int_equal(osp_hls_pass3_build(&ctx, out, 16), -1);
-	assert_int_equal(osp_hls_pass3_build(&ctx, out, sizeof(out)), 17);
+	uint32_t out_len = 0;
+	assert_int_equal(osp_hls_pass3_build(NULL, out, sizeof(out), &out_len), -1);
+	assert_int_equal(osp_hls_pass3_build(&ctx, out, 16, &out_len), -1);
+	assert_int_equal(osp_hls_pass3_build(&ctx, out, sizeof(out), &out_len), 0);
+	assert_int_equal(out_len, 17);
 
 	uint8_t tag[OSP_SEC_TAG_SIZE];
 	assert_int_equal(osp_hls_gmac(&ctx, ctx.system_title, 1, ctx.stoc, ctx.stoc_len, tag), 0);
