@@ -15,6 +15,7 @@ void osp_spodus_concentrator_init(osp_spodus_concentrator_t *c) {
 	osp_spodus_direct_table_init(&c->direct);
 	osp_spodus_channel_list_init(&c->channels);
 	osp_spodus_discovered_list_init(&c->discovered);
+	osp_spodus_access_policies_init(&c->access_policies);
 }
 
 osp_err_t osp_spodus_concentrator_attach_downstream(osp_spodus_concentrator_t *c, const uint8_t *meter_id, uint8_t meter_id_len,

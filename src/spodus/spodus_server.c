@@ -16,6 +16,8 @@ static osp_err_t spodus_data_get_attr(const void *inst, uint8_t attr_id, osp_val
 			return osp_spodus_registry_build_meter_list(&d->conc->registry, result);
 		case OSP_SPODUS_DATA_DIRECT_TABLE:
 			return osp_spodus_direct_table_build_value(&d->conc->direct, result);
+		case OSP_SPODUS_DATA_ACCESS_POLICIES:
+			return osp_spodus_access_policies_build_value(&d->conc->access_policies, result);
 		default:
 			return OSP_ERR_NOT_FOUND;
 	}
@@ -104,6 +106,7 @@ osp_err_t osp_spodus_concentrator_register_server(osp_server_t *server, osp_spod
 	}
 	osp_ic_spodus_data_init(&conc->server_objects.meter_list, osp_spodus_obis_meter_list(), conc, OSP_SPODUS_DATA_METER_LIST);
 	osp_ic_spodus_data_init(&conc->server_objects.direct_table, osp_spodus_obis_direct_channel_table(), conc, OSP_SPODUS_DATA_DIRECT_TABLE);
+	osp_ic_spodus_data_init(&conc->server_objects.access_policies, osp_spodus_obis_access_policies(), conc, OSP_SPODUS_DATA_ACCESS_POLICIES);
 	osp_err_t r = osp_spodus_channel_list_build_profile(&conc->channels, &conc->server_objects.channel_list);
 	if (r != OSP_OK) {
 		return r;
@@ -118,6 +121,10 @@ osp_err_t osp_spodus_concentrator_register_server(osp_server_t *server, osp_spod
 		return r;
 	}
 	r = osp_server_register(server, osp_ic_spodus_data_class(), &conc->server_objects.direct_table);
+	if (r != OSP_OK) {
+		return r;
+	}
+	r = osp_server_register(server, osp_ic_spodus_data_class(), &conc->server_objects.access_policies);
 	if (r != OSP_OK) {
 		return r;
 	}

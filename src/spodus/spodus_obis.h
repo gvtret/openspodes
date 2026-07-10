@@ -27,6 +27,10 @@ static inline osp_obis_t osp_spodus_obis_discovered_meters(void) {
 	return (osp_obis_t){0, 0, 94, 7, 131, 255};
 }
 
+static inline osp_obis_t osp_spodus_obis_access_policies(void) {
+	return (osp_obis_t){0, 0, 94, 7, 132, 255};
+}
+
 static inline osp_obis_t osp_spodus_obis_ivke_logical_name(void) {
 	return (osp_obis_t){0, 0, 42, 0, 0, 255};
 }
