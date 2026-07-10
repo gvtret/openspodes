@@ -10,6 +10,7 @@
 
 #include "openspodes.h"
 #include "spodus/concentrator.h"
+#include "spodus/spodus_data.h"
 #include "spodus/spodus_obis.h"
 #include "server/server.h"
 #include "client/client.h"
@@ -22,6 +23,18 @@ typedef struct {
 	mock_transport_pair_t *pair;
 	osp_server_t *meter;
 } downstream_ctx_t;
+
+static osp_server_t *g_ivke_server;
+
+static osp_err_t ivke_loopback_send(void *ctx, const uint8_t *data, uint32_t len) {
+	mock_transport_pair_t *p = (mock_transport_pair_t *)ctx;
+	return mock_loopback_send(p, g_ivke_server, data, len);
+}
+
+static osp_err_t ivke_loopback_recv(void *ctx, uint8_t *buf, uint32_t size, uint32_t *out_len, uint32_t timeout_ms) {
+	mock_transport_pair_t *p = (mock_transport_pair_t *)ctx;
+	return mock_recv_from_peer(&p->client_rx, buf, size, out_len, timeout_ms);
+}
 
 static osp_err_t downstream_send(void *ctx, const uint8_t *data, uint32_t len) {
 	downstream_ctx_t *dc = (downstream_ctx_t *)ctx;
@@ -175,12 +188,74 @@ static void test_proxy_forward_roundtrip(void **state) {
 	assert_int_equal(resp[0], OSP_TAG_GET_RESPONSE);
 }
 
+static void test_concentrator_server_get_objects(void **state) {
+	(void)state;
+	mock_crypto_init();
+
+	mock_transport_pair_t pair;
+	mock_transport_pair_init(&pair);
+
+	osp_spodus_concentrator_t conc;
+	osp_spodus_concentrator_init(&conc);
+
+	static const uint8_t mid[] = "SIT12260004";
+	osp_spodus_meter_descriptor_t desc = {0};
+	desc.meter_id_len = (uint8_t)strlen((const char *)mid);
+	memcpy(desc.meter_id, mid, desc.meter_id_len);
+	desc.meter_model_len = 3;
+	memcpy(desc.meter_model, "ABC", 3);
+	desc.channel_count = 1;
+	desc.channels[0].id = 1;
+	desc.channels[0].address_len = 1;
+	desc.channels[0].address[0] = 0x11;
+	assert_int_equal(osp_spodus_registry_add(&conc.registry, &desc), OSP_OK);
+
+	osp_spodus_direct_channel_t row = {.direct_id = 200, .meter_id_len = desc.meter_id_len, .channel_id = 1};
+	memcpy(row.meter_id, mid, desc.meter_id_len);
+	assert_int_equal(osp_spodus_direct_table_add(&conc.direct, &row), OSP_OK);
+
+	osp_server_t server;
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
+	assert_int_equal(osp_spodus_concentrator_register_server(&server, &conc), OSP_OK);
+
+	osp_sec_context_t ssec;
+	osp_sec_context_init(&ssec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
+	osp_server_set_security(&server, &ssec);
+
+	g_ivke_server = &server;
+	pair.client_transport.ctx = &pair;
+	pair.client_transport.send = ivke_loopback_send;
+	pair.client_transport.recv = ivke_loopback_recv;
+
+	osp_client_t client;
+	osp_client_init(&client, &pair.client_transport, OSP_FRAMING_NONE);
+	osp_sec_context_t csec;
+	osp_sec_context_init(&csec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
+	osp_client_set_security(&client, &csec);
+
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+
+	osp_obis_t ml_obis = osp_spodus_obis_meter_list();
+	osp_value_t meter_list;
+	assert_int_equal(osp_client_get(&client, 1, &ml_obis, 1, &meter_list), OSP_OK);
+	assert_int_equal(meter_list.tag, OSP_TAG_ARRAY);
+	assert_int_equal(meter_list.as.array.elements.count, 1);
+
+	osp_obis_t dc_obis = osp_spodus_obis_direct_channel_table();
+	osp_value_t direct_table;
+	assert_int_equal(osp_client_get(&client, 1, &dc_obis, 1, &direct_table), OSP_OK);
+	assert_int_equal(direct_table.tag, OSP_TAG_ARRAY);
+	assert_int_equal(direct_table.as.array.elements.count, 1);
+	assert_int_equal(direct_table.as.array.elements.items[0].as.structure.elements.items[0].as.uint16.value, 200);
+}
+
 int main(void) {
 	const struct CMUnitTest tests[] = {
 	    cmocka_unit_test(test_registry_meter_list_and_cache),
 	    cmocka_unit_test(test_direct_channel_table),
 	    cmocka_unit_test(test_poll_meter_updates_cache),
 	    cmocka_unit_test(test_proxy_forward_roundtrip),
+	    cmocka_unit_test(test_concentrator_server_get_objects),
 	};
 	return cmocka_run_group_tests(tests, NULL, NULL);
 }

@@ -69,6 +69,7 @@ add_library(openspodes STATIC
     src/spodus/meter_registry.c
     src/spodus/direct_channel.c
     src/spodus/concentrator.c
+    src/spodus/spodus_server.c
 )
 
 target_include_directories(openspodes PUBLIC src)

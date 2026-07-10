@@ -12,6 +12,24 @@
 extern "C" {
 #endif
 
+typedef struct osp_spodus_concentrator osp_spodus_concentrator_t;
+
+typedef enum {
+	OSP_SPODUS_DATA_METER_LIST = 0,
+	OSP_SPODUS_DATA_DIRECT_TABLE = 1,
+} osp_spodus_data_kind_t;
+
+typedef struct {
+	osp_obis_t logical_name;
+	osp_spodus_concentrator_t *conc;
+	osp_spodus_data_kind_t kind;
+} osp_ic_spodus_data_t;
+
+typedef struct {
+	osp_ic_spodus_data_t meter_list;
+	osp_ic_spodus_data_t direct_table;
+} osp_spodus_server_objects_t;
+
 typedef struct {
 	uint8_t meter_id_len;
 	uint8_t meter_id[OSP_SPODUS_MAX_METER_ID_LEN];
@@ -21,12 +39,13 @@ typedef struct {
 	bool connected;
 } osp_spodus_downstream_t;
 
-typedef struct {
+struct osp_spodus_concentrator {
 	osp_spodus_meter_registry_t registry;
 	osp_spodus_direct_channel_table_t direct;
 	osp_spodus_downstream_t downstream[OSP_SPODUS_MAX_METERS];
 	uint8_t downstream_count;
-} osp_spodus_concentrator_t;
+	osp_spodus_server_objects_t server_objects;
+};
 
 typedef struct {
 	uint16_t class_id;
