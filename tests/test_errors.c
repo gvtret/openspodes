@@ -683,6 +683,84 @@ static void test_client_get_send_failure(void **state) {
 	g_server = NULL;
 }
 
+static void test_transport_wrapper_framing(void **state) {
+	(void)state;
+	mock_transport_pair_t pair;
+	mock_transport_pair_init(&pair);
+
+	const uint8_t apdu[] = {0x60, 0x0A, 0x80, 0x02, 0x07, 0x80, 0xA1, 0x09, 0x06, 0x07};
+	uint8_t rx[64];
+	uint32_t rx_len;
+
+	assert_int_equal(osp_transport_send_apdu(&pair.client_transport, OSP_FRAMING_WRAPPER, apdu, sizeof(apdu)), OSP_OK);
+	assert_int_equal(osp_transport_recv_apdu(&pair.server_transport, OSP_FRAMING_WRAPPER, rx, sizeof(rx), &rx_len, 100), OSP_OK);
+	assert_int_equal(rx_len, sizeof(apdu));
+	assert_memory_equal(rx, apdu, sizeof(apdu));
+}
+
+static void test_hdlc_multibyte_address(void **state) {
+	(void)state;
+	osp_hdlc_address_t addr;
+
+	osp_hdlc_address_init(&addr, 0x1234, 2);
+	assert_int_equal(addr.length, 2);
+	assert_int_equal(osp_hdlc_address_value(&addr), 0x1234);
+
+	osp_hdlc_address_init(&addr, 16, 1);
+	assert_int_equal(addr.length, 1);
+	assert_int_equal(osp_hdlc_address_value(&addr), 16);
+}
+
+static void test_transport_recv_buffer_too_small(void **state) {
+	(void)state;
+	mock_transport_pair_t pair;
+	mock_transport_pair_init(&pair);
+
+	const uint8_t apdu[] = {0xC0, 0x01, 0x41, 0x00, 0x03, 0x01, 0x00, 0x01, 0x08, 0x00, 0xFF, 0x02, 0x00};
+	uint8_t tiny[4];
+	uint32_t rx_len;
+
+	assert_int_equal(osp_transport_send_apdu(&pair.client_transport, OSP_FRAMING_HDLC, apdu, sizeof(apdu)), OSP_OK);
+	assert_int_equal(osp_transport_recv_apdu(&pair.server_transport, OSP_FRAMING_HDLC, tiny, sizeof(tiny), &rx_len, 100), OSP_ERR_NOMEM);
+
+	assert_int_equal(osp_transport_send_apdu(&pair.client_transport, OSP_FRAMING_WRAPPER, apdu, sizeof(apdu)), OSP_OK);
+	assert_int_equal(osp_transport_recv_apdu(&pair.server_transport, OSP_FRAMING_WRAPPER, tiny, sizeof(tiny), &rx_len, 100), OSP_ERR_NOMEM);
+}
+
+static void test_client_disconnect_releases(void **state) {
+	(void)state;
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_client_t client;
+
+	setup_connected_lowest_client(&client, &pair, &server);
+	assert_true(client.associated);
+	assert_int_equal(osp_client_disconnect(&client), OSP_OK);
+	assert_false(client.associated);
+	g_server = NULL;
+}
+
+static void test_server_rlrq_release(void **state) {
+	(void)state;
+	mock_transport_pair_t pair;
+	mock_transport_pair_init(&pair);
+
+	osp_server_t server;
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
+	server.associated = true;
+
+	const uint8_t rlrq_min[] = {0x62, 0x01, 0x00};
+	mock_send_to_peer(&pair.server_rx, rlrq_min, sizeof(rlrq_min));
+
+	assert_int_equal(osp_server_accept(&server, 5000), OSP_OK);
+	assert_false(server.associated);
+
+	uint8_t rx[64];
+	uint32_t rx_len;
+	assert_int_equal(osp_transport_recv_apdu(&pair.client_transport, OSP_FRAMING_NONE, rx, sizeof(rx), &rx_len, 100), OSP_OK);
+	assert_true(rx_len > 0);
+}
+
 static void test_server_invalid_and_unsupported(void **state) {
 	(void)state;
 	mock_transport_pair_t pair;
@@ -742,6 +820,9 @@ int main(void) {
 	    cmocka_unit_test(test_hdlc_deframe_errors),
 	    cmocka_unit_test(test_transport_apdu_errors),
 	    cmocka_unit_test(test_transport_hdlc_framing),
+	    cmocka_unit_test(test_transport_wrapper_framing),
+	    cmocka_unit_test(test_hdlc_multibyte_address),
+	    cmocka_unit_test(test_transport_recv_buffer_too_small),
 	    cmocka_unit_test(test_client_not_connected),
 	    cmocka_unit_test(test_client_get_not_found),
 	    cmocka_unit_test(test_client_transport_failure),
@@ -752,6 +833,8 @@ int main(void) {
 	    cmocka_unit_test(test_client_get_decode_error),
 	    cmocka_unit_test(test_client_set_not_found),
 	    cmocka_unit_test(test_client_get_send_failure),
+	    cmocka_unit_test(test_client_disconnect_releases),
+	    cmocka_unit_test(test_server_rlrq_release),
 	    cmocka_unit_test(test_server_invalid_and_unsupported),
 	    cmocka_unit_test(test_server_init_errors),
 	};
