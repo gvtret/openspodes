@@ -53,6 +53,11 @@ static osp_err_t gbt_wait_for_ack(osp_transport_t *transport, osp_framing_type_t
 	if (r != OSP_OK) {
 		return r;
 	}
+	/* Sequential transfer accepts only an ack-only GBT APDU here. Payload
+	 * blocks are handled by the bidirectional session path. */
+	if (ack.block_data_len != 0 || !ack.last_block || ack.streaming) {
+		return OSP_ERR_INVALID;
+	}
 	if (ack.block_number_ack < block_number_ack) {
 		return OSP_ERR_INVALID;
 	}

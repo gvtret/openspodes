@@ -295,6 +295,31 @@ static void gbt_scripted_init(gbt_scripted_rx_t *s, const uint8_t *const *msgs, 
 	s->transport.ctx = s;
 }
 
+static void test_gbt_send_rejects_payload_as_ack(void **state) {
+	(void)state;
+	uint8_t payload_ack[16];
+	osp_general_block_transfer_t block = {0};
+	block.last_block = true;
+	block.block_number = 1;
+	block.block_number_ack = 1;
+	block.block_data_len = 1;
+	block.block_data[0] = 0xC4;
+	osp_buf_t w;
+	osp_buf_init(&w, payload_ack, sizeof(payload_ack));
+	assert_int_equal(osp_gbt_encode(&w, &block), 0);
+
+	const uint8_t *msgs[] = {payload_ack};
+	const uint32_t lens[] = {w.wr};
+	gbt_scripted_rx_t scripted;
+	gbt_scripted_init(&scripted, msgs, lens, 1);
+
+	const uint8_t apdu[] = {0xC0, 0x01};
+	uint8_t tx_scratch[32];
+	assert_int_equal(osp_gbt_transport_send(&scripted.transport, OSP_FRAMING_NONE, apdu, sizeof(apdu), 1, 1, tx_scratch,
+	                                          sizeof(tx_scratch), scripted.rx_buf, sizeof(scripted.rx_buf), 5000),
+	                 OSP_ERR_INVALID);
+}
+
 static void test_gbt_recv_gap_recovery(void **state) {
 	(void)state;
 	uint8_t payload[120];
@@ -487,6 +512,7 @@ int main(void) {
 	    cmocka_unit_test(test_gbt_roundtrip),
 	    cmocka_unit_test(test_gbt_transport_mock_loopback),
 	    cmocka_unit_test(test_gbt_streaming_transport_sets_str),
+	    cmocka_unit_test(test_gbt_send_rejects_payload_as_ack),
 	    cmocka_unit_test(test_gbt_recv_gap_recovery),
 	    cmocka_unit_test(test_confirmed_service_error_roundtrip),
 	    cmocka_unit_test(test_gbt_transport_confirmed),
