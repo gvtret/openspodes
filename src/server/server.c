@@ -624,7 +624,7 @@ static osp_err_t handle_hls_pass3(osp_server_t *s, const osp_action_request_t *r
 	}
 
 	/* Build pass 4: f(CtoS) */
-	uint8_t f_ctos[32];
+	uint8_t f_ctos[OSP_SEC_HLS_AUTH_MAX];
 	uint32_t f_ctos_len = 0;
 	if (osp_hls_pass4_build(&s->security, f_ctos, sizeof(f_ctos), &f_ctos_len) != 0) {
 		return OSP_ERR_INVALID;

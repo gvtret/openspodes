@@ -209,7 +209,7 @@ osp_err_t osp_client_connect(osp_client_t *c, uint32_t timeout_ms) {
 
 	/* HLS pass 3/4 */
 	if (osp_hls_requires_handshake(c->security.mechanism)) {
-		uint8_t f_stoc[32];
+		uint8_t f_stoc[OSP_SEC_HLS_AUTH_MAX];
 		uint32_t f_len = 0;
 		if (osp_hls_pass3_build(&c->security, f_stoc, sizeof(f_stoc), &f_len) != 0) {
 			return OSP_ERR_SECURITY;

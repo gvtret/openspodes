@@ -119,6 +119,50 @@ static void test_gost3410_sign_verify_roundtrip(void **state) {
 	assert_int_equal(osp_gost3410_verify(pk, msg, (uint32_t)sizeof(msg) - 1, sig), 0);
 	assert_int_not_equal(osp_gost3410_verify(pk, (const uint8_t *)"tampered", 8, sig), 0);
 }
+
+static void test_gost3410_vko_r1323565(void **state) {
+	(void)state;
+	uint8_t d[32], q[64], ukm[16], kek[32], expected[32];
+	assert_int_equal(hex_decode("68696a6b6c6d6e6f6061626364656667ddddddddccccccccaaaaaaaabbbbbbbb", d, sizeof(d)), 32);
+	assert_int_equal(hex_decode("212daf02de1c91ea961e58e01e42df1733c00748998bc34d76dad96b3b256378"
+	                             "7b9cffcfa0f24753d6d5eb6133b35a95375a0ef683b3ff5be7d61b99d7fe6617",
+	                             q, sizeof(q)),
+	                 64);
+	assert_int_equal(hex_decode("f0f0f0f0e1e1e1e1d2d2d2d2c3c3c3c3", ukm, sizeof(ukm)), 16);
+	assert_int_equal(hex_decode("4f54f663029709c0271facd5bb6d58187410477e102555a893d45a04ab0cafc0", expected, sizeof(expected)), 32);
+	assert_int_equal(osp_gost3410_vko(d, q, ukm, 16, kek), 0);
+	assert_memory_equal(kek, expected, 32);
+}
+
+static void test_gost_kdf_tree_r1323565(void **state) {
+	(void)state;
+	uint8_t k[32], label[7], seed[16];
+	uint8_t out[96], expected[96];
+	assert_int_equal(hex_decode("4f54f663029709c0271facd5bb6d58187410477e102555a893d45a04ab0cafc0", k, sizeof(k)), 32);
+	assert_int_equal(hex_decode("60857406080304", label, sizeof(label)), 7);
+	assert_int_equal(hex_decode("ff00ee11dd22cc33bb44aa5599668877", seed, sizeof(seed)), 16);
+	assert_int_equal(hex_decode("e7f74dc8fcafd9738fd14d5aa542834bac7e883eff37931c082a9a80b45f60dd"
+	                             "159d1118b56f8e78e938c28715c34c3c197a2339638901de1c610180f7de34ac"
+	                             "424237f626e9ae5b55dbfa12ffd9cb7dfb903019eecc8228876015b2c15cbc89",
+	                             expected, sizeof(expected)),
+	                 96);
+	assert_int_equal(osp_gost_kdf_tree(k, 32, label, 7, seed, 16, out, 96), 0);
+	assert_memory_equal(out, expected, 96);
+}
+
+static void test_gost3410_vko_roundtrip(void **state) {
+	(void)state;
+	uint8_t alice_sk[32], bob_sk[32], alice_pk[64], bob_pk[64], ukm[16];
+	uint8_t key_a[32], key_b[32];
+	assert_int_equal(hex_decode("48494a4b4c4d4e4f4041424344454647bbbbaaaa999988884444555566667777", alice_sk, sizeof(alice_sk)), 32);
+	assert_int_equal(hex_decode("68696a6b6c6d6e6f6061626364656667ddddddddccccccccaaaaaaaabbbbbbbb", bob_sk, sizeof(bob_sk)), 32);
+	assert_int_equal(osp_gost3410_public_key(alice_sk, alice_pk), 0);
+	assert_int_equal(osp_gost3410_public_key(bob_sk, bob_pk), 0);
+	memset(ukm, 0xAB, sizeof(ukm));
+	assert_int_equal(osp_gost3410_vko(alice_sk, bob_pk, ukm, sizeof(ukm), key_a), 0);
+	assert_int_equal(osp_gost3410_vko(bob_sk, alice_pk, ukm, sizeof(ukm), key_b), 0);
+	assert_memory_equal(key_a, key_b, 32);
+}
 #endif
 
 static void test_hls_gost_streebog_handshake(void **state) {
@@ -191,6 +235,9 @@ int main(void) {
 	    cmocka_unit_test(test_gost3410_public_key_vko_vector),
 	    cmocka_unit_test(test_gost3410_control_example),
 	    cmocka_unit_test(test_gost3410_sign_verify_roundtrip),
+	    cmocka_unit_test(test_gost3410_vko_r1323565),
+	    cmocka_unit_test(test_gost_kdf_tree_r1323565),
+	    cmocka_unit_test(test_gost3410_vko_roundtrip),
 #endif
 	    cmocka_unit_test(test_hls_gost_streebog_handshake),
 	    cmocka_unit_test(test_hls_gost_cmac_handshake),

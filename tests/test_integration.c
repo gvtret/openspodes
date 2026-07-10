@@ -22,6 +22,7 @@
 #include "../src/ic/push_setup.h"
 #include "../src/service/notification.h"
 #include "../src/security/security.h"
+#include "../src/security/gost_crypto.h"
 #include "../src/codec/serialize.h"
 #include "mock_transport.h"
 #include "mock_crypto.h"
@@ -371,6 +372,61 @@ static void test_hls_gost_streebog_handshake(void **state) {
 }
 
 #endif /* OSP_HAVE_OPENSSL_GCM */
+
+static void run_hls_gost_sig_handshake(const uint8_t client_st[8], const uint8_t server_st[8], uint32_t init_val) {
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+
+	static const uint8_t client_sk[32] = {0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47,
+	                                      0xBB, 0xBB, 0xAA, 0xAA, 0x99, 0x99, 0x88, 0x88, 0x44, 0x44, 0x55, 0x55, 0x66, 0x66, 0x77, 0x77};
+	static const uint8_t server_sk[32] = {0x68, 0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F, 0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67,
+	                                      0xDD, 0xDD, 0xCC, 0xCC, 0xAA, 0xAA, 0xBB, 0xBB};
+	uint8_t client_pk[64], server_pk[64];
+	assert_int_equal(osp_gost3410_public_key(client_sk, client_pk), 0);
+	assert_int_equal(osp_gost3410_public_key(server_sk, server_pk), 0);
+
+	osp_server_t server;
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
+
+	osp_ic_data_t data_obj;
+	osp_ic_data_init(&data_obj, (osp_obis_t){0, 0, 1, 0, 0, 255});
+	data_obj.value = osp_val_u32(init_val);
+	osp_server_register(&server, osp_ic_data_class(), &data_obj);
+
+	osp_sec_context_t server_sec;
+	osp_sec_context_init(&server_sec, OSP_SUITE_8, OSP_MECH_HLS_GOST_SIG, server_st);
+	memcpy(server_sec.signing_key, server_sk, sizeof(server_sk));
+	server_sec.signing_key_len = (uint8_t)sizeof(server_sk);
+	memcpy(server_sec.peer_public_key, client_pk, sizeof(client_pk));
+	server_sec.peer_public_key_len = (uint8_t)sizeof(client_pk);
+	osp_server_set_security(&server, &server_sec);
+	setup(&pair, &server);
+
+	osp_client_t client;
+	osp_client_init(&client, &pair.client_transport, OSP_FRAMING_NONE);
+	osp_sec_context_t client_sec;
+	osp_sec_context_init(&client_sec, OSP_SUITE_8, OSP_MECH_HLS_GOST_SIG, client_st);
+	memcpy(client_sec.signing_key, client_sk, sizeof(client_sk));
+	client_sec.signing_key_len = (uint8_t)sizeof(client_sk);
+	memcpy(client_sec.peer_public_key, server_pk, sizeof(server_pk));
+	client_sec.peer_public_key_len = (uint8_t)sizeof(server_pk);
+	osp_client_set_security(&client, &client_sec);
+
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+	assert_true(client.associated);
+
+	osp_value_t result;
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(result.as.uint32.value, init_val);
+	assert_true(server.associated);
+}
+
+static void test_hls_gost_sig_handshake(void **state) {
+	(void)state;
+	static const uint8_t client_st[8] = {0x4D, 0x4D, 0x4D, 0x4D, 0x4D, 0x4D, 0x4D, 0x4D};
+	static const uint8_t server_st[8] = {0x4E, 0x4E, 0x4E, 0x4E, 0x4E, 0x4E, 0x4E, 0x4E};
+	run_hls_gost_sig_handshake(client_st, server_st, 605);
+}
 
 /* ── Test: client ACTION (disconnect control) ────────────────────────────── */
 
@@ -876,6 +932,7 @@ int main(void) {
 	    cmocka_unit_test(test_hls_sha256_handshake),
 	    cmocka_unit_test(test_hls_gost_streebog_handshake),
 #endif
+	    cmocka_unit_test(test_hls_gost_sig_handshake),
 	    cmocka_unit_test(test_client_action),
 	    cmocka_unit_test(test_client_release_disconnect),
 	    cmocka_unit_test(test_get_block_transfer),

@@ -491,3 +491,44 @@ int osp_gost3410_verify(const uint8_t pk[64], const uint8_t *msg, uint32_t msg_l
 	fe_mod_q(&xr);
 	return (fe_cmp(&xr, &r) == 0) ? 0 : -1;
 }
+
+static void scalar_from_le(fe *r, const uint8_t *in, uint32_t len) {
+	uint8_t buf[32];
+	memset(buf, 0, sizeof(buf));
+	if (len > sizeof(buf)) {
+		len = sizeof(buf);
+	}
+	memcpy(buf, in, len);
+	fe_from_le(r, buf);
+}
+
+int osp_gost3410_vko(const uint8_t d[32], const uint8_t q_pub[64], const uint8_t *ukm, uint32_t ukm_len, uint8_t kek[32]) {
+	if (!d || !q_pub || !ukm || !kek) {
+		return -1;
+	}
+	fe sk, ukm_fe, scalar, qx, qy;
+	fe_from_le(&sk, d);
+	if (fe_is_zero(&sk) || fe_cmp(&sk, &FE_Q) >= 0) {
+		return -1;
+	}
+	fe_from_le(&qx, q_pub);
+	fe_from_le(&qy, q_pub + 32);
+	if (fe_cmp(&qx, &FE_P) >= 0 || fe_cmp(&qy, &FE_P) >= 0 || !on_curve(&qx, &qy)) {
+		return -1;
+	}
+	scalar_from_le(&ukm_fe, ukm, ukm_len);
+	sc_mul(&scalar, &ukm_fe, &sk);
+	if (fe_is_zero(&scalar)) {
+		return -1;
+	}
+	ec_point q = {.inf = false, .x = qx, .y = qy};
+	ec_point s;
+	point_mul(&s, &scalar, &q);
+	if (s.inf) {
+		return -1;
+	}
+	uint8_t input[64];
+	fe_to_le(input, &s.x);
+	fe_to_le(input + 32, &s.y);
+	return osp_gost_streebog256(input, sizeof(input), kek);
+}

@@ -80,7 +80,7 @@ ctest --test-dir build-linux --output-on-failure
 | glo-ciphering | ✅ protect/unprotect + client/server session |
 | HLS MD5/SHA1/SHA256 | ✅ pass 3/4 + E2E loopback |
 | GBT confirmed (window>0) | ✅ ack + E2E loopback |
-| HLS GOST (8–10) | ✅ CMAC/Streebog HLS + GOST 34.10 sign/verify |
+| HLS GOST (8–10) | ✅ CMAC/Streebog HLS + GOST 34.10 sign/verify + VKO/KDF tree |
 
 ## IC Classes (40 implemented)
 Data(1) Register(3) ExtRegister(4) DemandRegister(5) RegisterActivation(6)
@@ -107,12 +107,12 @@ TableManager(8200) ProfileDataFilter(8201)
 
 ### vs spodes-rs
 - OpenSPODES ahead: ACTION blocks, compact-array, push E2E, client block transfer, IC 62
-- spodes-rs ahead: general-signing (0xDF), VKO/KDF tree helpers, ded session helper, GOST transport ciphering, Concentrator runtime
+- spodes-rs ahead: general-signing (0xDF), GOST transport ciphering (Kuznyechik APDU), ded session helper, Concentrator runtime
 
 ## Next steps (suggested)
-1. general-signing (0xDF) + VKO/KDF tree for suite 8/9 key agreement
+1. general-signing (0xDF) + GOST transport ciphering (suite 8/9 APDU)
 2. GBT streaming / lost-block recovery
-3. HLS mech 10 E2E in integration tests
+3. ded-ciphering session helper
 
 ## User Instructions (MUST follow)
 - **Consult doc-rag-remote when implementing features**

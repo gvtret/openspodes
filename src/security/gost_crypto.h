@@ -16,6 +16,13 @@ extern "C" {
 /* Streebog-256 (GOST R 34.11-2012). */
 int osp_gost_streebog256(const uint8_t *input, uint32_t len, uint8_t output[32]);
 
+/* HMAC-Streebog256 (RFC 7836 / R 50.1.113-2016). */
+int osp_gost_hmac_streebog256(const uint8_t *key, uint32_t key_len, const uint8_t *msg, uint32_t msg_len, uint8_t mac[32]);
+
+/* KDF_TREE_GOSTR3411_2012_256 (one-octet counter, R = 1). */
+int osp_gost_kdf_tree(const uint8_t *key, uint32_t key_len, const uint8_t *label, uint32_t label_len, const uint8_t *seed,
+                      uint32_t seed_len, uint8_t *out, uint32_t out_len);
+
 /* Kuznyechik-CMAC (GOST R 34.13), 128-bit tag truncated to 16 bytes. */
 int osp_gost_kuznyechik_cmac(const uint8_t key[32], const uint8_t *data, uint32_t len, uint8_t mac[16]);
 
@@ -28,6 +35,9 @@ int osp_gost3410_public_key(const uint8_t d[32], uint8_t pk[64]);
 int osp_gost3410_sign_with_k(const uint8_t d[32], const uint8_t *msg, uint32_t msg_len, const uint8_t k[32], uint8_t sig[64]);
 int osp_gost3410_sign(const uint8_t d[32], const uint8_t *msg, uint32_t msg_len, uint8_t sig[64]);
 int osp_gost3410_verify(const uint8_t pk[64], const uint8_t *msg, uint32_t msg_len, const uint8_t sig[64]);
+
+/* VKO_GOST3410_2012_256 key agreement (R 50.1.113-2016 / RFC 7836). */
+int osp_gost3410_vko(const uint8_t d[32], const uint8_t q_pub[64], const uint8_t *ukm, uint32_t ukm_len, uint8_t kek[32]);
 
 #ifdef __cplusplus
 }

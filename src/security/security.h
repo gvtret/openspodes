@@ -156,6 +156,7 @@ static inline bool osp_hls_uses_signature(osp_auth_mechanism_t mech) {
 #define OSP_SEC_PUBKEY_MAX        96
 #define OSP_SEC_GOST_CMAC_SIZE    16
 #define OSP_SEC_ECDSA_SIG_MAX     96
+#define OSP_SEC_HLS_AUTH_MAX      OSP_SEC_ECDSA_SIG_MAX
 
 typedef struct {
 	osp_sec_suite_t suite;
