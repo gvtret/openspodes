@@ -116,14 +116,14 @@ TableManager(8200) ProfileDataFilter(8201)
 
 ## Known gaps (non-blocking for typical meter/concentrator integration)
 
-- GBT **streaming** flag (STR bit) — gap recovery works; full bi-directional streaming not wired
+- GBT STR bit on outbound streams is supported; full bi-directional streaming session is not wired
 - `GET_WITH_LIST_BLOCK` enum only (no codec)
 - Selective access encode stubbed (decode skips)
 - Golden vectors R 1323565.1 A.1 (full transport AEAD annex)
 - IC stubs: UtilityTables(26), ProfileFilter(31), RegisterTable(61), StatusMapping(63), ParameterMonitor(65), MBusSlaveSetup(76)
 
 ## Next steps (optional)
-1. GBT streaming + bi-directional block transfer
+1. Bi-directional GBT streaming session
 2. Selective access encode/decode for ProfileGeneric
 3. СПОДУС channel list / discovered meters / access policies (§10.4+)
 

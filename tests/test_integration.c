@@ -568,9 +568,9 @@ static void test_gbt_get_large_value(void **state) {
 	}
 }
 
-/* ── Test: GET large value via GBT confirmed mode (window=1) ────────────── */
+/* ── Test: GET large value via streaming GBT confirmed mode (window=1) ──── */
 
-static void test_gbt_get_large_value_confirmed(void **state) {
+static void test_gbt_get_large_value_streaming_confirmed(void **state) {
 	(void)state;
 	mock_crypto_init();
 	mock_transport_pair_t pair;
@@ -578,6 +578,7 @@ static void test_gbt_get_large_value_confirmed(void **state) {
 	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
 	osp_server_enable_gbt(&server, 48);
 	osp_server_set_gbt_window(&server, 1);
+	osp_server_set_gbt_streaming(&server, true);
 
 	osp_obis_t obis = {0, 0, 0x82, 0, 0, 255};
 	osp_ic_data_t data_obj;
@@ -1004,7 +1005,7 @@ int main(void) {
 	    cmocka_unit_test(test_client_release_disconnect),
 	    cmocka_unit_test(test_get_block_transfer),
 	    cmocka_unit_test(test_gbt_get_large_value),
-	    cmocka_unit_test(test_gbt_get_large_value_confirmed),
+	    cmocka_unit_test(test_gbt_get_large_value_streaming_confirmed),
 	    cmocka_unit_test(test_set_block_transfer),
 	    cmocka_unit_test(test_client_set_via_blocks),
 	    cmocka_unit_test(test_action_param_block_invoke),

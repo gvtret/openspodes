@@ -37,6 +37,13 @@ osp_err_t osp_gbt_transport_send(osp_transport_t *transport, osp_framing_type_t 
                                  uint32_t block_payload_max, uint8_t window, uint8_t *tx_scratch, uint32_t tx_scratch_size,
                                  uint8_t *rx_scratch, uint32_t rx_scratch_size, uint32_t timeout_ms);
 
+/* Sequential GBT send with the STR bit set on each data block.
+ * This preserves the existing window/acknowledgement semantics; it does not
+ * interleave a reverse payload stream. */
+osp_err_t osp_gbt_transport_send_streaming(osp_transport_t *transport, osp_framing_type_t framing, const uint8_t *apdu, uint32_t apdu_len,
+                                           uint32_t block_payload_max, uint8_t window, uint8_t *tx_scratch, uint32_t tx_scratch_size,
+                                           uint8_t *rx_scratch, uint32_t rx_scratch_size, uint32_t timeout_ms);
+
 /* Receive GBT blocks until last-block; sends ack after each non-final block.
  * Pass first_block/first_block_len when the first GBT APDU was already read. */
 osp_err_t osp_gbt_transport_recv(osp_transport_t *transport, osp_framing_type_t framing, uint8_t *rx_scratch, uint32_t rx_scratch_size,

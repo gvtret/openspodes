@@ -198,6 +198,44 @@ static void test_gbt_transport_mock_loopback(void **state) {
 	assert_memory_equal(out, apdu, 187);
 }
 
+static void test_gbt_streaming_transport_sets_str(void **state) {
+	(void)state;
+	mock_transport_pair_t pair;
+	mock_transport_pair_init(&pair);
+
+	const uint8_t apdu[] = {0xC4, 0x01, 0x41, 0x00, 0x11, 0x01, 0xC4, 0x01, 0x41, 0x00, 0x11, 0x02};
+	uint8_t tx_scratch[64];
+	uint8_t rx_scratch[64];
+	assert_int_equal(osp_gbt_transport_send_streaming(&pair.server_transport, OSP_FRAMING_NONE, apdu, sizeof(apdu), 5, 0, tx_scratch,
+	                                                   sizeof(tx_scratch), rx_scratch, sizeof(rx_scratch), 5000),
+	                 OSP_OK);
+	assert_true(pair.client_rx.msg_count >= 3);
+
+	for (uint32_t i = 0; i < pair.client_rx.msg_count; i++) {
+		uint32_t start = pair.client_rx.msg_starts[i];
+		uint32_t end = (i + 1 < pair.client_rx.msg_count) ? pair.client_rx.msg_starts[i + 1] : pair.client_rx.len;
+		osp_buf_t buf;
+		osp_buf_init(&buf, &pair.client_rx.data[start], end - start);
+		buf.wr = end - start;
+		osp_general_block_transfer_t block;
+		assert_int_equal(osp_gbt_decode(&buf, &block), 0);
+		assert_true(block.streaming);
+		assert_true(block.block_data_len > 0);
+	}
+
+	uint8_t out[sizeof(apdu)];
+	uint8_t recv_scratch[64];
+	uint8_t ack_tx[64];
+	uint32_t out_len = 0;
+	uint32_t first_len = 0;
+	assert_int_equal(mock_recv_from_peer(&pair.client_rx, recv_scratch, sizeof(recv_scratch), &first_len, 0), OSP_OK);
+	assert_int_equal(osp_gbt_transport_recv(&pair.client_transport, OSP_FRAMING_NONE, recv_scratch, sizeof(recv_scratch), out, sizeof(out),
+	                                          &out_len, ack_tx, sizeof(ack_tx), 5000, recv_scratch, first_len),
+	                 OSP_OK);
+	assert_int_equal(out_len, sizeof(apdu));
+	assert_memory_equal(out, apdu, sizeof(apdu));
+}
+
 typedef struct {
 	osp_transport_t transport;
 	const uint8_t *const *msgs;
@@ -448,6 +486,7 @@ int main(void) {
 	    cmocka_unit_test(test_event_notification_roundtrip),
 	    cmocka_unit_test(test_gbt_roundtrip),
 	    cmocka_unit_test(test_gbt_transport_mock_loopback),
+	    cmocka_unit_test(test_gbt_streaming_transport_sets_str),
 	    cmocka_unit_test(test_gbt_recv_gap_recovery),
 	    cmocka_unit_test(test_confirmed_service_error_roundtrip),
 	    cmocka_unit_test(test_gbt_transport_confirmed),

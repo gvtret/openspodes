@@ -34,6 +34,7 @@ typedef struct {
 	bool gbt_enabled;
 	uint32_t gbt_block_size;
 	uint8_t gbt_window;
+	bool gbt_streaming;
 	bool ciphering_enabled;
 	bool use_dedicated_key;
 	uint8_t dedicated_key[OSP_INITIATE_DEDICATED_KEY_MAX];
@@ -57,6 +58,9 @@ void osp_client_enable_gbt(osp_client_t *c, uint32_t block_size);
 
 /* Set GBT window (0=unconfirmed, 1+=confirmed with ack between windows) */
 void osp_client_set_gbt_window(osp_client_t *c, uint8_t window);
+
+/* Set the STR bit on outbound GBT data blocks. */
+void osp_client_set_gbt_streaming(osp_client_t *c, bool enabled);
 
 /* Enable glo-ciphering (tx protects requests, rx unprotects responses) */
 void osp_client_set_ciphering(osp_client_t *c, const osp_sec_context_t *tx, const osp_sec_context_t *rx);

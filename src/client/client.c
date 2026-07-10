@@ -46,6 +46,12 @@ void osp_client_set_gbt_window(osp_client_t *c, uint8_t window) {
 	c->gbt_window = window & OSP_GBT_WINDOW_MASK;
 }
 
+void osp_client_set_gbt_streaming(osp_client_t *c, bool enabled) {
+	if (c) {
+		c->gbt_streaming = enabled;
+	}
+}
+
 void osp_client_set_ciphering(osp_client_t *c, const osp_sec_context_t *tx, const osp_sec_context_t *rx) {
 	if (!c || !tx || !rx) {
 		return;
@@ -89,6 +95,10 @@ static osp_err_t client_send_apdu(osp_client_t *c, const uint8_t *data, uint32_t
 	}
 
 	if (c->gbt_enabled && osp_gbt_applies_to_apdu(send_data, send_len) && send_len > client_gbt_payload_max(c)) {
+		if (c->gbt_streaming) {
+			return osp_gbt_transport_send_streaming(c->transport, c->framing, send_data, send_len, client_gbt_payload_max(c), c->gbt_window,
+			                                        c->tx_buf, sizeof(c->tx_buf), c->rx_buf, sizeof(c->rx_buf), 5000);
+		}
 		return osp_gbt_transport_send(c->transport, c->framing, send_data, send_len, client_gbt_payload_max(c), c->gbt_window, c->tx_buf,
 		                              sizeof(c->tx_buf), c->rx_buf, sizeof(c->rx_buf), 5000);
 	}
