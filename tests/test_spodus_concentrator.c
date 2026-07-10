@@ -153,6 +153,29 @@ static void test_discovered_meters_build_profile(void **state) {
 	assert_int_equal(profile.buffer.rows[0].cells[3].as.uint16.value, 0x10);
 }
 
+static void test_access_policies_build_value(void **state) {
+	(void)state;
+	osp_spodus_access_policies_t policies;
+	osp_spodus_access_policies_init(&policies);
+	osp_spodus_access_policy_t policy = {.meter_id_len = 11, .policy_id = 3, .suite_id = 0, .security_count = 1};
+	memcpy(policy.meter_id, "SIT12260004", policy.meter_id_len);
+	policy.security[0].type = OSP_SPODUS_SEC_LLS_PASSWORD;
+	policy.security[0].key_len = 8;
+	memcpy(policy.security[0].key, "12345678", 8);
+	assert_int_equal(osp_spodus_access_policies_add(&policies, &policy), OSP_OK);
+
+	osp_value_t value;
+	assert_int_equal(osp_spodus_access_policies_build_value(&policies, &value), OSP_OK);
+	assert_int_equal(value.tag, OSP_TAG_ARRAY);
+	assert_int_equal(value.as.array.elements.count, 1);
+	osp_value_t *row = &value.as.array.elements.items[0];
+	assert_int_equal(row->as.structure.elements.count, 4);
+	assert_int_equal(row->as.structure.elements.items[1].as.uint8.value, 3);
+	assert_int_equal(row->as.structure.elements.items[3].as.array.elements.count, 1);
+	assert_memory_equal(row->as.structure.elements.items[3].as.array.elements.items[0].as.structure.elements.items[1].as.octetstring.data,
+	                    "12345678", 8);
+}
+
 static void test_poll_meter_updates_cache(void **state) {
 	(void)state;
 	mock_crypto_init();
@@ -304,6 +327,7 @@ int main(void) {
 	    cmocka_unit_test(test_direct_channel_table),
 	    cmocka_unit_test(test_channel_list_builds_profile),
 	    cmocka_unit_test(test_discovered_meters_build_profile),
+	    cmocka_unit_test(test_access_policies_build_value),
 	    cmocka_unit_test(test_poll_meter_updates_cache),
 	    cmocka_unit_test(test_proxy_forward_roundtrip),
 	    cmocka_unit_test(test_concentrator_server_get_objects),
