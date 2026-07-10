@@ -5,7 +5,7 @@
 - **Branch**: main
 - **Reference**: spodes-rs (Rust implementation)
 - **Language**: C11, clang-format (LLVM tabs)
-- **Stats**: ~100 files, 40 IC classes, 8 CTest suites, ~205 unit tests
+- **Stats**: ~100 files, 40 IC classes, 10 CTest suites, ~210 unit tests
 
 ## Project: OpenSPODES — DLMS/COSEM protocol stack in C11
 Portable C11 implementation of IEC 62056 DLMS/COSEM, modeled after spodes-rs.
@@ -32,7 +32,7 @@ cmake --build build-linux
 ctest --test-dir build-linux --output-on-failure
 ```
 
-### Test suites — all PASS (9/9)
+### Test suites — all PASS (10/10)
 
 | Target | File | Tests | Purpose |
 |--------|------|-------|---------|
@@ -45,6 +45,7 @@ ctest --test-dir build-linux --output-on-failure
 | `openspodes_test_phase1` | `tests/test_phase1.c` | 8 | Table manager / profile filter |
 | `openspodes_test_phase2` | `tests/test_phase2.c` | 9 | WithList codec, blocks, GBT confirmed |
 | `openspodes_test_security` | `tests/test_security_glo.c` | 2 | glo-ciphering E.5 + roundtrip (OpenSSL) |
+| `openspodes_loopback_cli` | `examples/loopback_cli.c` | demo | In-process GET/SET demo (CTest) |
 
 ## Recent accomplishments (Phase 2)
 
@@ -60,6 +61,7 @@ ctest --test-dir build-linux --output-on-failure
 - **glo-ciphering**: `osp_glo_protect/unprotect`, `osp_client_set_ciphering`, E.5 vector test
 - **HLS MD5/SHA1/SHA256**: `osp_hls_pass3/4_*`, client/server handshake, OpenSSL hash HAL
 - **GBT confirmed mode**: `osp_*_set_gbt_window`, ack between windows, loopback E2E
+- **Example CLI**: `openspodes_loopback_cli` — in-process GET/SET demo
 
 ## Client API
 
@@ -95,7 +97,7 @@ TableManager(8200) ProfileDataFilter(8201)
 ### Protocol / implementation
 - GBT streaming / lost-block recovery not implemented
 - `GET_WITH_LIST_BLOCK` enum only (no codec)
-- HLS MD5/SHA1/SHA256/GOST mechanisms not implemented
+- HLS GOST mechanisms 8–10 not implemented
 - Selective access stubbed (encode writes 0)
 - Event notification send not implemented
 - Confirmed service error not implemented
@@ -106,9 +108,9 @@ TableManager(8200) ProfileDataFilter(8201)
 - spodes-rs ahead: GOST security, glo-ciphering, general-ciphering, Concentrator runtime, examples
 
 ## Next steps (suggested)
-1. GOST mechanisms 8–10
-2. Example app: loopback client/server CLI
-3. GBT streaming / lost-block recovery
+1. GOST mechanisms 8–10 (Kuznyechik/Streebog HAL)
+2. GBT streaming / lost-block recovery
+3. TCP wrapper example (like spodes-rs tcp_client/tcp_server)
 
 ## User Instructions (MUST follow)
 - **Consult doc-rag-remote when implementing features**

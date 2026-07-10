@@ -142,6 +142,15 @@ if(OpenSSL_FOUND)
 	target_compile_definitions(openspodes_test_integration PRIVATE OSP_HAVE_OPENSSL_GCM=1)
 endif()
 
+add_executable(openspodes_loopback_cli
+	examples/loopback_cli.c
+	tests/mock_transport.c
+	tests/mock_crypto.c
+)
+target_include_directories(openspodes_loopback_cli PRIVATE tests)
+target_link_libraries(openspodes_loopback_cli PRIVATE openspodes)
+add_test(NAME openspodes_loopback_cli_demo COMMAND openspodes_loopback_cli demo)
+
 if(ENABLE_COVERAGE)
 	find_package(Python3 COMPONENTS Interpreter REQUIRED)
 	add_custom_target(coverage
