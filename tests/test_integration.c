@@ -169,6 +169,63 @@ static void test_multi_object(void **state) {
 	assert_int_equal(result.as.uint32.value, 222);
 }
 
+/* ── Test: client GET/SET/ACTION with-list ─────────────────────────────── */
+
+static void test_client_with_list(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
+	osp_client_t client;
+
+	osp_obis_t obis_a = {0, 0, 1, 0, 0, 255};
+	osp_obis_t obis_b = {0, 0, 2, 0, 0, 255};
+	osp_ic_data_t d1, d2;
+	osp_ic_data_init(&d1, obis_a);
+	d1.value = osp_val_u32(10);
+	osp_ic_data_init(&d2, obis_b);
+	d2.value = osp_val_u32(20);
+	osp_server_register(&server, osp_ic_data_class(), &d1);
+	osp_server_register(&server, osp_ic_data_class(), &d2);
+
+	osp_sec_context_t sec;
+	osp_sec_context_init(&sec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
+	osp_server_set_security(&server, &sec);
+	make_pair(&pair, &server, &client);
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+
+	osp_client_attr_ref_t attrs[] = {
+	    {1, obis_a, 1},
+	    {1, obis_b, 1},
+	};
+	osp_get_result_item_t get_results[2];
+	assert_int_equal(osp_client_get_with_list(&client, attrs, 2, get_results), OSP_OK);
+	assert_true(get_results[0].is_data);
+	assert_true(get_results[1].is_data);
+	assert_int_equal(get_results[0].data.as.uint32.value, 10);
+	assert_int_equal(get_results[1].data.as.uint32.value, 20);
+
+	osp_value_t new_vals[] = {osp_val_u32(110), osp_val_u32(220)};
+	osp_dar_t set_results[2];
+	assert_int_equal(osp_client_set_with_list(&client, attrs, new_vals, 2, set_results), OSP_OK);
+	assert_int_equal(set_results[0], OSP_DAR_SUCCESS);
+	assert_int_equal(set_results[1], OSP_DAR_SUCCESS);
+	assert_int_equal(d1.value.as.uint32.value, 110);
+	assert_int_equal(d2.value.as.uint32.value, 220);
+
+	osp_client_method_ref_t methods[] = {
+	    {1, obis_a, 1},
+	    {1, obis_b, 1},
+	};
+	osp_action_response_item_t act_results[2];
+	assert_int_equal(osp_client_action_with_list(&client, methods, NULL, 2, act_results), OSP_OK);
+	assert_int_equal(act_results[0].result, OSP_DAR_SUCCESS);
+	assert_int_equal(act_results[1].result, OSP_DAR_SUCCESS);
+	assert_int_equal(act_results[0].return_data.as.uint32.value, 110);
+	assert_int_equal(act_results[1].return_data.as.uint32.value, 220);
+}
+
 /* ── Test: SET+GET roundtrip ─────────────────────────────────────────────── */
 
 static void test_set_get(void **state) {
@@ -616,6 +673,7 @@ static void test_push_compact_notification(void **state) {
 int main(void) {
 	const struct CMUnitTest tests[] = {
 	    cmocka_unit_test(test_aarq_hls_get), cmocka_unit_test(test_aarq_rejected), cmocka_unit_test(test_multi_object),
+	    cmocka_unit_test(test_client_with_list),
 	    cmocka_unit_test(test_set_get),      	    cmocka_unit_test(test_hls_handshake),
 	    cmocka_unit_test(test_client_action),
 	    cmocka_unit_test(test_client_release_disconnect),

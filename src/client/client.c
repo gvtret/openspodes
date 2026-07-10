@@ -269,6 +269,48 @@ osp_err_t osp_client_get(osp_client_t *c, uint16_t class_id, const osp_obis_t *o
 	return osp_value_read(&vbuf, result) == OSP_OK ? OSP_OK : OSP_ERR_INVALID;
 }
 
+osp_err_t osp_client_get_with_list(osp_client_t *c, const osp_client_attr_ref_t *attrs, uint8_t count, osp_get_result_item_t *results) {
+	if (!c || !c->associated || !attrs || !results || count == 0 || count > OSP_XDLMS_MAX_LIST) {
+		return OSP_ERR_INVALID;
+	}
+
+	osp_get_request_t req;
+	memset(&req, 0, sizeof(req));
+	req.type = OSP_GET_WITH_LIST;
+	req.invoke_id_priority = OSP_IIDP(++c->invoke_id, 0);
+	req.as.with_list.count = count;
+	for (uint8_t i = 0; i < count; i++) {
+		req.as.with_list.items[i].attr.class_id = attrs[i].class_id;
+		req.as.with_list.items[i].attr.instance_id = attrs[i].instance_id;
+		req.as.with_list.items[i].attr.attribute_id = attrs[i].attribute_id;
+	}
+
+	osp_buf_t buf;
+	osp_buf_init(&buf, c->tx_buf, sizeof(c->tx_buf));
+	if (osp_get_request_encode(&buf, &req) != 0) {
+		return OSP_ERR_INVALID;
+	}
+
+	osp_err_t r = osp_transport_send_apdu(c->transport, c->framing, buf.buf, buf.wr);
+	if (r != OSP_OK) {
+		return r;
+	}
+
+	osp_get_response_t resp;
+	r = client_recv_get_response(c, &resp);
+	if (r != OSP_OK) {
+		return r;
+	}
+	if (resp.type != OSP_GET_RESP_WITH_LIST || resp.with_list.count != count) {
+		return OSP_ERR_INVALID;
+	}
+
+	for (uint8_t i = 0; i < count; i++) {
+		results[i] = resp.with_list.items[i];
+	}
+	return OSP_OK;
+}
+
 /* ── SET ─────────────────────────────────────────────────────────────────── */
 
 static osp_err_t client_recv_set_response(osp_client_t *c, osp_set_response_t *resp) {
@@ -392,6 +434,50 @@ osp_err_t osp_client_set(osp_client_t *c, uint16_t class_id, const osp_obis_t *o
 	}
 
 	return (resp.type == OSP_SET_RESP_NORMAL && resp.as.normal.result == OSP_DAR_SUCCESS) ? OSP_OK : OSP_ERR_NOT_FOUND;
+}
+
+osp_err_t osp_client_set_with_list(osp_client_t *c, const osp_client_attr_ref_t *attrs, const osp_value_t *values, uint8_t count,
+                                   osp_dar_t *results) {
+	if (!c || !c->associated || !attrs || !values || !results || count == 0 || count > OSP_XDLMS_MAX_LIST) {
+		return OSP_ERR_INVALID;
+	}
+
+	osp_set_request_t req;
+	memset(&req, 0, sizeof(req));
+	req.type = OSP_SET_WITH_LIST;
+	req.invoke_id_priority = OSP_IIDP(++c->invoke_id, 0);
+	req.as.with_list.count = count;
+	for (uint8_t i = 0; i < count; i++) {
+		req.as.with_list.items[i].attr.class_id = attrs[i].class_id;
+		req.as.with_list.items[i].attr.instance_id = attrs[i].instance_id;
+		req.as.with_list.items[i].attr.attribute_id = attrs[i].attribute_id;
+		req.as.with_list.items[i].data = values[i];
+	}
+
+	osp_buf_t buf;
+	osp_buf_init(&buf, c->tx_buf, sizeof(c->tx_buf));
+	if (osp_set_request_encode(&buf, &req) != 0) {
+		return OSP_ERR_INVALID;
+	}
+
+	osp_err_t r = osp_transport_send_apdu(c->transport, c->framing, buf.buf, buf.wr);
+	if (r != OSP_OK) {
+		return r;
+	}
+
+	osp_set_response_t resp;
+	r = client_recv_set_response(c, &resp);
+	if (r != OSP_OK) {
+		return r;
+	}
+	if (resp.type != OSP_SET_RESP_WITH_LIST || resp.as.with_list.count != count) {
+		return OSP_ERR_INVALID;
+	}
+
+	for (uint8_t i = 0; i < count; i++) {
+		results[i] = resp.as.with_list.results[i];
+	}
+	return OSP_OK;
 }
 
 /* ── ACTION ──────────────────────────────────────────────────────────────── */
@@ -577,6 +663,50 @@ osp_err_t osp_client_action(osp_client_t *c, uint16_t class_id, const osp_obis_t
 		return r;
 	}
 	return client_action_finish_response(c, iidp, &resp, result);
+}
+
+osp_err_t osp_client_action_with_list(osp_client_t *c, const osp_client_method_ref_t *methods, const osp_value_t *params, uint8_t count,
+                                      osp_action_response_item_t *results) {
+	if (!c || !c->associated || !methods || !results || count == 0 || count > OSP_XDLMS_MAX_LIST) {
+		return OSP_ERR_INVALID;
+	}
+
+	osp_action_request_t req;
+	memset(&req, 0, sizeof(req));
+	req.type = OSP_ACTION_WITH_LIST;
+	req.invoke_id_priority = OSP_IIDP(++c->invoke_id, 0);
+	req.as.with_list.count = count;
+	for (uint8_t i = 0; i < count; i++) {
+		req.as.with_list.items[i].method.class_id = methods[i].class_id;
+		req.as.with_list.items[i].method.instance_id = methods[i].instance_id;
+		req.as.with_list.items[i].method.method_id = methods[i].method_id;
+		req.as.with_list.items[i].data = params ? params[i] : osp_val_null();
+	}
+
+	osp_buf_t buf;
+	osp_buf_init(&buf, c->tx_buf, sizeof(c->tx_buf));
+	if (osp_action_request_encode(&buf, &req) != 0) {
+		return OSP_ERR_INVALID;
+	}
+
+	osp_err_t r = osp_transport_send_apdu(c->transport, c->framing, buf.buf, buf.wr);
+	if (r != OSP_OK) {
+		return r;
+	}
+
+	osp_action_response_t resp;
+	r = client_recv_action_response(c, &resp);
+	if (r != OSP_OK) {
+		return r;
+	}
+	if (resp.type != OSP_ACTION_RESP_WITH_LIST || resp.as.with_list.count != count) {
+		return OSP_ERR_INVALID;
+	}
+
+	for (uint8_t i = 0; i < count; i++) {
+		results[i] = resp.as.with_list.items[i];
+	}
+	return OSP_OK;
 }
 
 osp_err_t osp_client_recv_data_notification(osp_client_t *c, osp_data_notification_t *dn, uint32_t timeout_ms) {
