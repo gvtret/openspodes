@@ -80,7 +80,7 @@ ctest --test-dir build-linux --output-on-failure
 | glo-ciphering | ✅ protect/unprotect + client/server session |
 | HLS MD5/SHA1/SHA256 | ✅ pass 3/4 + E2E loopback |
 | GBT confirmed (window>0) | ✅ ack + E2E loopback |
-| HLS GOST (8–10) | ❌ |
+| HLS GOST (8–10) | ✅ CMAC/Streebog HLS + GOST 34.10 sign/verify |
 
 ## IC Classes (40 implemented)
 Data(1) Register(3) ExtRegister(4) DemandRegister(5) RegisterActivation(6)
@@ -98,7 +98,7 @@ TableManager(8200) ProfileDataFilter(8201)
 ### Protocol / implementation
 - GBT streaming / lost-block recovery not implemented
 - `GET_WITH_LIST_BLOCK` enum only (no codec)
-- HLS mechanisms 8–9 (GOST CMAC, Streebog) implemented; mech 7 ECDSA via OpenSSL HAL; mech 10 wired (GOST 34.10 EC math WIP)
+- HLS mechanisms 8–10: GOST CMAC, Streebog, ECDSA (OpenSSL HAL), GOST 34.10-2018-256 (paramSetB)
 - general-glo/ded/ciphering (0xDB/0xDC/0xDD) encode/decode + protect/unprotect
 - Selective access stubbed (encode writes 0)
 - Event notification send not implemented
@@ -107,12 +107,12 @@ TableManager(8200) ProfileDataFilter(8201)
 
 ### vs spodes-rs
 - OpenSPODES ahead: ACTION blocks, compact-array, push E2E, client block transfer, IC 62
-- spodes-rs ahead: GOST 34.10 EC (bundled impl incomplete), general-signing (0xDF), ded session helper, Concentrator runtime
+- spodes-rs ahead: general-signing (0xDF), VKO/KDF tree helpers, ded session helper, GOST transport ciphering, Concentrator runtime
 
 ## Next steps (suggested)
-1. Finish GOST 34.10 EC (mech 10) — validate point_mul vs spodes-rs VKO vector
+1. general-signing (0xDF) + VKO/KDF tree for suite 8/9 key agreement
 2. GBT streaming / lost-block recovery
-3. TCP example CTest (optional, port-based smoke)
+3. HLS mech 10 E2E in integration tests
 
 ## User Instructions (MUST follow)
 - **Consult doc-rag-remote when implementing features**

@@ -9,13 +9,13 @@ typedef struct {
 	uint64_t w[4]; /* little-endian */
 } fe;
 
-static const fe FE_P = {{0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFD97ULL}};
-static const fe FE_A = {{0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFD94ULL}};
+static const fe FE_P = {{0xFFFFFFFFFFFFFD97ULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL}};
+static const fe FE_A = {{0xFFFFFFFFFFFFFD94ULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL}};
 static const fe FE_B = {{0x00000000000000A6ULL, 0x0000000000000000ULL, 0x0000000000000000ULL, 0x0000000000000000ULL}};
 static const fe FE_Q = {{0x45841B09B761B893ULL, 0x6C611070995AD100ULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL}};
 static const fe FE_GX = {{1, 0, 0, 0}};
-static const fe FE_GY = {{0x122ACC99C9E9F1E1ULL, 0x35294F2DDF23E3B1ULL, 0x27DF505A453F2B76ULL, 0x8D91E471E0989CDAULL}};
-static const fe FE_361 = {{361ULL, 0, 0, 0}};
+static const fe FE_GY = {{0x22ACC99C9E9F1E14ULL, 0x35294F2DDF23E3B1ULL, 0x27DF505A453F2B76ULL, 0x8D91E471E0989CDAULL}};
+static const fe FE_2_256_MOD_P = {{617ULL, 0, 0, 0}}; /* 2^256 mod p */
 static const fe FE_2_256_MOD_Q = {{0xBA7BE4F6489E476DULL, 0x939EEF8F66A52EFFULL, 0, 0}}; /* 2^256 mod q */
 
 static int fe_cmp(const fe *a, const fe *b) {
@@ -89,6 +89,14 @@ static void sc_add(fe *r, const fe *a, const fe *b) {
 		r->w[i] = (uint64_t)sum;
 		carry = (uint64_t)(sum >> 64);
 	}
+	if (carry) {
+		carry = 0;
+		for (int i = 0; i < 4; i++) {
+			__uint128_t sum = (__uint128_t)r->w[i] + FE_2_256_MOD_Q.w[i] + carry;
+			r->w[i] = (uint64_t)sum;
+			carry = (uint64_t)(sum >> 64);
+		}
+	}
 	fe_mod_q(r);
 }
 
@@ -134,21 +142,32 @@ static void fe_add_raw(fe *r, const fe *a, const fe *b) {
 	}
 }
 
-static void sc_mul(fe *r, const fe *a, const fe *b) {
-	uint64_t t[8];
-	mul512(t, a, b);
-	fe lo = {{t[0], t[1], t[2], t[3]}};
-	fe hi = {{t[4], t[5], t[6], t[7]}};
-	for (int round = 0; round < 3; round++) {
+static void reduce512(fe *r, uint64_t t[8], const fe *r256) {
+	for (int iter = 0; iter < 8; iter++) {
+		fe hi = {{t[4], t[5], t[6], t[7]}};
 		if (fe_is_zero(&hi)) {
 			break;
 		}
-		uint64_t tt[8];
-		mul512(tt, &hi, &FE_2_256_MOD_Q);
-		fe_add_raw(&lo, &lo, (fe *)&tt[0]);
-		hi = (fe){{tt[4], tt[5], tt[6], tt[7]}};
+		uint64_t fold[8];
+		mul512(fold, &hi, r256);
+		t[4] = t[5] = t[6] = t[7] = 0;
+		uint64_t carry = 0;
+		for (int i = 0; i < 8; i++) {
+			__uint128_t sum = (__uint128_t)t[i] + fold[i] + carry;
+			t[i] = (uint64_t)sum;
+			carry = (uint64_t)(sum >> 64);
+		}
+		if (carry) {
+			t[4] += carry;
+		}
 	}
-	*r = lo;
+	*r = (fe){{t[0], t[1], t[2], t[3]}};
+}
+
+static void sc_mul(fe *r, const fe *a, const fe *b) {
+	uint64_t t[8];
+	mul512(t, a, b);
+	reduce512(r, t, &FE_2_256_MOD_Q);
 	fe_mod_q(r);
 }
 
@@ -182,6 +201,14 @@ static void fe_add(fe *r, const fe *a, const fe *b) {
 		r->w[i] = (uint64_t)sum;
 		carry = (uint64_t)(sum >> 64);
 	}
+	if (carry) {
+		carry = FE_2_256_MOD_P.w[0];
+		for (int i = 0; i < 4 && carry; i++) {
+			__uint128_t sum = (__uint128_t)r->w[i] + carry;
+			r->w[i] = (uint64_t)sum;
+			carry = (uint64_t)(sum >> 64);
+		}
+	}
 	fe_mod_p(r);
 }
 
@@ -206,18 +233,9 @@ static void fe_sub(fe *r, const fe *a, const fe *b) {
 }
 
 static void fe_fold_mod_p(fe *r, const uint64_t t[8]) {
-	fe lo = {{t[0], t[1], t[2], t[3]}};
-	fe hi = {{t[4], t[5], t[6], t[7]}};
-	for (int round = 0; round < 3; round++) {
-		if (fe_is_zero(&hi)) {
-			break;
-		}
-		uint64_t tt[8];
-		mul512(tt, &hi, &FE_361);
-		fe_add_raw(&lo, &lo, (fe *)&tt[0]);
-		hi = (fe){{tt[4], tt[5], tt[6], tt[7]}};
-	}
-	*r = lo;
+	uint64_t buf[8];
+	memcpy(buf, t, sizeof(buf));
+	reduce512(r, buf, &FE_2_256_MOD_P);
 	fe_mod_p(r);
 }
 
@@ -246,8 +264,7 @@ static void fe_pow(fe *r, const fe *base, const fe *exp) {
 }
 
 static void fe_inv(fe *r, const fe *a) {
-	/* Fermat: a^(p-2) mod p */
-	fe exp = {{0xFFFFFFFFFFFFFF95ULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL}};
+	fe exp = {{0xFFFFFFFFFFFFFD95ULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL, 0xFFFFFFFFFFFFFFFFULL}};
 	fe_pow(r, a, &exp);
 }
 
@@ -317,17 +334,26 @@ static void point_add(ec_point *r, const ec_point *a, const ec_point *b) {
 static void point_mul(ec_point *r, const fe *k, const ec_point *p) {
 	ec_point result = {.inf = true};
 	ec_point addend = *p;
-	for (int limb = 0; limb < 4; limb++) {
-		for (int bit = 0; bit < 64; bit++) {
-			if ((k->w[limb] >> bit) & 1) {
-				ec_point tmp;
-				point_add(&tmp, &result, &addend);
-				result = tmp;
-			}
+	fe n;
+	fe_copy(&n, k);
+	for (;;) {
+		if (n.w[0] & 1) {
 			ec_point tmp;
-			point_double(&tmp, &addend);
-			addend = tmp;
+			point_add(&tmp, &result, &addend);
+			result = tmp;
 		}
+		uint64_t carry = 0;
+		for (int i = 3; i >= 0; i--) {
+			uint64_t old = n.w[i];
+			n.w[i] = (old >> 1) | (carry << 63);
+			carry = old & 1;
+		}
+		if (fe_is_zero(&n)) {
+			break;
+		}
+		ec_point tmp;
+		point_double(&tmp, &addend);
+		addend = tmp;
 	}
 	*r = result;
 }

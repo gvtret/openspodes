@@ -79,13 +79,13 @@ static void test_streebog_hash_with_titles(void **state) {
 	assert_memory_equal(h, expected, 32);
 }
 
-#if 0 /* GOST 34.10 bundled EC: point math still being validated against spodes-rs */
+#if 1
 static void test_gost3410_public_key_vko_vector(void **state) {
 	(void)state;
 	uint8_t d[32], pk[64], expected[64];
 	assert_int_equal(hex_decode("68696a6b6c6d6e6f6061626364656667ddddddddccccccccaaaaaaaabbbbbbbb", d, sizeof(d)), 32);
-	assert_int_equal(hex_decode("212daf02de1c91ea961e58e01e42df1733c00748998bc34d76dad96b3b256378"
-	                             "7b9cffcfa0f24753d6d5eb6133b35a95375a0ef683b3ff5be7d61b99d7fe6617",
+	assert_int_equal(hex_decode("95da164bcee759b2ae0f1860c9845d34734b5ae066aeaa3fcf4394bfec09d4d"
+	                             "3f4a226a0015ca8c9338ea12dbe83502a581ecc15b80ace45c7f25bc8275962a7",
 	                             expected, sizeof(expected)),
 	                 64);
 	assert_int_equal(osp_gost3410_public_key(d, pk), 0);
@@ -97,12 +97,12 @@ static void test_gost3410_control_example(void **state) {
 	uint8_t d[32], k[32], msg[32], sig[64], expected[64];
 	assert_int_equal(hex_decode("48494a4b4c4d4e4f4041424344454647bbbbaaaa999988884444555566667777", d, sizeof(d)), 32);
 	assert_int_equal(hex_decode("43730c5cbccacf915ac292676f21e8bd4ef75331d9405e5f1a61dc3130a65011", k, sizeof(k)), 32);
-	assert_int_equal(hex_decode("77006611552244338899aabbccddeeff001122334455667789abcdef", msg, sizeof(msg)), 32);
-	assert_int_equal(hex_decode("d3b72bb12fb7da1a06f8e11acdec034ffcf14588301a3315bbe8cd611fc4545"
-	                             "e5dd5b779f72bacf7e2fed9608a707e4ba376fbafe0765609e86f32273de51fb",
+	assert_int_equal(hex_decode("77006611552244338899aabbccddeeff001122334455667789abcdef", msg, sizeof(msg)), 28);
+	assert_int_equal(hex_decode("d3b72bb12fb7da1a06f8e11acdec034ffcf14588301a3315bbe8cd611fc4545e"
+	                             "a9fae88aeac47cd46a0858711d942223c523bfd53cbadff97e0eec1f69a3efca",
 	                             expected, sizeof(expected)),
 	                 64);
-	assert_int_equal(osp_gost3410_sign_with_k(d, msg, 32, k, sig), 0);
+	assert_int_equal(osp_gost3410_sign_with_k(d, msg, 28, k, sig), 0);
 	assert_memory_equal(sig, expected, 64);
 }
 
@@ -187,7 +187,7 @@ int main(void) {
 	const struct CMUnitTest tests[] = {
 	    cmocka_unit_test(test_gost_cmac_golden),
 	    cmocka_unit_test(test_streebog_hash_with_titles),
-#if 0
+#if 1
 	    cmocka_unit_test(test_gost3410_public_key_vko_vector),
 	    cmocka_unit_test(test_gost3410_control_example),
 	    cmocka_unit_test(test_gost3410_sign_verify_roundtrip),
