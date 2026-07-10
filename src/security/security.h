@@ -22,6 +22,16 @@ typedef enum {
 extern void (*osp_hal_gcm_init)(osp_sec_key_id key_id, uint32_t key_len, const uint8_t *iv, uint32_t iv_len, const uint8_t *aad, uint32_t aad_len);
 extern void (*osp_hal_gcm_update)(const uint8_t *in, uint32_t len, uint8_t *out);
 extern void (*osp_hal_gcm_finish)(uint8_t *tag);
+
+typedef enum {
+	OSP_GCM_ENCRYPT = 0,
+	OSP_GCM_DECRYPT = 1,
+} osp_gcm_dir_t;
+
+/* One-shot AES-GCM: encrypt writes tag_out; decrypt verifies tag_in. */
+extern int (*osp_hal_gcm_crypt)(osp_gcm_dir_t dir, const uint8_t *key, uint32_t key_len, const uint8_t iv[12], const uint8_t *aad,
+                                uint32_t aad_len, const uint8_t *in, uint32_t in_len, uint8_t *out, const uint8_t tag_in[OSP_SEC_TAG_SIZE],
+                                uint8_t tag_out[OSP_SEC_TAG_SIZE]);
 extern void (*osp_hal_md5)(const uint8_t *input, uint32_t len, uint8_t *output);
 extern void (*osp_hal_sha1)(const uint8_t *input, uint32_t len, uint8_t *output);
 extern void (*osp_hal_sha256)(const uint8_t *input, uint32_t len, uint8_t *output);
@@ -175,6 +185,22 @@ int osp_hls_pass4_verify(osp_sec_context_t *ctx, const uint8_t *f_ctos, uint32_t
 /* ═══════════════════════════════════════════════════════════════════════════
  *  Glo-ciphering (global ciphered APDUs)
  * ═══════════════════════════════════════════════════════════════════════════ */
+
+#define OSP_GLO_GET_REQUEST      0xC8
+#define OSP_GLO_SET_REQUEST      0xC9
+#define OSP_GLO_ACTION_REQUEST   0xCB
+#define OSP_GLO_GET_RESPONSE     0xCC
+#define OSP_GLO_SET_RESPONSE     0xCD
+#define OSP_GLO_ACTION_RESPONSE  0xCF
+#define OSP_GLO_INITIATE_REQUEST  0x21
+#define OSP_GLO_INITIATE_RESPONSE 0x28
+
+#define OSP_GLO_MAX_PLAIN    1024
+#define OSP_GLO_MAX_CIPHERED (OSP_GLO_MAX_PLAIN + 32)
+
+bool osp_glo_is_ciphered_tag(uint8_t tag);
+uint8_t osp_glo_tag_for_plain(uint8_t plain_tag);
+uint8_t osp_glo_plain_tag_for_ciphered(uint8_t ciphered_tag);
 
 /* Protect a plaintext APDU with glo-ciphering (auth + optional encrypt) */
 int osp_glo_protect(const osp_sec_context_t *ctx, uint8_t ciphered_tag, const uint8_t *plaintext, uint32_t plain_len, uint8_t *out, uint32_t *out_len);

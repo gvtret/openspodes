@@ -129,6 +129,19 @@ target_include_directories(openspodes_test_phase2 PRIVATE ${cmocka_SOURCE_DIR}/i
 target_link_libraries(openspodes_test_phase2 PRIVATE openspodes cmocka)
 add_test(NAME openspodes_test_phase2 COMMAND openspodes_test_phase2)
 
+find_package(OpenSSL QUIET)
+if(OpenSSL_FOUND)
+	add_executable(openspodes_test_security tests/test_security_glo.c tests/mock_crypto.c tests/real_crypto.c)
+	target_include_directories(openspodes_test_security PRIVATE ${cmocka_SOURCE_DIR}/include tests)
+	target_link_libraries(openspodes_test_security PRIVATE openspodes cmocka OpenSSL::Crypto)
+	target_compile_definitions(openspodes_test_security PRIVATE OSP_HAVE_OPENSSL_GCM=1)
+	add_test(NAME openspodes_test_security COMMAND openspodes_test_security)
+
+	target_sources(openspodes_test_integration PRIVATE tests/real_crypto.c)
+	target_link_libraries(openspodes_test_integration PRIVATE OpenSSL::Crypto)
+	target_compile_definitions(openspodes_test_integration PRIVATE OSP_HAVE_OPENSSL_GCM=1)
+endif()
+
 if(ENABLE_COVERAGE)
 	find_package(Python3 COMPONENTS Interpreter REQUIRED)
 	add_custom_target(coverage

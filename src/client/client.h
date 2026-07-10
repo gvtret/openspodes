@@ -32,6 +32,9 @@ typedef struct {
 	uint8_t invoke_id;
 	bool gbt_enabled;
 	uint32_t gbt_block_size;
+	bool ciphering_enabled;
+	osp_sec_context_t cipher_tx;
+	osp_sec_context_t cipher_rx;
 
 	/* Buffers */
 	uint8_t tx_buf[OSP_CLIENT_MAX_PDU];
@@ -46,6 +49,9 @@ void osp_client_set_security(osp_client_t *c, const osp_sec_context_t *sec);
 
 /* Enable general block transfer for APDUs longer than block_size */
 void osp_client_enable_gbt(osp_client_t *c, uint32_t block_size);
+
+/* Enable glo-ciphering (tx protects requests, rx unprotects responses) */
+void osp_client_set_ciphering(osp_client_t *c, const osp_sec_context_t *tx, const osp_sec_context_t *rx);
 
 /* Connect: AARQ→AARE→HLS pass3/4. Returns 0 on success. */
 osp_err_t osp_client_connect(osp_client_t *c, uint32_t timeout_ms);

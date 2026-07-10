@@ -698,6 +698,73 @@ static void test_push_compact_notification(void **state) {
 	assert_int_equal(decoded.as.array.elements.items[0].as.structure.elements.items[1].as.uint16.value, 0x0A0B);
 }
 
+#ifdef OSP_HAVE_OPENSSL_GCM
+
+static void setup_glo_cipher_contexts(osp_sec_context_t *client_tx, osp_sec_context_t *client_rx, osp_sec_context_t *server_tx,
+                                      osp_sec_context_t *server_rx) {
+	static const uint8_t ek[16] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+	static const uint8_t ak[16] = {0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0xD9, 0xDA, 0xDB, 0xDC, 0xDD, 0xDE, 0xDF};
+	static const uint8_t client_st[8] = {0x4D, 0x4D, 0x4D, 0x00, 0x00, 0xBC, 0x61, 0x4E};
+	static const uint8_t server_st[8] = {0x53, 0x52, 0x56, 0x00, 0x00, 0x00, 0x00, 0x01};
+
+	osp_sec_context_init(client_tx, OSP_SUITE_0, OSP_MECH_LOWEST, client_st);
+	client_tx->policy = OSP_POLICY_ENCR_AUTH;
+	memcpy(client_tx->guek, ek, 16);
+	memcpy(client_tx->gak, ak, 16);
+	client_tx->invocation_counter = 1;
+
+	osp_sec_context_init(client_rx, OSP_SUITE_0, OSP_MECH_LOWEST, server_st);
+	client_rx->policy = OSP_POLICY_ENCR_AUTH;
+	memcpy(client_rx->guek, ek, 16);
+	memcpy(client_rx->gak, ak, 16);
+
+	osp_sec_context_init(server_tx, OSP_SUITE_0, OSP_MECH_LOWEST, server_st);
+	server_tx->policy = OSP_POLICY_ENCR_AUTH;
+	memcpy(server_tx->guek, ek, 16);
+	memcpy(server_tx->gak, ak, 16);
+	server_tx->invocation_counter = 1;
+
+	osp_sec_context_init(server_rx, OSP_SUITE_0, OSP_MECH_LOWEST, client_st);
+	server_rx->policy = OSP_POLICY_ENCR_AUTH;
+	memcpy(server_rx->guek, ek, 16);
+	memcpy(server_rx->gak, ak, 16);
+}
+
+static void test_glo_get_ciphered(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_crypto_init_real_gcm();
+
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
+
+	osp_obis_t obis = {0, 0, 0x90, 0, 0, 255};
+	osp_ic_data_t data_obj;
+	osp_ic_data_init(&data_obj, obis);
+	data_obj.value = osp_val_u32(4242);
+	osp_server_register(&server, osp_ic_data_class(), &data_obj);
+
+	osp_sec_context_t client_tx, client_rx, server_tx, server_rx;
+	setup_glo_cipher_contexts(&client_tx, &client_rx, &server_tx, &server_rx);
+	osp_server_set_ciphering(&server, &server_tx, &server_rx);
+
+	osp_sec_context_t sec;
+	osp_sec_context_init(&sec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
+	osp_server_set_security(&server, &sec);
+
+	osp_client_t client;
+	make_pair(&pair, &server, &client);
+	osp_client_set_ciphering(&client, &client_tx, &client_rx);
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+
+	osp_value_t result;
+	assert_int_equal(osp_client_get(&client, 1, &obis, 1, &result), OSP_OK);
+	assert_int_equal(result.as.uint32.value, 4242);
+}
+
+#endif /* OSP_HAVE_OPENSSL_GCM */
+
 /* ── Runner ──────────────────────────────────────────────────────────────── */
 
 int main(void) {
@@ -715,6 +782,9 @@ int main(void) {
 	    cmocka_unit_test(test_action_return_param_blocks),
 	    cmocka_unit_test(test_compact_data_capture_via_dispatcher),
 	    cmocka_unit_test(test_push_compact_notification),
+#ifdef OSP_HAVE_OPENSSL_GCM
+	    cmocka_unit_test(test_glo_get_ciphered),
+#endif
 	};
 	return cmocka_run_group_tests(tests, NULL, NULL);
 }

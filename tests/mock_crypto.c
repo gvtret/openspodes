@@ -27,6 +27,7 @@ void mock_crypto_init(void) {
 	osp_hal_gcm_init = mock_gcm_init;
 	osp_hal_gcm_update = mock_gcm_update;
 	osp_hal_gcm_finish = mock_gcm_finish;
+	osp_hal_gcm_crypt = NULL;
 	osp_hal_md5 = NULL;
 	osp_hal_sha1 = NULL;
 	osp_hal_sha256 = NULL;

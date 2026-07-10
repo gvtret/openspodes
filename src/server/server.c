@@ -6,6 +6,7 @@
 #include "../service/initiate.h"
 #include "../service/notification.h"
 #include "../service/gbt.h"
+#include "../security/security.h"
 #include "../codec/serialize.h"
 #include "../ic/compact_data.h"
 #include "../ic/push_setup.h"
@@ -30,6 +31,15 @@ void osp_server_enable_gbt(osp_server_t *s, uint32_t block_size) {
 	}
 	s->gbt_enabled = true;
 	s->gbt_block_size = block_size > OSP_GBT_HEADER_MAX ? block_size : OSP_GBT_DEFAULT_BLOCK_SIZE;
+}
+
+void osp_server_set_ciphering(osp_server_t *s, const osp_sec_context_t *tx, const osp_sec_context_t *rx) {
+	if (!s || !tx || !rx) {
+		return;
+	}
+	s->cipher_tx = *tx;
+	s->cipher_rx = *rx;
+	s->ciphering_enabled = true;
 }
 
 static uint32_t server_gbt_payload_max(const osp_server_t *s) {
@@ -82,10 +92,24 @@ void osp_server_set_association(osp_server_t *s, osp_ic_association_ln_t *associ
 /* ── Send response ───────────────────────────────────────────────────────── */
 
 static osp_err_t server_send(osp_server_t *s, const uint8_t *data, uint32_t len) {
-	if (s->gbt_enabled && osp_gbt_applies_to_apdu(data, len) && len > server_gbt_payload_max(s)) {
-		return osp_gbt_transport_send(s->transport, s->framing, data, len, server_gbt_payload_max(s), s->rx_buf, sizeof(s->rx_buf), 5000);
+	const uint8_t *send_data = data;
+	uint32_t send_len = len;
+	uint8_t cipher_buf[OSP_SERVER_MAX_PDU];
+
+	if (s->ciphering_enabled && len > 0 && osp_gbt_applies_to_apdu(data, len)) {
+		uint32_t cipher_len = 0;
+		if (osp_glo_protect(&s->cipher_tx, osp_glo_tag_for_plain(data[0]), data, len, cipher_buf, &cipher_len) != 0) {
+			return OSP_ERR_SECURITY;
+		}
+		s->cipher_tx.invocation_counter++;
+		send_data = cipher_buf;
+		send_len = cipher_len;
 	}
-	return osp_transport_send_apdu(s->transport, s->framing, data, len);
+
+	if (s->gbt_enabled && osp_gbt_applies_to_apdu(send_data, send_len) && send_len > server_gbt_payload_max(s)) {
+		return osp_gbt_transport_send(s->transport, s->framing, send_data, send_len, server_gbt_payload_max(s), s->rx_buf, sizeof(s->rx_buf), 5000);
+	}
+	return osp_transport_send_apdu(s->transport, s->framing, send_data, send_len);
 }
 
 static osp_err_t server_flush_pending_push(osp_server_t *s) {
@@ -680,6 +704,20 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 		}
 		memcpy(s->rx_buf, apdu, apdu_len);
 		rx_len = apdu_len;
+		tag = s->rx_buf[0];
+	}
+
+	if (s->ciphering_enabled && osp_glo_is_ciphered_tag(tag)) {
+		uint8_t plain[OSP_GBT_MAX_APDU];
+		uint32_t plain_len = 0;
+		if (osp_glo_unprotect(&s->cipher_rx, s->rx_buf, rx_len, plain, &plain_len) != 0) {
+			return OSP_ERR_SECURITY;
+		}
+		if (plain_len > sizeof(s->rx_buf)) {
+			return OSP_ERR_NOMEM;
+		}
+		memcpy(s->rx_buf, plain, plain_len);
+		rx_len = plain_len;
 		tag = s->rx_buf[0];
 	}
 

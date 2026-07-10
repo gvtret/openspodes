@@ -43,7 +43,8 @@ ctest --test-dir build-linux --output-on-failure
 | `openspodes_test_integration` | `tests/test_integration.c` | 15 | Client↔server E2E loopback |
 | `openspodes_test_phase0` | `tests/test_phase0.c` | 7 | SPODUS helpers |
 | `openspodes_test_phase1` | `tests/test_phase1.c` | 8 | Table manager / profile filter |
-| `openspodes_test_phase2` | `tests/test_phase2.c` | 7 | WithList codec, blocks, GBT, compact data |
+| `openspodes_test_phase2` | `tests/test_phase2.c` | 8 | WithList codec, blocks, GBT, compact data |
+| `openspodes_test_security` | `tests/test_security_glo.c` | 2 | glo-ciphering E.5 + roundtrip (OpenSSL) |
 
 ## Recent accomplishments (Phase 2)
 
@@ -56,6 +57,7 @@ ctest --test-dir build-linux --output-on-failure
 - Golden vectors cross-check vs `thirdparty/dlms-codec`
 - **Client with-list API**: `osp_client_get/set/action_with_list`
 - **GBT runtime E2E**: `osp_server_enable_gbt` / `osp_client_enable_gbt`, transport send/recv
+- **glo-ciphering**: `osp_glo_protect/unprotect`, `osp_client_set_ciphering`, E.5 vector test
 
 ## Client API
 
@@ -70,7 +72,8 @@ ctest --test-dir build-linux --output-on-failure
 | `osp_client_action_with_list` | ✅ |
 | `osp_client_recv_data_notification` | ✅ |
 | GBT runtime (xDLMS only) | ✅ unconfirmed multi-block |
-| glo-ciphering session | ❌ |
+| glo-ciphering | ✅ protect/unprotect + client/server session |
+| HLS MD5/SHA1/SHA256/GOST | ❌ |
 
 ## IC Classes (40 implemented)
 Data(1) Register(3) ExtRegister(4) DemandRegister(5) RegisterActivation(6)
@@ -88,7 +91,6 @@ TableManager(8200) ProfileDataFilter(8201)
 ### Protocol / implementation
 - GBT confirmed mode with streaming/ack (window>0) not implemented
 - `GET_WITH_LIST_BLOCK` enum only (no codec)
-- `osp_glo_protect` / `osp_glo_unprotect` stubs
 - HLS MD5/SHA1/SHA256/GOST mechanisms not implemented
 - Selective access stubbed (encode writes 0)
 - Event notification send not implemented
@@ -100,9 +102,9 @@ TableManager(8200) ProfileDataFilter(8201)
 - spodes-rs ahead: GOST security, glo-ciphering, general-ciphering, Concentrator runtime, examples
 
 ## Next steps (suggested)
-1. glo-ciphering (`security.c`)
+1. HLS mechanisms 4–10 (MD5/SHA/GOST)
 2. GBT confirmed/streaming mode (window>0, lost-block recovery)
-3. HLS mechanisms 4–10
+3. Example app: loopback client/server CLI
 4. Example app: loopback client/server CLI
 5. Deepen stub ICs (26, 31, 61, 63, 65, 76)
 
