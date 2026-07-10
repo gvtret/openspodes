@@ -9,6 +9,7 @@
 #include "channel_list.h"
 #include "discovered.h"
 #include "access_policy.h"
+#include "tasks.h"
 #include "../client/client.h"
 
 #ifdef __cplusplus
@@ -21,6 +22,7 @@ typedef enum {
 	OSP_SPODUS_DATA_METER_LIST = 0,
 	OSP_SPODUS_DATA_DIRECT_TABLE = 1,
 	OSP_SPODUS_DATA_ACCESS_POLICIES = 2,
+	OSP_SPODUS_DATA_EXCHANGE_TASKS = 3,
 } osp_spodus_data_kind_t;
 
 typedef struct {
@@ -33,6 +35,7 @@ typedef struct {
 	osp_ic_spodus_data_t meter_list;
 	osp_ic_spodus_data_t direct_table;
 	osp_ic_spodus_data_t access_policies;
+	osp_ic_spodus_data_t exchange_tasks;
 	osp_ic_profile_generic_t channel_list;
 	osp_ic_profile_generic_t discovered_meters;
 } osp_spodus_server_objects_t;
@@ -52,6 +55,7 @@ struct osp_spodus_concentrator {
 	osp_spodus_channel_list_t channels;
 	osp_spodus_discovered_list_t discovered;
 	osp_spodus_access_policies_t access_policies;
+	osp_spodus_exchange_tasks_t exchange_tasks;
 	osp_spodus_downstream_t downstream[OSP_SPODUS_MAX_METERS];
 	uint8_t downstream_count;
 	osp_spodus_server_objects_t server_objects;

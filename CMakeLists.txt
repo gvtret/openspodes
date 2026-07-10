@@ -71,6 +71,7 @@ add_library(openspodes STATIC
     src/spodus/channel_list.c
     src/spodus/discovered.c
     src/spodus/access_policy.c
+    src/spodus/tasks.c
     src/spodus/concentrator.c
     src/spodus/spodus_server.c
 )
