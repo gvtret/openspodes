@@ -13,6 +13,7 @@
 #include "../openspodes.h"
 #include "../transport/transport.h"
 #include "../service/service.h"
+#include "../service/initiate.h"
 #include "../security/security.h"
 #include "../service/notification.h"
 
@@ -34,6 +35,9 @@ typedef struct {
 	uint32_t gbt_block_size;
 	uint8_t gbt_window;
 	bool ciphering_enabled;
+	bool use_dedicated_key;
+	uint8_t dedicated_key[OSP_INITIATE_DEDICATED_KEY_MAX];
+	uint8_t dedicated_key_len;
 	osp_sec_context_t cipher_tx;
 	osp_sec_context_t cipher_rx;
 
@@ -56,6 +60,9 @@ void osp_client_set_gbt_window(osp_client_t *c, uint8_t window);
 
 /* Enable glo-ciphering (tx protects requests, rx unprotects responses) */
 void osp_client_set_ciphering(osp_client_t *c, const osp_sec_context_t *tx, const osp_sec_context_t *rx);
+
+/* Include dedicated encryption key in InitiateRequest (ded-ciphering after connect) */
+void osp_client_set_dedicated_key(osp_client_t *c, const uint8_t *key, uint8_t key_len);
 
 /* Connect: AARQ→AARE→HLS pass3/4. Returns 0 on success. */
 osp_err_t osp_client_connect(osp_client_t *c, uint32_t timeout_ms);

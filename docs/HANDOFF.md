@@ -103,6 +103,7 @@ TableManager(8200) ProfileDataFilter(8201)
 - general-glo/ded/ciphering (0xDB/0xDC/0xDD): ✅ encode/decode + protect via glo (AES/GOST)
 - general-signing (0xDF): ✅ encode/decode + GOST/ECDSA protect/unprotect
 - GOST transport ciphering (suite 8/9): ✅ KUZN-CTR-CMAC in `osp_glo_protect/unprotect`
+- ded-ciphering session helper: ✅ DEK from InitiateRequest + ded tags 0xD0–0xD7
 - Selective access stubbed (encode writes 0)
 - Event notification send not implemented
 - Confirmed service error not implemented
@@ -110,12 +111,12 @@ TableManager(8200) ProfileDataFilter(8201)
 
 ### vs spodes-rs
 - OpenSPODES ahead: ACTION blocks, compact-array, push E2E, client block transfer, IC 62
-- spodes-rs ahead: ded session helper, Concentrator runtime, GBT streaming
+- spodes-rs ahead: Concentrator runtime, GBT streaming
 
 ## Next steps (suggested)
-1. ded-ciphering session helper (switch cipher_tx/rx to dedicated key + ded tags 0xD0–0xD7)
-2. GBT streaming / lost-block recovery
-3. Golden vectors for R 1323565.1 A.1 (KUZN transport AEAD)
+1. GBT streaming / lost-block recovery
+2. Golden vectors for R 1323565.1 A.1 (KUZN transport AEAD)
+3. СПОДУС Concentrator runtime
 
 ## User Instructions (MUST follow)
 - **Consult doc-rag-remote when implementing features**

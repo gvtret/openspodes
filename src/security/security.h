@@ -178,6 +178,11 @@ typedef struct {
 	uint8_t gbek[OSP_SEC_KEY_MAX]; /* Global Broadcast Encryption Key */
 	uint8_t k_em[OSP_SEC_K_EM_SIZE]; /* GOST K_EM (512 bits) for mech 8 */
 
+	/* Dedicated encryption key (DEK) from InitiateRequest — replaces GUEK / MSB256(K_EM) */
+	bool use_dedicated_key;
+	uint8_t dedicated_key[OSP_SEC_KEY_MAX];
+	uint8_t dedicated_key_len;
+
 	uint8_t signing_key[OSP_SEC_SIGN_KEY_MAX];
 	uint8_t peer_public_key[OSP_SEC_PUBKEY_MAX];
 	uint8_t signing_key_len;
@@ -232,12 +237,30 @@ int osp_hls_pass4_verify(osp_sec_context_t *ctx, const uint8_t *f_ctos, uint32_t
 #define OSP_GLO_INITIATE_REQUEST  0x21
 #define OSP_GLO_INITIATE_RESPONSE 0x28
 
+#define OSP_DED_GET_REQUEST      0xD0
+#define OSP_DED_SET_REQUEST      0xD1
+#define OSP_DED_ACTION_REQUEST   0xD3
+#define OSP_DED_GET_RESPONSE     0xD4
+#define OSP_DED_SET_RESPONSE     0xD5
+#define OSP_DED_ACTION_RESPONSE  0xD7
+
 #define OSP_GLO_MAX_PLAIN    1024
 #define OSP_GLO_MAX_CIPHERED (OSP_GLO_MAX_PLAIN + 32)
 
 bool osp_glo_is_ciphered_tag(uint8_t tag);
 uint8_t osp_glo_tag_for_plain(uint8_t plain_tag);
 uint8_t osp_glo_plain_tag_for_ciphered(uint8_t ciphered_tag);
+
+bool osp_ded_is_ciphered_tag(uint8_t tag);
+uint8_t osp_ded_tag_for_plain(uint8_t plain_tag);
+uint8_t osp_ded_plain_tag_for_ciphered(uint8_t ciphered_tag);
+
+bool osp_svc_is_ciphered_tag(uint8_t tag);
+uint8_t osp_svc_cipher_tag_for_plain(const osp_sec_context_t *ctx, uint8_t plain_tag);
+
+/* Install DEK on tx/rx cipher contexts (InitiateRequest dedicated-key). */
+int osp_sec_cipher_apply_dedicated_key(osp_sec_context_t *ctx, const uint8_t *key, uint8_t key_len);
+void osp_sec_cipher_session_use_dedicated(osp_sec_context_t *tx, osp_sec_context_t *rx, const uint8_t *key, uint8_t key_len);
 
 /* Protect a plaintext APDU with glo-ciphering (auth + optional encrypt) */
 int osp_glo_protect(const osp_sec_context_t *ctx, uint8_t ciphered_tag, const uint8_t *plaintext, uint32_t plain_len, uint8_t *out, uint32_t *out_len);

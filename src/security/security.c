@@ -644,6 +644,85 @@ uint8_t osp_glo_plain_tag_for_ciphered(uint8_t ciphered_tag) {
 	return ciphered_tag;
 }
 
+bool osp_ded_is_ciphered_tag(uint8_t tag) {
+	switch (tag) {
+		case OSP_DED_GET_REQUEST:
+		case OSP_DED_SET_REQUEST:
+		case OSP_DED_ACTION_REQUEST:
+		case OSP_DED_GET_RESPONSE:
+		case OSP_DED_SET_RESPONSE:
+		case OSP_DED_ACTION_RESPONSE:
+			return true;
+		default:
+			return false;
+	}
+}
+
+uint8_t osp_ded_tag_for_plain(uint8_t plain_tag) {
+	if (plain_tag >= 0xC0 && plain_tag <= 0xC7) {
+		return (uint8_t)(plain_tag + 0x10);
+	}
+	return plain_tag;
+}
+
+uint8_t osp_ded_plain_tag_for_ciphered(uint8_t ciphered_tag) {
+	if (ciphered_tag >= 0xD0 && ciphered_tag <= 0xD7) {
+		return (uint8_t)(ciphered_tag - 0x10);
+	}
+	return ciphered_tag;
+}
+
+bool osp_svc_is_ciphered_tag(uint8_t tag) {
+	return osp_glo_is_ciphered_tag(tag) || osp_ded_is_ciphered_tag(tag);
+}
+
+uint8_t osp_svc_cipher_tag_for_plain(const osp_sec_context_t *ctx, uint8_t plain_tag) {
+	if (ctx && ctx->use_dedicated_key) {
+		return osp_ded_tag_for_plain(plain_tag);
+	}
+	return osp_glo_tag_for_plain(plain_tag);
+}
+
+int osp_sec_cipher_apply_dedicated_key(osp_sec_context_t *ctx, const uint8_t *key, uint8_t key_len) {
+	if (!ctx || !key || key_len == 0 || key_len > OSP_SEC_KEY_MAX) {
+		return -1;
+	}
+	memcpy(ctx->dedicated_key, key, key_len);
+	ctx->dedicated_key_len = key_len;
+	ctx->use_dedicated_key = true;
+	return 0;
+}
+
+void osp_sec_cipher_session_use_dedicated(osp_sec_context_t *tx, osp_sec_context_t *rx, const uint8_t *key, uint8_t key_len) {
+	if (tx) {
+		osp_sec_cipher_apply_dedicated_key(tx, key, key_len);
+	}
+	if (rx) {
+		osp_sec_cipher_apply_dedicated_key(rx, key, key_len);
+	}
+}
+
+static const uint8_t *sec_aes_encryption_key(const osp_sec_context_t *ctx, uint32_t *key_len_out) {
+	if (ctx->use_dedicated_key) {
+		*key_len_out = ctx->dedicated_key_len;
+		return ctx->dedicated_key;
+	}
+	*key_len_out = osp_sec_suite_aes_key_len(ctx->suite);
+	return ctx->guek;
+}
+
+static void sec_gost_k_em_for_cipher(const osp_sec_context_t *ctx, uint8_t k_em[OSP_SEC_K_EM_SIZE]) {
+	memcpy(k_em, ctx->k_em, OSP_SEC_K_EM_SIZE);
+	if (!ctx->use_dedicated_key) {
+		return;
+	}
+	uint32_t copy = ctx->dedicated_key_len > 32 ? 32 : ctx->dedicated_key_len;
+	memcpy(k_em, ctx->dedicated_key, copy);
+	if (copy < 32) {
+		memset(k_em + copy, 0, 32 - copy);
+	}
+}
+
 static void glo_build_iv(const osp_sec_context_t *ctx, uint32_t ic, uint8_t iv[12]) {
 	memcpy(iv, ctx->system_title, 8);
 	iv[8] = (uint8_t)(ic >> 24);
@@ -681,20 +760,24 @@ int osp_glo_protect(const osp_sec_context_t *ctx, uint8_t ciphered_tag, const ui
 
 	uint8_t sc = osp_sec_control_byte(ctx->policy, ctx->suite);
 	uint32_t ic = ctx->invocation_counter;
-	uint32_t key_len = osp_sec_suite_aes_key_len(ctx->suite);
 	bool auth = (sc & 0x10u) != 0;
 	bool encr = (sc & 0x20u) != 0;
 
 	uint8_t iv[12];
 	glo_build_iv(ctx, ic, iv);
 
+	uint32_t aes_key_len;
+	const uint8_t *aes_key = sec_aes_encryption_key(ctx, &aes_key_len);
+	uint8_t gost_k_em[OSP_SEC_K_EM_SIZE];
+
 	uint8_t protected_part[OSP_GLO_MAX_PLAIN + OSP_SEC_TAG_SIZE];
 	uint32_t protected_len = 0;
 	uint8_t tag[OSP_SEC_TAG_SIZE];
 
 	if (osp_sec_uses_gost_kem(ctx->suite)) {
+		sec_gost_k_em_for_cipher(ctx, gost_k_em);
 		uint32_t body_len = 0;
-		if (osp_gost_kuzn_aead_encrypt(ctx->k_em, iv, sc, NULL, 0, plaintext, plain_len, auth, encr, protected_part, &body_len,
+		if (osp_gost_kuzn_aead_encrypt(gost_k_em, iv, sc, NULL, 0, plaintext, plain_len, auth, encr, protected_part, &body_len,
 		                               auth ? tag : NULL) != 0) {
 			return -1;
 		}
@@ -708,7 +791,7 @@ int osp_glo_protect(const osp_sec_context_t *ctx, uint8_t ciphered_tag, const ui
 		uint8_t aad[17];
 		aad[0] = sc;
 		memcpy(&aad[1], ctx->gak, 16);
-		if (osp_hal_gcm_crypt(OSP_GCM_ENCRYPT, ctx->guek, key_len, iv, aad, 17, plaintext, plain_len, protected_part, NULL, tag) != 0) {
+		if (osp_hal_gcm_crypt(OSP_GCM_ENCRYPT, aes_key, aes_key_len, iv, aad, 17, plaintext, plain_len, protected_part, NULL, tag) != 0) {
 			return -1;
 		}
 		memcpy(&protected_part[plain_len], tag, OSP_SEC_TAG_SIZE);
@@ -721,14 +804,14 @@ int osp_glo_protect(const osp_sec_context_t *ctx, uint8_t ciphered_tag, const ui
 		aad[0] = sc;
 		memcpy(&aad[1], ctx->gak, 16);
 		memcpy(&aad[17], plaintext, plain_len);
-		if (osp_hal_gcm_crypt(OSP_GCM_ENCRYPT, ctx->guek, key_len, iv, aad, 17 + plain_len, NULL, 0, NULL, NULL, tag) != 0) {
+		if (osp_hal_gcm_crypt(OSP_GCM_ENCRYPT, aes_key, aes_key_len, iv, aad, 17 + plain_len, NULL, 0, NULL, NULL, tag) != 0) {
 			return -1;
 		}
 		memcpy(protected_part, plaintext, plain_len);
 		memcpy(&protected_part[plain_len], tag, OSP_SEC_TAG_SIZE);
 		protected_len = plain_len + OSP_SEC_TAG_SIZE;
 	} else if (!auth && encr) {
-		if (osp_hal_gcm_crypt(OSP_GCM_ENCRYPT, ctx->guek, key_len, iv, NULL, 0, plaintext, plain_len, protected_part, NULL, NULL) != 0) {
+		if (osp_hal_gcm_crypt(OSP_GCM_ENCRYPT, aes_key, aes_key_len, iv, NULL, 0, plaintext, plain_len, protected_part, NULL, NULL) != 0) {
 			return -1;
 		}
 		protected_len = plain_len;
@@ -754,7 +837,7 @@ int osp_glo_unprotect(osp_sec_context_t *ctx, const uint8_t *ciphered, uint32_t 
 	if (!osp_sec_uses_gost_kem(ctx->suite) && !osp_hal_gcm_crypt) {
 		return -1;
 	}
-	if (!osp_glo_is_ciphered_tag(ciphered[0])) {
+	if (!osp_svc_is_ciphered_tag(ciphered[0])) {
 		return -1;
 	}
 
@@ -781,11 +864,15 @@ int osp_glo_unprotect(osp_sec_context_t *ctx, const uint8_t *ciphered, uint32_t 
 	uint32_t protected_len = body_len - 5;
 	bool auth = (sc & 0x10u) != 0;
 	bool encr = (sc & 0x20u) != 0;
-	uint32_t key_len = osp_sec_suite_aes_key_len(ctx->suite);
 	uint8_t iv[12];
 	glo_build_iv(ctx, ic, iv);
 
+	uint32_t aes_key_len;
+	const uint8_t *aes_key = sec_aes_encryption_key(ctx, &aes_key_len);
+	uint8_t gost_k_em[OSP_SEC_K_EM_SIZE];
+
 	if (osp_sec_uses_gost_kem(ctx->suite)) {
+		sec_gost_k_em_for_cipher(ctx, gost_k_em);
 		if (auth && encr) {
 			if (protected_len < OSP_SEC_TAG_SIZE) {
 				return -1;
@@ -794,7 +881,7 @@ int osp_glo_unprotect(osp_sec_context_t *ctx, const uint8_t *ciphered, uint32_t 
 			if (ct_len > OSP_GLO_MAX_PLAIN) {
 				return -1;
 			}
-			int rc = osp_gost_kuzn_aead_decrypt(ctx->k_em, iv, sc, NULL, 0, protected_part, ct_len, true, true, plaintext,
+			int rc = osp_gost_kuzn_aead_decrypt(gost_k_em, iv, sc, NULL, 0, protected_part, ct_len, true, true, plaintext,
 			                                      plain_len, &protected_part[ct_len]);
 			if (rc == -2) {
 				return -3;
@@ -810,7 +897,7 @@ int osp_glo_unprotect(osp_sec_context_t *ctx, const uint8_t *ciphered, uint32_t 
 			if (plen > OSP_GLO_MAX_PLAIN) {
 				return -1;
 			}
-			int rc = osp_gost_kuzn_aead_decrypt(ctx->k_em, iv, sc, NULL, 0, protected_part, plen, true, false, plaintext,
+			int rc = osp_gost_kuzn_aead_decrypt(gost_k_em, iv, sc, NULL, 0, protected_part, plen, true, false, plaintext,
 			                                      plain_len, &protected_part[plen]);
 			if (rc == -2) {
 				return -3;
@@ -822,7 +909,7 @@ int osp_glo_unprotect(osp_sec_context_t *ctx, const uint8_t *ciphered, uint32_t 
 			if (protected_len > OSP_GLO_MAX_PLAIN) {
 				return -1;
 			}
-			if (osp_gost_kuzn_aead_decrypt(ctx->k_em, iv, sc, NULL, 0, protected_part, protected_len, false, true, plaintext,
+			if (osp_gost_kuzn_aead_decrypt(gost_k_em, iv, sc, NULL, 0, protected_part, protected_len, false, true, plaintext,
 			                               plain_len, NULL) != 0) {
 				return -3;
 			}
@@ -844,7 +931,7 @@ int osp_glo_unprotect(osp_sec_context_t *ctx, const uint8_t *ciphered, uint32_t 
 		uint8_t aad[17];
 		aad[0] = sc;
 		memcpy(&aad[1], ctx->gak, 16);
-		if (osp_hal_gcm_crypt(OSP_GCM_DECRYPT, ctx->guek, key_len, iv, aad, 17, protected_part, ct_len, plaintext, &protected_part[ct_len], NULL) != 0) {
+		if (osp_hal_gcm_crypt(OSP_GCM_DECRYPT, aes_key, aes_key_len, iv, aad, 17, protected_part, ct_len, plaintext, &protected_part[ct_len], NULL) != 0) {
 			return -3;
 		}
 		*plain_len = ct_len;
@@ -860,7 +947,7 @@ int osp_glo_unprotect(osp_sec_context_t *ctx, const uint8_t *ciphered, uint32_t 
 		aad[0] = sc;
 		memcpy(&aad[1], ctx->gak, 16);
 		memcpy(&aad[17], protected_part, plen);
-		if (osp_hal_gcm_crypt(OSP_GCM_DECRYPT, ctx->guek, key_len, iv, aad, 17 + plen, NULL, 0, NULL, &protected_part[plen], NULL) != 0) {
+		if (osp_hal_gcm_crypt(OSP_GCM_DECRYPT, aes_key, aes_key_len, iv, aad, 17 + plen, NULL, 0, NULL, &protected_part[plen], NULL) != 0) {
 			return -3;
 		}
 		memcpy(plaintext, protected_part, plen);
@@ -869,7 +956,7 @@ int osp_glo_unprotect(osp_sec_context_t *ctx, const uint8_t *ciphered, uint32_t 
 		if (protected_len > OSP_GLO_MAX_PLAIN) {
 			return -1;
 		}
-		if (osp_hal_gcm_crypt(OSP_GCM_DECRYPT, ctx->guek, key_len, iv, NULL, 0, protected_part, protected_len, plaintext, NULL, NULL) != 0) {
+		if (osp_hal_gcm_crypt(OSP_GCM_DECRYPT, aes_key, aes_key_len, iv, NULL, 0, protected_part, protected_len, plaintext, NULL, NULL) != 0) {
 			return -3;
 		}
 		*plain_len = protected_len;

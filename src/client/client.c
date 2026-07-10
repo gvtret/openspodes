@@ -55,6 +55,15 @@ void osp_client_set_ciphering(osp_client_t *c, const osp_sec_context_t *tx, cons
 	c->ciphering_enabled = true;
 }
 
+void osp_client_set_dedicated_key(osp_client_t *c, const uint8_t *key, uint8_t key_len) {
+	if (!c || !key || key_len == 0 || key_len > OSP_INITIATE_DEDICATED_KEY_MAX) {
+		return;
+	}
+	memcpy(c->dedicated_key, key, key_len);
+	c->dedicated_key_len = key_len;
+	c->use_dedicated_key = true;
+}
+
 static bool client_apdu_use_ciphering(const osp_client_t *c, const uint8_t *data, uint32_t len) {
 	return c->ciphering_enabled && len > 0 && osp_gbt_applies_to_apdu(data, len);
 }
@@ -71,7 +80,7 @@ static osp_err_t client_send_apdu(osp_client_t *c, const uint8_t *data, uint32_t
 
 	if (client_apdu_use_ciphering(c, data, len)) {
 		uint32_t cipher_len = 0;
-		if (osp_glo_protect(&c->cipher_tx, osp_glo_tag_for_plain(data[0]), data, len, cipher_buf, &cipher_len) != 0) {
+		if (osp_glo_protect(&c->cipher_tx, osp_svc_cipher_tag_for_plain(&c->cipher_tx, data[0]), data, len, cipher_buf, &cipher_len) != 0) {
 			return OSP_ERR_SECURITY;
 		}
 		c->cipher_tx.invocation_counter++;
@@ -106,7 +115,7 @@ static osp_err_t client_recv_apdu(osp_client_t *c, uint8_t *apdu, uint32_t apdu_
 		*apdu_len = rx_len;
 	}
 
-	if (c->ciphering_enabled && *apdu_len > 0 && osp_glo_is_ciphered_tag(apdu[0])) {
+	if (c->ciphering_enabled && *apdu_len > 0 && osp_svc_is_ciphered_tag(apdu[0])) {
 		uint8_t plain[OSP_CLIENT_REASSEMBLE_MAX];
 		uint32_t plain_len = 0;
 		if (osp_glo_unprotect(&c->cipher_rx, apdu, *apdu_len, plain, &plain_len) != 0) {
@@ -164,6 +173,11 @@ osp_err_t osp_client_connect(osp_client_t *c, uint32_t timeout_ms) {
 
 	osp_initiate_request_t ireq;
 	osp_initiate_request_default(&ireq);
+	if (c->use_dedicated_key) {
+		ireq.has_dedicated_key = true;
+		ireq.dedicated_key_len = c->dedicated_key_len;
+		memcpy(ireq.dedicated_key, c->dedicated_key, c->dedicated_key_len);
+	}
 	osp_buf_t ui;
 	osp_buf_init(&ui, aarq.user_info, sizeof(aarq.user_info));
 	if (osp_initiate_request_encode(&ireq, &ui) != OSP_OK) {
@@ -259,6 +273,10 @@ osp_err_t osp_client_connect(osp_client_t *c, uint32_t timeout_ms) {
 		} else {
 			return OSP_ERR_INVALID;
 		}
+	}
+
+	if (c->ciphering_enabled && ireq.has_dedicated_key) {
+		osp_sec_cipher_session_use_dedicated(&c->cipher_tx, &c->cipher_rx, ireq.dedicated_key, ireq.dedicated_key_len);
 	}
 
 	c->associated = true;

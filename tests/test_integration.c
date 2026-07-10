@@ -917,6 +917,42 @@ static void test_glo_get_ciphered(void **state) {
 	assert_int_equal(result.as.uint32.value, 4242);
 }
 
+static void test_ded_get_ciphered(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_crypto_init_real_gcm();
+
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
+
+	osp_obis_t obis = {0, 0, 0x90, 0, 0, 255};
+	osp_ic_data_t data_obj;
+	osp_ic_data_init(&data_obj, obis);
+	data_obj.value = osp_val_u32(9001);
+	osp_server_register(&server, osp_ic_data_class(), &data_obj);
+
+	osp_sec_context_t client_tx, client_rx, server_tx, server_rx;
+	setup_glo_cipher_contexts(&client_tx, &client_rx, &server_tx, &server_rx);
+	osp_server_set_ciphering(&server, &server_tx, &server_rx);
+
+	static const uint8_t dek[16] = {0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA, 0xAB, 0xAC, 0xAD, 0xAE, 0xAF};
+
+	osp_sec_context_t sec;
+	osp_sec_context_init(&sec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
+	osp_server_set_security(&server, &sec);
+
+	osp_client_t client;
+	make_pair(&pair, &server, &client);
+	osp_client_set_ciphering(&client, &client_tx, &client_rx);
+	osp_client_set_dedicated_key(&client, dek, 16);
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+
+	osp_value_t result;
+	assert_int_equal(osp_client_get(&client, 1, &obis, 1, &result), OSP_OK);
+	assert_int_equal(result.as.uint32.value, 9001);
+}
+
 #endif /* OSP_HAVE_OPENSSL_GCM */
 
 /* ── Runner ──────────────────────────────────────────────────────────────── */
@@ -946,6 +982,7 @@ int main(void) {
 	    cmocka_unit_test(test_push_compact_notification),
 #ifdef OSP_HAVE_OPENSSL_GCM
 	    cmocka_unit_test(test_glo_get_ciphered),
+	    cmocka_unit_test(test_ded_get_ciphered),
 #endif
 	};
 	return cmocka_run_group_tests(tests, NULL, NULL);

@@ -106,7 +106,7 @@ static osp_err_t server_send(osp_server_t *s, const uint8_t *data, uint32_t len)
 
 	if (s->ciphering_enabled && len > 0 && osp_gbt_applies_to_apdu(data, len)) {
 		uint32_t cipher_len = 0;
-		if (osp_glo_protect(&s->cipher_tx, osp_glo_tag_for_plain(data[0]), data, len, cipher_buf, &cipher_len) != 0) {
+		if (osp_glo_protect(&s->cipher_tx, osp_svc_cipher_tag_for_plain(&s->cipher_tx, data[0]), data, len, cipher_buf, &cipher_len) != 0) {
 			return OSP_ERR_SECURITY;
 		}
 		s->cipher_tx.invocation_counter++;
@@ -178,6 +178,16 @@ static osp_err_t handle_aarq(osp_server_t *s, const osp_aarq_t *aarq) {
 	aare.mechanism = aarq->mechanism;
 	aare.responding_ap_title_len = OSP_SEC_SYSTEM_TITLE_SIZE;
 	memcpy(aare.responding_ap_title, s->security.system_title, OSP_SEC_SYSTEM_TITLE_SIZE);
+
+	if (aarq->user_info_len > 0) {
+		osp_buf_t uibuf;
+		osp_buf_init(&uibuf, (uint8_t *)aarq->user_info, aarq->user_info_len);
+		uibuf.wr = aarq->user_info_len;
+		osp_initiate_request_t ireq;
+		if (osp_initiate_request_decode(&uibuf, &ireq) == OSP_OK && ireq.has_dedicated_key && s->ciphering_enabled) {
+			osp_sec_cipher_session_use_dedicated(&s->cipher_tx, &s->cipher_rx, ireq.dedicated_key, ireq.dedicated_key_len);
+		}
+	}
 
 	osp_initiate_response_t iresp;
 	osp_initiate_response_default(&iresp);
@@ -725,7 +735,7 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 		tag = s->rx_buf[0];
 	}
 
-	if (s->ciphering_enabled && osp_glo_is_ciphered_tag(tag)) {
+	if (s->ciphering_enabled && osp_svc_is_ciphered_tag(tag)) {
 		uint8_t plain[OSP_GBT_MAX_APDU];
 		uint32_t plain_len = 0;
 		if (osp_glo_unprotect(&s->cipher_rx, s->rx_buf, rx_len, plain, &plain_len) != 0) {
