@@ -42,7 +42,7 @@ cmake --build build-coverage --target coverage
 |--------|------|-------|---------|
 | `openspodes_test` | `tests/test_core.c` | ~27 | Core codec, transport, IC, dispatcher |
 | `openspodes_test_golden` | `tests/test_codec_golden.c` | ~88 | Golden vectors, BER/ACSE/xDLMS roundtrips |
-| `openspodes_test_errors` | `tests/test_errors.c` | 29 | Error paths: codec, transport, client, server, HLS |
+| `openspodes_test_errors` | `tests/test_errors.c` | 33 | Error paths: codec, transport, client, server, HLS |
 | `openspodes_test_ic` | `tests/test_ic_smoke.c` | 3 | All 38 IC classes smoke + association_ln access |
 | `openspodes_test_integration` | `tests/test_integration.c` | 7 | Client↔server loopback: AARQ, HLS, GET/SET/ACTION |
 
@@ -52,22 +52,20 @@ cmake --build build-coverage --target coverage
 
 | Metric | Value |
 |--------|-------|
-| Lines | **90.4%** (2302/2547) |
-| Branches | **99.2%** (1288/1298) |
+| Lines | **90.1%** (2328/2584) |
+| Branches | **99.3%** (1334/1344) |
 
 | Module | Lines | Branches |
 |--------|-------|----------|
 | ic | 98.0% | 100.0% |
-| transport | 93.1% | 98.2% |
-| service | 90.9% | 100.0% |
-| client | 89.8% | 100.0% |
-| security | 85.4% | 100.0% |
-| server | 85.3% | 92.6% |
+| transport | 91.8% | 98.4% |
+| client | 90.8% | 100.0% |
+| service | 89.8% | 100.0% |
+| security | 85.6% | 100.0% |
+| server | 84.7% | 92.9% |
 | codec | 83.9% | 100.0% |
 
 No file below 80% line coverage.
-
-## Recent fixes (2026-07-10)
 
 ### RLRQ/RLRE ACSE encoding (fixed)
 - `encode_release` now uses **APPLICATION constructed** tags 2/3 → wire bytes `0x62`/`0x63` per COSEMpdu_GB83.asn
@@ -75,11 +73,21 @@ No file below 80% line coverage.
 - `osp_server_accept` decodes RLRQ via `osp_rlrq_decode`, responds with `osp_rlre_encode`
 - `osp_client_release` verifies RLRE response before clearing association
 
+### HDLC address encoding (fixed)
+- `osp_hdlc_address_init` / `osp_hdlc_address_value` use IEC 62056-46 7-bit address + extension bit
+- Multi-byte address frame roundtrip covered in tests
+
+### HLS GMAC client error paths (tests)
+- Pass3 transport failure, bad pass4 GMAC, invalid pass4 response
+- Release with corrupt RLRE leaves association intact
+
 ## Recent commits (main)
 
 1. `77a97bd` — test suites, coverage tooling, service-layer decode fixes
 2. `235f108` — serialize/BER/HLS/client connect error tests
 3. `d0ffc8f` — client GET/SET error paths after association
+4. `6e79d4f` — transport/server tests, HANDOFF refresh
+5. `90d990c` — RLRQ/RLRE APPLICATION tag fix
 
 ## Service-layer fixes (in tree)
 
@@ -114,8 +122,7 @@ GSMDiagnostic(47) MBusSlaveSetup(76) TableManager(8200)
 ## Known issues / gaps
 
 ### Protocol / implementation
-- `osp_hdlc_deframe` multi-byte address roundtrip incomplete (extension-bit parsing)
-- `osp_ber_write_length` unsupported for lengths > 65535
+- `osp_server_run` loop branches untested (infinite loop on timeout)
 - `osp_ber_write_tag` takes `uint8_t` — tags ≥ 256 not encodable
 - `osp_value_write` missing BITSTRING/UTF8STRING/BCD/FLOAT32/FLOAT64
 - Data-notification encoder/decoder not implemented
@@ -123,10 +130,9 @@ GSMDiagnostic(47) MBusSlaveSetup(76) TableManager(8200)
 - `osp_glo_protect` / `osp_glo_unprotect` stubs
 - `osp_server_run` loop branches untested (infinite loop on timeout)
 
-### Coverage remaining (~245 lines, 10 branches)
-- **client.c**: HLS GMAC error paths (bad pass4), encode failures, ACTION with return data
+### Coverage remaining (~256 lines, 10 branches)
+- **client.c**: encode failures, ACTION with return data (non-HLS)
 - **codec.c**: BER write NOMEM edge cases
-- **transport.c**: HDLC deframe multi-byte address while-loops
 - **server.c**: `osp_server_run` timeout/retry branches
 
 ### Untracked / debug (not in CMake)
@@ -139,10 +145,9 @@ GSMDiagnostic(47) MBusSlaveSetup(76) TableManager(8200)
 - No example applications yet
 
 ## Next steps (suggested)
-1. Client HLS GMAC failure tests (bad pass4 response)
-2. HDLC multi-byte address deframe fix + tests
-3. `osp_server_run` test harness (inject transport errors)
-4. Example app: loopback client/server CLI
+1. `osp_server_run` test harness (inject transport errors)
+2. Example app: loopback client/server CLI
+3. Client ACTION with non-null return data (non-HLS methods)
 
 ## Reference files
 - `docs/golden_vectors.txt` — BER/AXDR golden test vectors

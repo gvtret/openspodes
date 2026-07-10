@@ -654,6 +654,121 @@ static void test_client_get_decode_error(void **state) {
 	g_corrupt_next_recv = false;
 }
 
+static void setup_hls_loopback(mock_transport_pair_t *pair, osp_server_t *server, osp_client_t *client) {
+	mock_crypto_init();
+	mock_transport_pair_init(pair);
+
+	osp_server_init(server, &pair->server_transport, OSP_FRAMING_NONE);
+	osp_sec_context_t sec;
+	osp_sec_context_init(&sec, OSP_SUITE_0, OSP_MECH_HLS_GMAC, NULL);
+	osp_server_set_security(server, &sec);
+
+	pair->client_transport.send = loopback_send;
+	pair->client_transport.recv = loopback_recv;
+	pair->client_transport.ctx = pair;
+	g_server = server;
+
+	osp_client_init(client, &pair->client_transport, OSP_FRAMING_NONE);
+	osp_client_set_security(client, &sec);
+}
+
+static int g_hls_send_n;
+
+static osp_err_t fail_hls_pass3_send(void *ctx, const uint8_t *data, uint32_t len) {
+	if (++g_hls_send_n >= 2) {
+		(void)ctx;
+		(void)data;
+		(void)len;
+		return OSP_ERR_NOMEM;
+	}
+	return loopback_send(ctx, data, len);
+}
+
+static void test_client_hls_pass3_send_fail(void **state) {
+	(void)state;
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_client_t client;
+
+	setup_hls_loopback(&pair, &server, &client);
+	g_hls_send_n = 0;
+	pair.client_transport.send = fail_hls_pass3_send;
+
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_ERR_NOMEM);
+	g_server = NULL;
+	g_hls_send_n = 0;
+}
+
+static int g_hls_recv_n;
+
+static osp_err_t corrupt_hls_pass4_recv(void *ctx, uint8_t *buf, uint32_t size, uint32_t *out_len, uint32_t timeout) {
+	mock_transport_pair_t *p = (mock_transport_pair_t *)ctx;
+	osp_err_t r = mock_recv_from_peer(&p->client_rx, buf, size, out_len, timeout);
+	if (r == OSP_OK && ++g_hls_recv_n == 2 && *out_len > 5) {
+		buf[*out_len - 1] ^= 0xFF;
+	}
+	return r;
+}
+
+static void test_client_hls_bad_pass4(void **state) {
+	(void)state;
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_client_t client;
+
+	setup_hls_loopback(&pair, &server, &client);
+	g_hls_recv_n = 0;
+	pair.client_transport.recv = corrupt_hls_pass4_recv;
+
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_ERR_SECURITY);
+	assert_false(client.associated);
+	g_server = NULL;
+	g_hls_recv_n = 0;
+}
+
+static osp_err_t garbage_hls_pass4_recv(void *ctx, uint8_t *buf, uint32_t size, uint32_t *out_len, uint32_t timeout) {
+	mock_transport_pair_t *p = (mock_transport_pair_t *)ctx;
+	if (++g_hls_recv_n >= 2) {
+		(void)timeout;
+		buf[0] = 0xFF;
+		*out_len = 1;
+		return OSP_OK;
+	}
+	return mock_recv_from_peer(&p->client_rx, buf, size, out_len, timeout);
+}
+
+static void test_client_hls_invalid_pass4_response(void **state) {
+	(void)state;
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_client_t client;
+
+	setup_hls_loopback(&pair, &server, &client);
+	g_hls_recv_n = 0;
+	pair.client_transport.recv = garbage_hls_pass4_recv;
+
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_ERR_INVALID);
+	assert_false(client.associated);
+	g_server = NULL;
+	g_hls_recv_n = 0;
+}
+
+static void test_client_release_bad_rlre(void **state) {
+	(void)state;
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_client_t client;
+
+	setup_connected_lowest_client(&client, &pair, &server);
+	g_corrupt_next_recv = true;
+	pair.client_transport.recv = corrupt_next_recv;
+
+	assert_int_equal(osp_client_release(&client), OSP_ERR_INVALID);
+	assert_true(client.associated);
+	g_server = NULL;
+	g_corrupt_next_recv = false;
+}
+
 static void test_client_set_not_found(void **state) {
 	(void)state;
 	mock_transport_pair_t pair;
@@ -701,14 +816,31 @@ static void test_transport_wrapper_framing(void **state) {
 static void test_hdlc_multibyte_address(void **state) {
 	(void)state;
 	osp_hdlc_address_t addr;
+	uint8_t out[128];
+	uint32_t out_len;
+	osp_hdlc_frame_t frame, decoded;
 
 	osp_hdlc_address_init(&addr, 0x1234, 2);
 	assert_int_equal(addr.length, 2);
 	assert_int_equal(osp_hdlc_address_value(&addr), 0x1234);
 
-	osp_hdlc_address_init(&addr, 16, 1);
+	osp_hdlc_address_init(&addr, 1, 1);
 	assert_int_equal(addr.length, 1);
-	assert_int_equal(osp_hdlc_address_value(&addr), 16);
+	assert_int_equal(osp_hdlc_address_value(&addr), 1);
+
+	memset(&frame, 0, sizeof(frame));
+	osp_hdlc_address_init(&frame.destination, 0x1234, 2);
+	osp_hdlc_address_init(&frame.source, 1, 1);
+	frame.control.poll_final = true;
+	frame.info[0] = 0xAA;
+	frame.info_len = 1;
+	assert_int_equal(osp_hdlc_frame(&frame, out, sizeof(out), &out_len), OSP_OK);
+	assert_int_equal(osp_hdlc_deframe(out, out_len, &decoded), OSP_OK);
+	assert_int_equal(decoded.destination.length, 2);
+	assert_int_equal(osp_hdlc_address_value(&decoded.destination), 0x1234);
+	assert_int_equal(osp_hdlc_address_value(&decoded.source), 1);
+	assert_int_equal(decoded.info_len, 1);
+	assert_int_equal(decoded.info[0], 0xAA);
 }
 
 static void test_transport_recv_buffer_too_small(void **state) {
@@ -838,6 +970,10 @@ int main(void) {
 	    cmocka_unit_test(test_client_get_decode_error),
 	    cmocka_unit_test(test_client_set_not_found),
 	    cmocka_unit_test(test_client_get_send_failure),
+	    cmocka_unit_test(test_client_hls_pass3_send_fail),
+	    cmocka_unit_test(test_client_hls_bad_pass4),
+	    cmocka_unit_test(test_client_hls_invalid_pass4_response),
+	    cmocka_unit_test(test_client_release_bad_rlre),
 	    cmocka_unit_test(test_client_disconnect_releases),
 	    cmocka_unit_test(test_server_rlrq_release),
 	    cmocka_unit_test(test_server_invalid_and_unsupported),

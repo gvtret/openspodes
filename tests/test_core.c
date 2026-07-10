@@ -458,6 +458,8 @@ static void test_hdlc_frame_roundtrip(void **state) {
 	assert_int_equal(r, OSP_OK);
 	assert_int_equal(decoded.info_len, 4);
 	assert_memory_equal(decoded.info, frame.info, 4);
+	assert_int_equal(osp_hdlc_address_value(&decoded.destination), 1);
+	assert_int_equal(osp_hdlc_address_value(&decoded.source), 1);
 }
 
 static void test_wrapper_roundtrip(void **state) {

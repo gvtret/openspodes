@@ -43,18 +43,36 @@ uint16_t osp_hdlc_fcs16(const uint8_t *data, uint32_t len) {
 
 void osp_hdlc_address_init(osp_hdlc_address_t *addr, uint32_t value, uint8_t length) {
 	memset(addr, 0, sizeof(*addr));
-	addr->length = length > 4 ? 4 : length;
-	for (uint8_t i = 0; i < addr->length; i++) {
-		addr->bytes[i] = (uint8_t)(value & 0xFF);
-		addr->bytes[i] |= ((i + 1 < addr->length) ? 0x01 : 0x00); /* extension bit */
-		value >>= 8;
+	(void)length;
+
+	if (value == 0) {
+		addr->bytes[0] = 0x01;
+		addr->length = 1;
+		return;
+	}
+
+	uint8_t tmp[OSP_HDLC_MAX_ADDR_LEN];
+	uint8_t n = 0;
+	uint32_t v = value;
+	while (v > 0 && n < OSP_HDLC_MAX_ADDR_LEN) {
+		tmp[n++] = (uint8_t)(v & 0x7F);
+		v >>= 7;
+	}
+
+	addr->length = n;
+	for (uint8_t i = 0; i < n; i++) {
+		uint8_t byte = (uint8_t)(tmp[n - 1 - i] << 1);
+		if (i + 1 == n) {
+			byte |= 0x01;
+		}
+		addr->bytes[i] = byte;
 	}
 }
 
 uint32_t osp_hdlc_address_value(const osp_hdlc_address_t *addr) {
 	uint32_t val = 0;
-	for (int i = addr->length - 1; i >= 0; i--) {
-		val = (val << 8) | (addr->bytes[i] & 0xFE); /* strip extension bit */
+	for (uint8_t i = 0; i < addr->length; i++) {
+		val = (val << 7) | ((addr->bytes[i] >> 1) & 0x7F);
 	}
 	return val;
 }
