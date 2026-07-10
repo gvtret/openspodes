@@ -10,6 +10,7 @@
 
 #include "../src/openspodes.h"
 #include "../src/transport/transport.h"
+#include "../src/server/server.h"
 
 #define MOCK_BUF_SIZE 4096
 
@@ -31,5 +32,8 @@ void mock_transport_pair_init(mock_transport_pair_t *p);
 /* Queue helpers (used by loopback transport) */
 osp_err_t mock_send_to_peer(mock_buf_t *dst, const uint8_t *data, uint32_t len);
 osp_err_t mock_recv_from_peer(mock_buf_t *src, uint8_t *buf, uint32_t size, uint32_t *out_len, uint32_t timeout_ms);
+
+/* Client send + optional server_accept; propagates either transport error */
+osp_err_t mock_loopback_send(mock_transport_pair_t *pair, osp_server_t *server, const uint8_t *data, uint32_t len);
 
 #endif

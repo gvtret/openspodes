@@ -1,5 +1,26 @@
 #include "mock_transport.h"
+#include "../src/server/server.h"
 #include <string.h>
+
+osp_err_t mock_loopback_send(mock_transport_pair_t *pair, osp_server_t *server, const uint8_t *data, uint32_t len) {
+	if (!pair) {
+		return OSP_ERR_INVALID;
+	}
+
+	osp_err_t r = mock_send_to_peer(&pair->server_rx, data, len);
+	if (r != OSP_OK) {
+		return r;
+	}
+
+	if (server) {
+		r = osp_server_accept(server, 0);
+		if (r != OSP_OK) {
+			return r;
+		}
+	}
+
+	return OSP_OK;
+}
 
 osp_err_t mock_send_to_peer(mock_buf_t *dst, const uint8_t *data, uint32_t len) {
 	if (dst->len + len > MOCK_BUF_SIZE)

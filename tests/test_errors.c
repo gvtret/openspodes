@@ -362,6 +362,20 @@ static void test_transport_apdu_errors(void **state) {
 	assert_int_equal(rx_len, sizeof(apdu));
 }
 
+static void test_loopback_send_propagates_server_error(void **state) {
+	(void)state;
+	mock_transport_pair_t pair;
+	mock_transport_pair_init(&pair);
+
+	osp_server_t server;
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
+	server.associated = true;
+
+	const uint8_t bad_svc[] = {0xD0, 0x01, 0x41};
+	assert_int_equal(mock_loopback_send(&pair, &server, bad_svc, sizeof(bad_svc)), OSP_ERR_UNSUPPORTED);
+	assert_int_equal(pair.client_rx.len, 0);
+}
+
 static void test_transport_hdlc_framing(void **state) {
 	(void)state;
 	mock_transport_pair_t pair;
@@ -385,11 +399,7 @@ static osp_server_t *g_server = NULL;
 
 static osp_err_t loopback_send(void *ctx, const uint8_t *data, uint32_t len) {
 	mock_transport_pair_t *p = (mock_transport_pair_t *)ctx;
-	mock_send_to_peer(&p->server_rx, data, len);
-	if (g_server) {
-		osp_server_accept(g_server, 0);
-	}
-	return OSP_OK;
+	return mock_loopback_send(p, g_server, data, len);
 }
 
 static osp_err_t loopback_recv(void *ctx, uint8_t *buf, uint32_t size, uint32_t *out_len, uint32_t timeout) {
@@ -956,6 +966,7 @@ int main(void) {
 	    cmocka_unit_test(test_wrapper_errors),
 	    cmocka_unit_test(test_hdlc_deframe_errors),
 	    cmocka_unit_test(test_transport_apdu_errors),
+	    cmocka_unit_test(test_loopback_send_propagates_server_error),
 	    cmocka_unit_test(test_transport_hdlc_framing),
 	    cmocka_unit_test(test_transport_wrapper_framing),
 	    cmocka_unit_test(test_hdlc_multibyte_address),

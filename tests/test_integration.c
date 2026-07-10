@@ -27,11 +27,7 @@ static osp_server_t *g_server = NULL;
 
 static osp_err_t loopback_send(void *ctx, const uint8_t *data, uint32_t len) {
 	mock_transport_pair_t *p = (mock_transport_pair_t *)ctx;
-	mock_send_to_peer(&p->server_rx, data, len);
-	if (g_server) {
-		osp_server_accept(g_server, 0);
-	}
-	return OSP_OK;
+	return mock_loopback_send(p, g_server, data, len);
 }
 
 static osp_err_t loopback_recv(void *ctx, uint8_t *buf, uint32_t size, uint32_t *out_len, uint32_t timeout) {
