@@ -1,5 +1,7 @@
 #include "push_setup.h"
 #include "ic_common.h"
+#include "../server/server.h"
+#include "../service/notification.h"
 #include <string.h>
 
 static const uint8_t push_attrs[] = {1, 5, 6, 7};
@@ -44,13 +46,40 @@ static osp_err_t push_set(void *inst, uint8_t attr_id, const osp_value_t *value)
 }
 
 static osp_err_t push_invoke(void *inst, uint8_t method_id, const osp_value_t *param, osp_value_t *result) {
-	(void)inst;
+	osp_ic_push_setup_t *p = (osp_ic_push_setup_t *)inst;
 	(void)param;
-	*result = osp_val_null();
-	if (method_id == 1) {
-		return OSP_OK;
+	if (result) {
+		*result = osp_val_null();
 	}
-	return OSP_ERR_UNSUPPORTED;
+	if (method_id != 1) {
+		return OSP_ERR_UNSUPPORTED;
+	}
+	if (!p->server || p->push_object_count == 0) {
+		return OSP_ERR_INVALID;
+	}
+
+	osp_server_t *server = p->server;
+	const osp_push_object_t *po = &p->push_object_list[0];
+
+	if (po->class_id == 62 && po->attribute_index == 2) {
+		osp_value_t ignored = osp_val_null();
+		osp_err_t r = osp_dispatcher_action(&server->dispatcher, po->class_id, &po->logical_name, 2, NULL, &ignored);
+		if (r != OSP_OK) {
+			return r;
+		}
+	}
+
+	osp_value_t body;
+	osp_err_t r = osp_dispatcher_get(&server->dispatcher, po->class_id, &po->logical_name, (uint8_t)po->attribute_index, &body);
+	if (r != OSP_OK) {
+		return r;
+	}
+
+	server->pending_push.pending = true;
+	server->pending_push.notification.long_invoke_id_and_priority = 1;
+	server->pending_push.notification.date_time_len = 0;
+	server->pending_push.notification.notification_body = body;
+	return OSP_OK;
 }
 
 static osp_err_t push_serialize(const void *inst, osp_buf_t *buf) {
@@ -78,6 +107,15 @@ const osp_ic_class_t *osp_ic_push_setup_class(void) {
 }
 
 void osp_ic_push_setup_init(osp_ic_push_setup_t *p, osp_obis_t ln) {
+	if (!p) {
+		return;
+	}
 	memset(p, 0, sizeof(*p));
 	p->logical_name = ln;
+}
+
+void osp_ic_push_setup_bind_server(osp_ic_push_setup_t *p, osp_server_t *server) {
+	if (p) {
+		p->server = server;
+	}
 }

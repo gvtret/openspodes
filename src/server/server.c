@@ -4,7 +4,10 @@
 
 #include "server.h"
 #include "../service/initiate.h"
+#include "../service/notification.h"
 #include "../codec/serialize.h"
+#include "../ic/compact_data.h"
+#include "../ic/push_setup.h"
 #include <string.h>
 
 static osp_err_t server_send(osp_server_t *s, const uint8_t *data, uint32_t len);
@@ -37,7 +40,17 @@ osp_err_t osp_server_register(osp_server_t *s, const osp_ic_class_t *cls, void *
 	if (!s || !cls || !instance) {
 		return OSP_ERR_INVALID;
 	}
-	return osp_dispatcher_register(&s->dispatcher, cls, instance);
+	osp_err_t r = osp_dispatcher_register(&s->dispatcher, cls, instance);
+	if (r != OSP_OK) {
+		return r;
+	}
+	if (cls->class_id == 62) {
+		osp_ic_compact_data_bind_dispatcher((osp_ic_compact_data_t *)instance, &s->dispatcher);
+	}
+	if (cls->class_id == 40) {
+		osp_ic_push_setup_bind_server((osp_ic_push_setup_t *)instance, s);
+	}
+	return OSP_OK;
 }
 
 void osp_server_set_security(osp_server_t *s, const osp_sec_context_t *sec) {
@@ -56,6 +69,27 @@ void osp_server_set_association(osp_server_t *s, osp_ic_association_ln_t *associ
 
 static osp_err_t server_send(osp_server_t *s, const uint8_t *data, uint32_t len) {
 	return osp_transport_send_apdu(s->transport, s->framing, data, len);
+}
+
+static osp_err_t server_flush_pending_push(osp_server_t *s) {
+	if (!s || !s->pending_push.pending) {
+		return OSP_OK;
+	}
+	s->pending_push.pending = false;
+	osp_buf_t buf;
+	osp_buf_init(&buf, s->tx_buf, sizeof(s->tx_buf));
+	if (osp_data_notification_encode(&buf, &s->pending_push.notification) != 0) {
+		return OSP_ERR_INVALID;
+	}
+	return server_send(s, buf.buf, buf.wr);
+}
+
+static osp_err_t server_send_action_response(osp_server_t *s, const osp_action_response_t *resp) {
+	osp_err_t r = send_action_response(s, resp);
+	if (r != OSP_OK) {
+		return r;
+	}
+	return server_flush_pending_push(s);
 }
 
 /* ── Handle AARQ ─────────────────────────────────────────────────────────── */
@@ -496,7 +530,7 @@ static osp_err_t handle_action(osp_server_t *s, const osp_action_request_t *req)
 		resp.as.normal.item_count = 1;
 	}
 
-	return send_action_response(s, &resp);
+	return server_send_action_response(s, &resp);
 }
 
 /* ── Handle HLS pass 3 (from client) ────────────────────────────────────── */

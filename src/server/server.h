@@ -13,6 +13,7 @@
 #include "../service/service.h"
 #include "../security/security.h"
 #include "../server/dispatcher.h"
+#include "../service/notification.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -48,6 +49,11 @@ typedef struct {
 } osp_server_pending_action_out_t;
 
 typedef struct {
+	bool pending;
+	osp_data_notification_t notification;
+} osp_server_pending_push_t;
+
+typedef struct {
 	osp_transport_t *transport;
 	osp_framing_type_t framing;
 	osp_sec_context_t security;
@@ -60,6 +66,7 @@ typedef struct {
 	osp_server_pending_t pending_set;
 	osp_server_pending_action_in_t pending_action_in;
 	osp_server_pending_action_out_t pending_action_out;
+	osp_server_pending_push_t pending_push;
 
 	/* Buffers */
 	uint8_t rx_buf[OSP_SERVER_MAX_PDU];

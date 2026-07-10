@@ -1,6 +1,7 @@
 #include "compact_data.h"
 #include "ic_common.h"
 #include "../codec/serialize.h"
+#include "../server/dispatcher.h"
 #include <string.h>
 
 static const uint8_t cd_attrs[] = {1};
@@ -107,16 +108,16 @@ static osp_err_t cd_set(void *inst, uint8_t attr_id, const osp_value_t *value) {
 	}
 }
 
-static osp_err_t cd_encode_capture_row(osp_ic_compact_data_t *c, uint8_t *out, uint32_t out_max, uint32_t *out_len) {
-	if (!c || !out || !out_len || c->capture_value_count == 0) {
+static osp_err_t cd_encode_rows(const osp_value_t *rows, uint8_t row_count, uint8_t *out, uint32_t out_max, uint32_t *out_len) {
+	if (!rows || row_count == 0 || !out || !out_len) {
 		return OSP_ERR_INVALID;
 	}
 
 	osp_value_t arr;
 	arr.tag = OSP_TAG_ARRAY;
-	arr.as.array.elements.items = c->capture_values;
-	arr.as.array.elements.count = c->capture_value_count;
-	arr.as.array.elements.capacity = c->capture_value_count;
+	arr.as.array.elements.items = (osp_value_t *)rows;
+	arr.as.array.elements.count = row_count;
+	arr.as.array.elements.capacity = row_count;
 
 	osp_buf_t buf;
 	osp_buf_init(&buf, out, out_max);
@@ -126,6 +127,30 @@ static osp_err_t cd_encode_capture_row(osp_ic_compact_data_t *c, uint8_t *out, u
 	}
 	*out_len = buf.wr;
 	return OSP_OK;
+}
+
+static osp_err_t cd_capture_from_dispatcher(osp_ic_compact_data_t *c) {
+	if (c->dispatcher && c->capture_objects.count > 0) {
+		osp_value_t fields[OSP_MAX_CAPTURE_OBJECTS];
+		for (uint8_t i = 0; i < c->capture_objects.count; i++) {
+			const osp_capture_object_t *co = &c->capture_objects.items[i];
+			osp_err_t r = osp_dispatcher_get(c->dispatcher, co->class_id, &co->logical_name, (uint8_t)co->attribute_index, &fields[i]);
+			if (r != OSP_OK) {
+				return r;
+			}
+		}
+		osp_value_t row;
+		row.tag = OSP_TAG_STRUCTURE;
+		row.as.structure.elements.items = fields;
+		row.as.structure.elements.count = c->capture_objects.count;
+		row.as.structure.elements.capacity = c->capture_objects.count;
+		osp_value_t rows[1] = {row};
+		return cd_encode_rows(rows, 1, c->compact_buffer, sizeof(c->compact_buffer), &c->compact_buffer_len);
+	}
+	if (c->capture_value_count > 0) {
+		return cd_encode_rows(c->capture_values, c->capture_value_count, c->compact_buffer, sizeof(c->compact_buffer), &c->compact_buffer_len);
+	}
+	return OSP_ERR_INVALID;
 }
 
 static osp_err_t cd_invoke(void *inst, uint8_t method_id, const osp_value_t *param, osp_value_t *result) {
@@ -140,7 +165,7 @@ static osp_err_t cd_invoke(void *inst, uint8_t method_id, const osp_value_t *par
 			c->capture_value_count = 0;
 			return OSP_OK;
 		case 2:
-			return cd_encode_capture_row(c, c->compact_buffer, sizeof(c->compact_buffer), &c->compact_buffer_len);
+			return cd_capture_from_dispatcher(c);
 		default:
 			return OSP_ERR_NOT_FOUND;
 	}
@@ -176,6 +201,12 @@ void osp_ic_compact_data_init(osp_ic_compact_data_t *i, osp_obis_t ln) {
 	}
 	memset(i, 0, sizeof(*i));
 	i->logical_name = ln;
+}
+
+void osp_ic_compact_data_bind_dispatcher(osp_ic_compact_data_t *i, osp_dispatcher_t *disp) {
+	if (i) {
+		i->dispatcher = disp;
+	}
 }
 
 void osp_ic_compact_data_set_capture_values(osp_ic_compact_data_t *i, const osp_value_t *values, uint8_t count) {

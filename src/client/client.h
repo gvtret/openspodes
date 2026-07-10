@@ -14,6 +14,7 @@
 #include "../transport/transport.h"
 #include "../service/service.h"
 #include "../security/security.h"
+#include "../service/notification.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -58,6 +59,9 @@ osp_err_t osp_client_action(osp_client_t *c, uint16_t class_id, const osp_obis_t
 
 /* Disconnect (transport close) */
 osp_err_t osp_client_disconnect(osp_client_t *c);
+
+/* Receive unsolicited data-notification APDU */
+osp_err_t osp_client_recv_data_notification(osp_client_t *c, osp_data_notification_t *dn, uint32_t timeout_ms);
 
 #ifdef __cplusplus
 }

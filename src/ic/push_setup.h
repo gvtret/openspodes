@@ -2,6 +2,7 @@
 #define OSP_IC_PUSH_SETUP_H
 #include "../openspodes.h"
 #include "../codec/structures.h"
+#include "../server/server.h"
 
 typedef struct {
 	osp_obis_t logical_name;
@@ -13,8 +14,10 @@ typedef struct {
 	uint16_t randomisation_start_interval;
 	uint8_t number_of_retries;
 	uint16_t repetition_delay;
+	osp_server_t *server;
 } osp_ic_push_setup_t;
 
 void osp_ic_push_setup_init(osp_ic_push_setup_t *p, osp_obis_t ln);
+void osp_ic_push_setup_bind_server(osp_ic_push_setup_t *p, osp_server_t *server);
 const osp_ic_class_t *osp_ic_push_setup_class(void);
 #endif

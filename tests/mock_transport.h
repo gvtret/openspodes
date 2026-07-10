@@ -18,6 +18,9 @@ typedef struct {
 	uint8_t data[MOCK_BUF_SIZE];
 	uint32_t len;
 	uint32_t rpos;
+	uint32_t msg_starts[64];
+	uint32_t msg_count;
+	uint32_t msg_index;
 } mock_buf_t;
 
 typedef struct {

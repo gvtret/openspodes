@@ -17,6 +17,7 @@
 #include <setjmp.h>
 #include <string.h>
 #include <math.h>
+#include <stdio.h>
 #include <cmocka.h>
 
 #include "../src/openspodes.h"
@@ -2335,6 +2336,70 @@ static void test_exception_response_roundtrip(void **state) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+ *  Golden vectors file cross-check (thirdparty/dlms-codec parity)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+static int read_file_prefix(const char *path, char *buf, size_t buf_size, size_t *out_len) {
+	FILE *f = fopen(path, "rb");
+	if (!f) {
+		return -1;
+	}
+	size_t n = fread(buf, 1, buf_size - 1, f);
+	buf[n] = '\0';
+	*out_len = n;
+	fclose(f);
+	return 0;
+}
+
+static const char *shared_golden_end(const char *text) {
+	const char *end = strstr(text, "# end");
+	if (end) {
+		return end;
+	}
+	return text + strlen(text);
+}
+
+static void test_golden_vectors_match_thirdparty(void **state) {
+	(void)state;
+	char ours[8192];
+	char theirs[8192];
+	size_t ours_len = 0;
+	size_t theirs_len = 0;
+
+	assert_int_equal(read_file_prefix("../docs/golden_vectors.txt", ours, sizeof(ours), &ours_len), 0);
+	assert_int_equal(read_file_prefix("../thirdparty/dlms-codec/dlms-codec/golden_vectors.txt", theirs, sizeof(theirs), &theirs_len), 0);
+
+	const char *theirs_end = shared_golden_end(theirs);
+	size_t shared_len = (size_t)(theirs_end - theirs);
+	assert_true(shared_len <= ours_len);
+	assert_memory_equal(ours, theirs, shared_len);
+}
+
+static void test_golden_vectors_compact_array_decode(void **state) {
+	(void)state;
+	const uint8_t golden_u8[] = {0x13, 0x11, 0x03, 0x01, 0x02, 0x03};
+	osp_buf_t r = make_rbuf((uint8_t *)golden_u8, sizeof(golden_u8));
+	osp_value_t decoded;
+	assert_int_equal(osp_value_read(&r, &decoded), OSP_OK);
+	assert_int_equal(decoded.tag, OSP_TAG_ARRAY);
+	assert_int_equal(decoded.as.array.elements.count, 3);
+	assert_int_equal(decoded.as.array.elements.items[0].as.uint8.value, 1);
+	assert_int_equal(decoded.as.array.elements.items[2].as.uint8.value, 3);
+
+	uint8_t mem[32];
+	osp_buf_t w = make_wbuf(mem, sizeof(mem));
+	osp_value_t items[3] = {osp_val_u8(1), osp_val_u8(2), osp_val_u8(3)};
+	osp_value_t arr;
+	arr.tag = OSP_TAG_ARRAY;
+	arr.as.array.elements.items = items;
+	arr.as.array.elements.count = 3;
+	arr.as.array.elements.capacity = 3;
+	assert_int_equal(osp_value_write_compact_array(&w, &arr), OSP_OK);
+	assert_int_equal(w.wr, sizeof(golden_u8));
+	assert_memory_equal(mem, golden_u8, sizeof(golden_u8));
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
  *  Test runner
  * ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -2475,6 +2540,10 @@ int main(void) {
 	    cmocka_unit_test(test_action_response_roundtrip),
 	    cmocka_unit_test(test_action_response_no_return_roundtrip),
 	    cmocka_unit_test(test_exception_response_roundtrip),
+
+	    /* Golden vectors file parity with thirdparty/dlms-codec */
+	    cmocka_unit_test(test_golden_vectors_match_thirdparty),
+	    cmocka_unit_test(test_golden_vectors_compact_array_decode),
 	};
 	return cmocka_run_group_tests(tests, NULL, NULL);
 }

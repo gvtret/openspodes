@@ -14,9 +14,13 @@
 #include "../src/openspodes.h"
 #include "../src/client/client.h"
 #include "../src/server/server.h"
+#include "../src/server/dispatcher.h"
 #include "../src/ic/data.h"
 #include "../src/ic/disconnect_control.h"
 #include "../src/ic/image_transfer.h"
+#include "../src/ic/compact_data.h"
+#include "../src/ic/push_setup.h"
+#include "../src/service/notification.h"
 #include "../src/security/security.h"
 #include "../src/codec/serialize.h"
 #include "mock_transport.h"
@@ -313,6 +317,13 @@ static osp_value_t make_octets(uint8_t fill, uint32_t len) {
 	return v;
 }
 
+static osp_buf_t make_rbuf(uint8_t *mem, uint32_t len) {
+	osp_buf_t b;
+	osp_buf_init(&b, mem, len);
+	b.wr = len;
+	return b;
+}
+
 static osp_err_t loopback_exchange(mock_transport_pair_t *pair, osp_server_t *server, const uint8_t *tx, uint32_t tx_len,
                                   uint8_t *rx, uint32_t rx_size, uint32_t *rx_len) {
 	osp_err_t r = mock_loopback_send(pair, server, tx, tx_len);
@@ -507,6 +518,99 @@ static void test_action_return_param_blocks(void **state) {
 	}
 }
 
+static void test_compact_data_capture_via_dispatcher(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
+
+	osp_obis_t obis_a = {0, 0, 10, 0, 0, 255};
+	osp_obis_t obis_b = {0, 0, 11, 0, 0, 255};
+	osp_ic_data_t data_a, data_b;
+	osp_ic_data_init(&data_a, obis_a);
+	osp_ic_data_init(&data_b, obis_b);
+	data_a.value = osp_val_u8(1);
+	data_b.value = osp_val_u16(0x0102);
+	osp_server_register(&server, osp_ic_data_class(), &data_a);
+	osp_server_register(&server, osp_ic_data_class(), &data_b);
+
+	osp_obis_t cd_obis = {0, 0, 99, 0, 0, 255};
+	osp_ic_compact_data_t cd;
+	osp_ic_compact_data_init(&cd, cd_obis);
+	cd.capture_objects.items[0] = (osp_capture_object_t){1, obis_a, 1, 0, {0}};
+	cd.capture_objects.items[1] = (osp_capture_object_t){1, obis_b, 1, 0, {0}};
+	cd.capture_objects.count = 2;
+	osp_server_register(&server, osp_ic_compact_data_class(), &cd);
+
+	osp_value_t ignored = osp_val_null();
+	assert_int_equal(osp_dispatcher_action(&server.dispatcher, 62, &cd_obis, 2, NULL, &ignored), OSP_OK);
+
+	osp_value_t buf_val;
+	assert_int_equal(osp_ic_compact_data_class()->get_attr(&cd, 2, &buf_val), OSP_OK);
+	assert_int_equal(buf_val.tag, OSP_TAG_OCTETSTRING);
+
+	osp_buf_t r = make_rbuf(buf_val.as.octetstring.data, buf_val.as.octetstring.len);
+	osp_value_t decoded;
+	assert_int_equal(osp_value_read(&r, &decoded), OSP_OK);
+	assert_int_equal(decoded.tag, OSP_TAG_ARRAY);
+	assert_int_equal(decoded.as.array.elements.count, 1);
+	assert_int_equal(decoded.as.array.elements.items[0].as.structure.elements.items[0].as.uint8.value, 1);
+	assert_int_equal(decoded.as.array.elements.items[0].as.structure.elements.items[1].as.uint16.value, 0x0102);
+}
+
+static void test_push_compact_notification(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
+
+	osp_obis_t obis_a = {0, 0, 20, 0, 0, 255};
+	osp_obis_t obis_b = {0, 0, 21, 0, 0, 255};
+	osp_ic_data_t data_a, data_b;
+	osp_ic_data_init(&data_a, obis_a);
+	osp_ic_data_init(&data_b, obis_b);
+	data_a.value = osp_val_u8(5);
+	data_b.value = osp_val_u16(0x0A0B);
+	osp_server_register(&server, osp_ic_data_class(), &data_a);
+	osp_server_register(&server, osp_ic_data_class(), &data_b);
+
+	osp_obis_t cd_obis = {0, 0, 98, 0, 0, 255};
+	osp_ic_compact_data_t cd;
+	osp_ic_compact_data_init(&cd, cd_obis);
+	cd.capture_objects.items[0] = (osp_capture_object_t){1, obis_a, 1, 0, {0}};
+	cd.capture_objects.items[1] = (osp_capture_object_t){1, obis_b, 1, 0, {0}};
+	cd.capture_objects.count = 2;
+	osp_server_register(&server, osp_ic_compact_data_class(), &cd);
+
+	osp_obis_t push_obis = {0, 0, 25, 0, 0, 255};
+	osp_ic_push_setup_t push;
+	osp_ic_push_setup_init(&push, push_obis);
+	push.push_object_list[0] = (osp_push_object_t){62, cd_obis, 2};
+	push.push_object_count = 1;
+	osp_server_register(&server, osp_ic_push_setup_class(), &push);
+
+	osp_client_t client;
+	make_pair(&pair, &server, &client);
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+
+	osp_value_t result;
+	assert_int_equal(osp_client_action(&client, 40, &push_obis, 1, NULL, &result), OSP_OK);
+
+	osp_data_notification_t dn;
+	assert_int_equal(osp_client_recv_data_notification(&client, &dn, 5000), OSP_OK);
+	assert_int_equal(dn.notification_body.tag, OSP_TAG_OCTETSTRING);
+
+	osp_buf_t r = make_rbuf(dn.notification_body.as.octetstring.data, dn.notification_body.as.octetstring.len);
+	osp_value_t decoded;
+	assert_int_equal(osp_value_read(&r, &decoded), OSP_OK);
+	assert_int_equal(decoded.tag, OSP_TAG_ARRAY);
+	assert_int_equal(decoded.as.array.elements.count, 1);
+	assert_int_equal(decoded.as.array.elements.items[0].as.structure.elements.items[0].as.uint8.value, 5);
+	assert_int_equal(decoded.as.array.elements.items[0].as.structure.elements.items[1].as.uint16.value, 0x0A0B);
+}
+
 /* ── Runner ──────────────────────────────────────────────────────────────── */
 
 int main(void) {
@@ -520,6 +624,8 @@ int main(void) {
 	    cmocka_unit_test(test_client_set_via_blocks),
 	    cmocka_unit_test(test_action_param_block_invoke),
 	    cmocka_unit_test(test_action_return_param_blocks),
+	    cmocka_unit_test(test_compact_data_capture_via_dispatcher),
+	    cmocka_unit_test(test_push_compact_notification),
 	};
 	return cmocka_run_group_tests(tests, NULL, NULL);
 }

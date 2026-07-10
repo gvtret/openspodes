@@ -23,8 +23,12 @@ osp_err_t mock_loopback_send(mock_transport_pair_t *pair, osp_server_t *server, 
 }
 
 osp_err_t mock_send_to_peer(mock_buf_t *dst, const uint8_t *data, uint32_t len) {
-	if (dst->len + len > MOCK_BUF_SIZE)
+	if (dst->len + len > MOCK_BUF_SIZE) {
 		return OSP_ERR_NOMEM;
+	}
+	if (dst->msg_count < (sizeof(dst->msg_starts) / sizeof(dst->msg_starts[0]))) {
+		dst->msg_starts[dst->msg_count++] = dst->len;
+	}
 	memcpy(&dst->data[dst->len], data, len);
 	dst->len += len;
 	return OSP_OK;
@@ -32,12 +36,19 @@ osp_err_t mock_send_to_peer(mock_buf_t *dst, const uint8_t *data, uint32_t len) 
 
 osp_err_t mock_recv_from_peer(mock_buf_t *src, uint8_t *buf, uint32_t size, uint32_t *out_len, uint32_t timeout_ms) {
 	(void)timeout_ms;
-	uint32_t avail = src->len - src->rpos;
-	if (avail == 0)
+	if (src->msg_index >= src->msg_count) {
 		return OSP_ERR_TIMEOUT;
+	}
+	uint32_t start = src->msg_starts[src->msg_index];
+	uint32_t end = (src->msg_index + 1 < src->msg_count) ? src->msg_starts[src->msg_index + 1] : src->len;
+	uint32_t avail = end - start;
+	if (avail == 0) {
+		return OSP_ERR_TIMEOUT;
+	}
 	uint32_t n = avail < size ? avail : size;
-	memcpy(buf, &src->data[src->rpos], n);
-	src->rpos += n;
+	memcpy(buf, &src->data[start], n);
+	src->msg_index++;
+	src->rpos = end;
 	*out_len = n;
 	return OSP_OK;
 }

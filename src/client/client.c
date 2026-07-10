@@ -6,6 +6,7 @@
 
 #include "client.h"
 #include "../service/initiate.h"
+#include "../service/notification.h"
 #include "../codec/serialize.h"
 #include <string.h>
 
@@ -576,6 +577,29 @@ osp_err_t osp_client_action(osp_client_t *c, uint16_t class_id, const osp_obis_t
 		return r;
 	}
 	return client_action_finish_response(c, iidp, &resp, result);
+}
+
+osp_err_t osp_client_recv_data_notification(osp_client_t *c, osp_data_notification_t *dn, uint32_t timeout_ms) {
+	if (!c || !c->transport || !dn) {
+		return OSP_ERR_INVALID;
+	}
+
+	uint32_t rx_len = 0;
+	osp_err_t r = osp_transport_recv_apdu(c->transport, c->framing, c->rx_buf, sizeof(c->rx_buf), &rx_len, timeout_ms);
+	if (r != OSP_OK) {
+		return r;
+	}
+	if (rx_len == 0 || c->rx_buf[0] != OSP_TAG_DATA_NOTIFICATION) {
+		return OSP_ERR_INVALID;
+	}
+
+	osp_buf_t buf;
+	osp_buf_init(&buf, c->rx_buf, rx_len);
+	buf.wr = rx_len;
+	if (osp_data_notification_decode(&buf, dn) != 0) {
+		return OSP_ERR_INVALID;
+	}
+	return OSP_OK;
 }
 
 /* ── Release ─────────────────────────────────────────────────────────────── */
