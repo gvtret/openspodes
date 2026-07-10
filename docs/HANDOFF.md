@@ -55,6 +55,7 @@ ctest --test-dir build-linux --output-on-failure
 - Push Setup → data-notification E2E (`osp_client_recv_data_notification`)
 - Golden vectors cross-check vs `thirdparty/dlms-codec`
 - **Client with-list API**: `osp_client_get/set/action_with_list`
+- **GBT runtime E2E**: `osp_server_enable_gbt` / `osp_client_enable_gbt`, transport send/recv
 
 ## Client API
 
@@ -68,6 +69,7 @@ ctest --test-dir build-linux --output-on-failure
 | `osp_client_action` | ✅ + param/return blocks |
 | `osp_client_action_with_list` | ✅ |
 | `osp_client_recv_data_notification` | ✅ |
+| GBT runtime (xDLMS only) | ✅ unconfirmed multi-block |
 | glo-ciphering session | ❌ |
 
 ## IC Classes (40 implemented)
@@ -84,7 +86,7 @@ TableManager(8200) ProfileDataFilter(8201)
 ## Known gaps
 
 ### Protocol / implementation
-- GBT codec only — not wired to client/server runtime
+- GBT confirmed mode with streaming/ack (window>0) not implemented
 - `GET_WITH_LIST_BLOCK` enum only (no codec)
 - `osp_glo_protect` / `osp_glo_unprotect` stubs
 - HLS MD5/SHA1/SHA256/GOST mechanisms not implemented
@@ -98,8 +100,8 @@ TableManager(8200) ProfileDataFilter(8201)
 - spodes-rs ahead: GOST security, glo-ciphering, general-ciphering, Concentrator runtime, examples
 
 ## Next steps (suggested)
-1. GBT runtime E2E (wrap large APDUs)
-2. glo-ciphering (`security.c`)
+1. glo-ciphering (`security.c`)
+2. GBT confirmed/streaming mode (window>0, lost-block recovery)
 3. HLS mechanisms 4–10
 4. Example app: loopback client/server CLI
 5. Deepen stub ICs (26, 31, 61, 63, 65, 76)

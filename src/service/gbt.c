@@ -1,9 +1,163 @@
 #include "gbt.h"
 #include "../codec/codec.h"
+#include <string.h>
 
 #define OSP_GBT_LAST_BLOCK 0x80u
 #define OSP_GBT_STREAMING  0x40u
 #define OSP_GBT_WINDOW_MASK 0x3Fu
+
+static osp_err_t gbt_send_block(osp_transport_t *transport, osp_framing_type_t framing, const osp_general_block_transfer_t *gbt,
+                                uint8_t *tx_scratch, uint32_t tx_scratch_size) {
+	osp_buf_t buf;
+	osp_buf_init(&buf, tx_scratch, tx_scratch_size);
+	if (osp_gbt_encode(&buf, gbt) != 0) {
+		return OSP_ERR_INVALID;
+	}
+	return osp_transport_send_apdu(transport, framing, buf.buf, buf.wr);
+}
+
+static osp_err_t gbt_recv_block(osp_transport_t *transport, osp_framing_type_t framing, osp_general_block_transfer_t *gbt,
+                                uint8_t *rx_scratch, uint32_t rx_scratch_size, uint32_t timeout_ms) {
+	uint32_t rx_len = 0;
+	osp_err_t r = osp_transport_recv_apdu(transport, framing, rx_scratch, rx_scratch_size, &rx_len, timeout_ms);
+	if (r != OSP_OK) {
+		return r;
+	}
+	if (rx_len == 0 || rx_scratch[0] != OSP_TAG_GENERAL_BLOCK_TRANSFER) {
+		return OSP_ERR_INVALID;
+	}
+	osp_buf_t buf;
+	osp_buf_init(&buf, rx_scratch, rx_len);
+	buf.wr = rx_len;
+	if (osp_gbt_decode(&buf, gbt) != 0) {
+		return OSP_ERR_INVALID;
+	}
+	return OSP_OK;
+}
+
+static osp_err_t gbt_send_ack(osp_transport_t *transport, osp_framing_type_t framing, uint16_t block_number_ack, uint8_t *tx_scratch,
+                              uint32_t tx_scratch_size) {
+	osp_general_block_transfer_t ack = {0};
+	ack.last_block = true;
+	ack.streaming = false;
+	ack.window = 1;
+	ack.block_number = 1;
+	ack.block_number_ack = block_number_ack;
+	ack.block_data_len = 0;
+	return gbt_send_block(transport, framing, &ack, tx_scratch, tx_scratch_size);
+}
+
+osp_err_t osp_gbt_transport_send(osp_transport_t *transport, osp_framing_type_t framing, const uint8_t *apdu, uint32_t apdu_len,
+                                 uint32_t block_payload_max, uint8_t *rx_scratch, uint32_t rx_scratch_size, uint32_t timeout_ms) {
+	if (!transport || !apdu || apdu_len == 0 || apdu_len > OSP_GBT_MAX_APDU || block_payload_max == 0 || block_payload_max > OSP_MAX_OCTET_LEN ||
+	    !rx_scratch) {
+		return OSP_ERR_INVALID;
+	}
+
+	uint8_t tx_scratch[OSP_GBT_HEADER_MAX + OSP_MAX_OCTET_LEN];
+	uint32_t offset = 0;
+	uint16_t block_number = 1;
+
+	while (offset < apdu_len) {
+		uint32_t chunk = apdu_len - offset;
+		if (chunk > block_payload_max) {
+			chunk = block_payload_max;
+		}
+		bool last = (offset + chunk >= apdu_len);
+
+		osp_general_block_transfer_t gbt = {0};
+		gbt.last_block = last;
+		gbt.streaming = false;
+		gbt.window = 0;
+		gbt.block_number = block_number;
+		gbt.block_number_ack = 0;
+		gbt.block_data_len = chunk;
+		memcpy(gbt.block_data, &apdu[offset], chunk);
+
+		osp_err_t r = gbt_send_block(transport, framing, &gbt, tx_scratch, sizeof(tx_scratch));
+		if (r != OSP_OK) {
+			return r;
+		}
+
+		offset += chunk;
+		block_number++;
+	}
+	return OSP_OK;
+}
+
+osp_err_t osp_gbt_transport_recv(osp_transport_t *transport, osp_framing_type_t framing, uint8_t *rx_scratch, uint32_t rx_scratch_size,
+                                 uint8_t *apdu, uint32_t apdu_size, uint32_t *apdu_len, uint8_t *tx_scratch, uint32_t tx_scratch_size,
+                                 uint32_t timeout_ms, const uint8_t *first_block, uint32_t first_block_len) {
+	if (!transport || !rx_scratch || !apdu || !apdu_len || !tx_scratch) {
+		return OSP_ERR_INVALID;
+	}
+
+	uint32_t acc_len = 0;
+	uint16_t expected_block = 1;
+	bool have_first = (first_block != NULL && first_block_len > 0);
+
+	while (true) {
+		osp_general_block_transfer_t gbt;
+		osp_err_t r;
+		if (have_first) {
+			if (first_block[0] != OSP_TAG_GENERAL_BLOCK_TRANSFER) {
+				return OSP_ERR_INVALID;
+			}
+			osp_buf_t buf;
+			osp_buf_init(&buf, (uint8_t *)first_block, first_block_len);
+			buf.wr = first_block_len;
+			if (osp_gbt_decode(&buf, &gbt) != 0) {
+				return OSP_ERR_INVALID;
+			}
+			have_first = false;
+		} else {
+			r = gbt_recv_block(transport, framing, &gbt, rx_scratch, rx_scratch_size, timeout_ms);
+			if (r != OSP_OK) {
+				return r;
+			}
+		}
+		if (gbt.block_number != expected_block) {
+			return OSP_ERR_INVALID;
+		}
+		if (acc_len + gbt.block_data_len > apdu_size) {
+			return OSP_ERR_NOMEM;
+		}
+		memcpy(&apdu[acc_len], gbt.block_data, gbt.block_data_len);
+		acc_len += gbt.block_data_len;
+
+		if (gbt.last_block) {
+			*apdu_len = acc_len;
+			return OSP_OK;
+		}
+
+		if (gbt.window > 0) {
+			r = gbt_send_ack(transport, framing, expected_block, tx_scratch, tx_scratch_size);
+			if (r != OSP_OK) {
+				return r;
+			}
+		}
+		expected_block++;
+	}
+}
+
+bool osp_gbt_applies_to_apdu(const uint8_t *apdu, uint32_t len) {
+	if (!apdu || len == 0) {
+		return false;
+	}
+	switch (apdu[0]) {
+		case OSP_TAG_GET_REQUEST:
+		case OSP_TAG_GET_RESPONSE:
+		case OSP_TAG_SET_REQUEST:
+		case OSP_TAG_SET_RESPONSE:
+		case OSP_TAG_ACTION_REQUEST:
+		case OSP_TAG_ACTION_RESPONSE:
+		case OSP_TAG_DATA_NOTIFICATION:
+		case OSP_TAG_EVENT_NOTIFICATION_REQ:
+			return true;
+		default:
+			return false;
+	}
+}
 
 int osp_gbt_encode(osp_buf_t *buf, const osp_general_block_transfer_t *gbt) {
 	if (!buf || !gbt) {

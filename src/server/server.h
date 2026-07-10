@@ -61,6 +61,8 @@ typedef struct {
 	bool associated;
 	uint8_t invoke_id;
 	uint32_t max_pdu;
+	bool gbt_enabled;
+	uint32_t gbt_block_size;
 
 	osp_server_pending_t pending_get;
 	osp_server_pending_t pending_set;
@@ -75,6 +77,9 @@ typedef struct {
 
 /* Set max PDU size for block transfer segmentation (default: full buffer) */
 void osp_server_set_max_pdu(osp_server_t *s, uint32_t max_pdu);
+
+/* Enable general block transfer for APDUs longer than block_size (default payload 56 B) */
+void osp_server_enable_gbt(osp_server_t *s, uint32_t block_size);
 
 /* Initialize server */
 osp_err_t osp_server_init(osp_server_t *s, osp_transport_t *transport, osp_framing_type_t framing);

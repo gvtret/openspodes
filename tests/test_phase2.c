@@ -12,6 +12,7 @@
 #include "service/service.h"
 #include "service/notification.h"
 #include "service/gbt.h"
+#include "mock_transport.h"
 #include "server/server.h"
 #include "server/dispatcher.h"
 #include "ic/register.h"
@@ -165,6 +166,35 @@ static void test_gbt_roundtrip(void **state) {
 	assert_int_equal(out.block_data_len, 5);
 }
 
+static void test_gbt_transport_mock_loopback(void **state) {
+	(void)state;
+	mock_transport_pair_t pair;
+	mock_transport_pair_init(&pair);
+
+	uint8_t apdu[256];
+	for (uint32_t i = 0; i < 187; i++) {
+		apdu[i] = (uint8_t)(i & 0xFF);
+	}
+
+	assert_int_equal(osp_gbt_transport_send(&pair.server_transport, OSP_FRAMING_NONE, apdu, 187, 40, pair.server_rx.data, MOCK_BUF_SIZE, 5000),
+	                 OSP_OK);
+	assert_true(pair.client_rx.msg_count >= 5);
+
+	uint8_t out[256];
+	uint8_t rx_scratch[256];
+	uint8_t tx_scratch[64];
+	uint32_t out_len = 0;
+	uint32_t first_len = 0;
+	assert_int_equal(mock_recv_from_peer(&pair.client_rx, rx_scratch, sizeof(rx_scratch), &first_len, 0), OSP_OK);
+	assert_int_equal(rx_scratch[0], OSP_TAG_GENERAL_BLOCK_TRANSFER);
+
+	assert_int_equal(osp_gbt_transport_recv(&pair.client_transport, OSP_FRAMING_NONE, rx_scratch, sizeof(rx_scratch), out, sizeof(out),
+	                                          &out_len, tx_scratch, sizeof(tx_scratch), 5000, rx_scratch, first_len),
+	                 OSP_OK);
+	assert_int_equal(out_len, 187);
+	assert_memory_equal(out, apdu, 187);
+}
+
 static void test_action_param_block_golden(void **state) {
 	(void)state;
 	const uint8_t golden_next_req[] = {0xC3, 0x02, 0xC1, 0x00, 0x00, 0x00, 0x02};
@@ -242,6 +272,7 @@ int main(void) {
 	    cmocka_unit_test(test_data_notification_roundtrip),
 	    cmocka_unit_test(test_event_notification_roundtrip),
 	    cmocka_unit_test(test_gbt_roundtrip),
+	    cmocka_unit_test(test_gbt_transport_mock_loopback),
 	    cmocka_unit_test(test_action_param_block_golden),
 	    cmocka_unit_test(test_compact_data_capture),
 	};

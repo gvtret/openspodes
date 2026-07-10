@@ -7,6 +7,7 @@
 #include "client.h"
 #include "../service/initiate.h"
 #include "../service/notification.h"
+#include "../service/gbt.h"
 #include "../codec/serialize.h"
 #include <string.h>
 
@@ -29,20 +30,52 @@ void osp_client_set_security(osp_client_t *c, const osp_sec_context_t *sec) {
 	}
 }
 
-/* ── Internal: send APDU and receive response ────────────────────────────── */
+void osp_client_enable_gbt(osp_client_t *c, uint32_t block_size) {
+	if (!c) {
+		return;
+	}
+	c->gbt_enabled = true;
+	c->gbt_block_size = block_size > OSP_GBT_HEADER_MAX ? block_size : OSP_GBT_DEFAULT_BLOCK_SIZE;
+}
 
-static osp_err_t client_send_recv(osp_client_t *c, const uint8_t *tx, uint32_t tx_len, uint8_t *rx, uint32_t rx_size, uint32_t *rx_len) {
-	osp_err_t r;
+static uint32_t client_gbt_payload_max(const osp_client_t *c) {
+	uint32_t block = c->gbt_block_size > 0 ? c->gbt_block_size : OSP_GBT_DEFAULT_BLOCK_SIZE;
+	return block > OSP_GBT_HEADER_MAX ? block - OSP_GBT_HEADER_MAX : 1;
+}
 
-	/* Send framed APDU */
-	r = osp_transport_send_apdu(c->transport, c->framing, tx, tx_len);
+static osp_err_t client_send_apdu(osp_client_t *c, const uint8_t *data, uint32_t len) {
+	if (c->gbt_enabled && osp_gbt_applies_to_apdu(data, len) && len > client_gbt_payload_max(c)) {
+		return osp_gbt_transport_send(c->transport, c->framing, data, len, client_gbt_payload_max(c), c->rx_buf, sizeof(c->rx_buf), 5000);
+	}
+	return osp_transport_send_apdu(c->transport, c->framing, data, len);
+}
+
+static osp_err_t client_recv_apdu(osp_client_t *c, uint8_t *apdu, uint32_t apdu_size, uint32_t *apdu_len, uint32_t timeout_ms) {
+	uint32_t rx_len = 0;
+	osp_err_t r = osp_transport_recv_apdu(c->transport, c->framing, c->rx_buf, sizeof(c->rx_buf), &rx_len, timeout_ms);
 	if (r != OSP_OK) {
 		return r;
 	}
+	if (c->gbt_enabled && rx_len > 0 && c->rx_buf[0] == OSP_TAG_GENERAL_BLOCK_TRANSFER) {
+		return osp_gbt_transport_recv(c->transport, c->framing, c->rx_buf, sizeof(c->rx_buf), apdu, apdu_size, apdu_len, c->tx_buf,
+		                              sizeof(c->tx_buf), timeout_ms, c->rx_buf, rx_len);
+	}
+	if (rx_len > apdu_size) {
+		return OSP_ERR_NOMEM;
+	}
+	memcpy(apdu, c->rx_buf, rx_len);
+	*apdu_len = rx_len;
+	return OSP_OK;
+}
 
-	/* Receive framed APDU */
-	r = osp_transport_recv_apdu(c->transport, c->framing, rx, rx_size, rx_len, 5000);
-	return r;
+/* ── Internal: send APDU and receive response ────────────────────────────── */
+
+static osp_err_t client_send_recv(osp_client_t *c, const uint8_t *tx, uint32_t tx_len, uint8_t *rx, uint32_t rx_size, uint32_t *rx_len) {
+	osp_err_t r = client_send_apdu(c, tx, tx_len);
+	if (r != OSP_OK) {
+		return r;
+	}
+	return client_recv_apdu(c, rx, rx_size, rx_len, 5000);
 }
 
 /* ── Connect: AARQ → AARE → HLS pass3/4 ────────────────────────────────── */
@@ -175,14 +208,15 @@ osp_err_t osp_client_connect(osp_client_t *c, uint32_t timeout_ms) {
 /* ── GET ─────────────────────────────────────────────────────────────────── */
 
 static osp_err_t client_recv_get_response(osp_client_t *c, osp_get_response_t *resp) {
-	uint32_t rx_len;
-	osp_err_t r = osp_transport_recv_apdu(c->transport, c->framing, c->rx_buf, sizeof(c->rx_buf), &rx_len, 5000);
+	uint8_t apdu[OSP_CLIENT_REASSEMBLE_MAX];
+	uint32_t apdu_len = 0;
+	osp_err_t r = client_recv_apdu(c, apdu, sizeof(apdu), &apdu_len, 5000);
 	if (r != OSP_OK) {
 		return r;
 	}
 	osp_buf_t rbuf;
-	osp_buf_init(&rbuf, c->rx_buf, rx_len);
-	rbuf.wr = rx_len;
+	osp_buf_init(&rbuf, apdu, apdu_len);
+	rbuf.wr = apdu_len;
 	if (osp_get_response_decode(&rbuf, resp) != 0) {
 		return OSP_ERR_INVALID;
 	}
@@ -208,7 +242,7 @@ osp_err_t osp_client_get(osp_client_t *c, uint16_t class_id, const osp_obis_t *o
 		return OSP_ERR_INVALID;
 	}
 
-	osp_err_t r = osp_transport_send_apdu(c->transport, c->framing, buf.buf, buf.wr);
+	osp_err_t r = client_send_apdu(c, buf.buf, buf.wr);
 	if (r != OSP_OK) {
 		return r;
 	}
@@ -225,6 +259,9 @@ osp_err_t osp_client_get(osp_client_t *c, uint16_t class_id, const osp_obis_t *o
 	}
 	if (resp.type == OSP_GET_RESP_DATA_ERROR) {
 		return OSP_ERR_NOT_FOUND;
+	}
+	if (c->gbt_enabled) {
+		return OSP_ERR_INVALID;
 	}
 
 	uint8_t acc[OSP_CLIENT_REASSEMBLE_MAX];
@@ -249,7 +286,7 @@ osp_err_t osp_client_get(osp_client_t *c, uint16_t class_id, const osp_obis_t *o
 		if (osp_get_request_encode(&buf, &next) != 0) {
 			return OSP_ERR_INVALID;
 		}
-		r = osp_transport_send_apdu(c->transport, c->framing, buf.buf, buf.wr);
+		r = client_send_apdu(c, buf.buf, buf.wr);
 		if (r != OSP_OK) {
 			return r;
 		}
@@ -291,7 +328,7 @@ osp_err_t osp_client_get_with_list(osp_client_t *c, const osp_client_attr_ref_t 
 		return OSP_ERR_INVALID;
 	}
 
-	osp_err_t r = osp_transport_send_apdu(c->transport, c->framing, buf.buf, buf.wr);
+	osp_err_t r = client_send_apdu(c, buf.buf, buf.wr);
 	if (r != OSP_OK) {
 		return r;
 	}
@@ -314,14 +351,15 @@ osp_err_t osp_client_get_with_list(osp_client_t *c, const osp_client_attr_ref_t 
 /* ── SET ─────────────────────────────────────────────────────────────────── */
 
 static osp_err_t client_recv_set_response(osp_client_t *c, osp_set_response_t *resp) {
-	uint32_t rx_len;
-	osp_err_t r = osp_transport_recv_apdu(c->transport, c->framing, c->rx_buf, sizeof(c->rx_buf), &rx_len, 5000);
+	uint8_t apdu[OSP_CLIENT_REASSEMBLE_MAX];
+	uint32_t apdu_len = 0;
+	osp_err_t r = client_recv_apdu(c, apdu, sizeof(apdu), &apdu_len, 5000);
 	if (r != OSP_OK) {
 		return r;
 	}
 	osp_buf_t rbuf;
-	osp_buf_init(&rbuf, c->rx_buf, rx_len);
-	rbuf.wr = rx_len;
+	osp_buf_init(&rbuf, apdu, apdu_len);
+	rbuf.wr = apdu_len;
 	if (osp_set_response_decode(&rbuf, resp) != 0) {
 		return OSP_ERR_INVALID;
 	}
@@ -365,7 +403,7 @@ static osp_err_t client_set_blocks(osp_client_t *c, uint8_t invoke_id_priority, 
 		if (osp_set_request_encode(&buf, &req) != 0) {
 			return OSP_ERR_INVALID;
 		}
-		osp_err_t r = osp_transport_send_apdu(c->transport, c->framing, buf.buf, buf.wr);
+		osp_err_t r = client_send_apdu(c, buf.buf, buf.wr);
 		if (r != OSP_OK) {
 			return r;
 		}
@@ -422,7 +460,7 @@ osp_err_t osp_client_set(osp_client_t *c, uint16_t class_id, const osp_obis_t *o
 		return OSP_ERR_INVALID;
 	}
 
-	osp_err_t r = osp_transport_send_apdu(c->transport, c->framing, buf.buf, buf.wr);
+	osp_err_t r = client_send_apdu(c, buf.buf, buf.wr);
 	if (r != OSP_OK) {
 		return r;
 	}
@@ -460,7 +498,7 @@ osp_err_t osp_client_set_with_list(osp_client_t *c, const osp_client_attr_ref_t 
 		return OSP_ERR_INVALID;
 	}
 
-	osp_err_t r = osp_transport_send_apdu(c->transport, c->framing, buf.buf, buf.wr);
+	osp_err_t r = client_send_apdu(c, buf.buf, buf.wr);
 	if (r != OSP_OK) {
 		return r;
 	}
@@ -483,14 +521,15 @@ osp_err_t osp_client_set_with_list(osp_client_t *c, const osp_client_attr_ref_t 
 /* ── ACTION ──────────────────────────────────────────────────────────────── */
 
 static osp_err_t client_recv_action_response(osp_client_t *c, osp_action_response_t *resp) {
-	uint32_t rx_len;
-	osp_err_t r = osp_transport_recv_apdu(c->transport, c->framing, c->rx_buf, sizeof(c->rx_buf), &rx_len, 5000);
+	uint8_t apdu[OSP_CLIENT_REASSEMBLE_MAX];
+	uint32_t apdu_len = 0;
+	osp_err_t r = client_recv_apdu(c, apdu, sizeof(apdu), &apdu_len, 5000);
 	if (r != OSP_OK) {
 		return r;
 	}
 	osp_buf_t rbuf;
-	osp_buf_init(&rbuf, c->rx_buf, rx_len);
-	rbuf.wr = rx_len;
+	osp_buf_init(&rbuf, apdu, apdu_len);
+	rbuf.wr = apdu_len;
 	if (osp_action_response_decode(&rbuf, resp) != 0) {
 		return OSP_ERR_INVALID;
 	}
@@ -535,7 +574,7 @@ static osp_err_t client_action_param_blocks(osp_client_t *c, uint8_t invoke_id_p
 		if (osp_action_request_encode(&buf, &req) != 0) {
 			return OSP_ERR_INVALID;
 		}
-		osp_err_t r = osp_transport_send_apdu(c->transport, c->framing, buf.buf, buf.wr);
+		osp_err_t r = client_send_apdu(c, buf.buf, buf.wr);
 		if (r != OSP_OK) {
 			return r;
 		}
@@ -591,7 +630,7 @@ static osp_err_t client_action_finish_response(osp_client_t *c, uint8_t invoke_i
 		if (osp_action_request_encode(&buf, &next) != 0) {
 			return OSP_ERR_INVALID;
 		}
-		osp_err_t r = osp_transport_send_apdu(c->transport, c->framing, buf.buf, buf.wr);
+		osp_err_t r = client_send_apdu(c, buf.buf, buf.wr);
 		if (r != OSP_OK) {
 			return r;
 		}
@@ -653,7 +692,7 @@ osp_err_t osp_client_action(osp_client_t *c, uint16_t class_id, const osp_obis_t
 		return OSP_ERR_INVALID;
 	}
 
-	r = osp_transport_send_apdu(c->transport, c->framing, buf.buf, buf.wr);
+	r = client_send_apdu(c, buf.buf, buf.wr);
 	if (r != OSP_OK) {
 		return r;
 	}
@@ -689,7 +728,7 @@ osp_err_t osp_client_action_with_list(osp_client_t *c, const osp_client_method_r
 		return OSP_ERR_INVALID;
 	}
 
-	osp_err_t r = osp_transport_send_apdu(c->transport, c->framing, buf.buf, buf.wr);
+	osp_err_t r = client_send_apdu(c, buf.buf, buf.wr);
 	if (r != OSP_OK) {
 		return r;
 	}
@@ -748,7 +787,7 @@ osp_err_t osp_client_release(osp_client_t *c) {
 	}
 
 	uint32_t rx_len;
-	osp_err_t r = osp_transport_send_apdu(c->transport, c->framing, buf.buf, buf.wr);
+	osp_err_t r = client_send_apdu(c, buf.buf, buf.wr);
 	if (r != OSP_OK) {
 		return r;
 	}

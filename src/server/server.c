@@ -5,6 +5,7 @@
 #include "server.h"
 #include "../service/initiate.h"
 #include "../service/notification.h"
+#include "../service/gbt.h"
 #include "../codec/serialize.h"
 #include "../ic/compact_data.h"
 #include "../ic/push_setup.h"
@@ -21,6 +22,19 @@ void osp_server_set_max_pdu(osp_server_t *s, uint32_t max_pdu) {
 	if (s) {
 		s->max_pdu = max_pdu > 0 ? max_pdu : OSP_SERVER_MAX_PDU;
 	}
+}
+
+void osp_server_enable_gbt(osp_server_t *s, uint32_t block_size) {
+	if (!s) {
+		return;
+	}
+	s->gbt_enabled = true;
+	s->gbt_block_size = block_size > OSP_GBT_HEADER_MAX ? block_size : OSP_GBT_DEFAULT_BLOCK_SIZE;
+}
+
+static uint32_t server_gbt_payload_max(const osp_server_t *s) {
+	uint32_t block = s->gbt_block_size > 0 ? s->gbt_block_size : OSP_GBT_DEFAULT_BLOCK_SIZE;
+	return block > OSP_GBT_HEADER_MAX ? block - OSP_GBT_HEADER_MAX : 1;
 }
 
 osp_err_t osp_server_init(osp_server_t *s, osp_transport_t *transport, osp_framing_type_t framing) {
@@ -68,6 +82,9 @@ void osp_server_set_association(osp_server_t *s, osp_ic_association_ln_t *associ
 /* ── Send response ───────────────────────────────────────────────────────── */
 
 static osp_err_t server_send(osp_server_t *s, const uint8_t *data, uint32_t len) {
+	if (s->gbt_enabled && osp_gbt_applies_to_apdu(data, len) && len > server_gbt_payload_max(s)) {
+		return osp_gbt_transport_send(s->transport, s->framing, data, len, server_gbt_payload_max(s), s->rx_buf, sizeof(s->rx_buf), 5000);
+	}
 	return osp_transport_send_apdu(s->transport, s->framing, data, len);
 }
 
@@ -231,17 +248,26 @@ static osp_err_t handle_get(osp_server_t *s, const osp_get_request_t *req) {
 	osp_get_result_item_t item;
 	dispatch_get_attr(s, &req->as.normal.attr, &item);
 	if (item.is_data) {
-		uint8_t mem[OSP_SERVER_PENDING_MAX];
-		osp_buf_t w;
-		osp_buf_init(&w, mem, sizeof(mem));
-		if (osp_value_write(&w, &item.data) != OSP_OK) {
-			return OSP_ERR_INVALID;
-		}
-		if (w.wr > s->max_pdu) {
-			return start_get_blocks(s, req->invoke_id_priority, mem, w.wr);
-		}
 		resp.type = OSP_GET_RESP_DATA;
 		resp.data = item.data;
+		uint8_t enc_mem[OSP_SERVER_MAX_PDU];
+		osp_buf_t enc;
+		osp_buf_init(&enc, enc_mem, sizeof(enc_mem));
+		if (osp_get_response_encode(&enc, &resp) != 0) {
+			return OSP_ERR_INVALID;
+		}
+		if (s->gbt_enabled && enc.wr > server_gbt_payload_max(s)) {
+			return server_send(s, enc.buf, enc.wr);
+		}
+		if (enc.wr > s->max_pdu) {
+			uint8_t mem[OSP_SERVER_PENDING_MAX];
+			osp_buf_t w;
+			osp_buf_init(&w, mem, sizeof(mem));
+			if (osp_value_write(&w, &item.data) != OSP_OK) {
+				return OSP_ERR_INVALID;
+			}
+			return start_get_blocks(s, req->invoke_id_priority, mem, w.wr);
+		}
 	} else {
 		resp.type = OSP_GET_RESP_DATA_ERROR;
 		resp.data_access_result = item.access_result;
@@ -635,6 +661,26 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 
 	if (!s->associated) {
 		return OSP_ERR_INVALID;
+	}
+
+	/* General block transfer wrapper */
+	if (tag == OSP_TAG_GENERAL_BLOCK_TRANSFER) {
+		if (!s->gbt_enabled) {
+			return OSP_ERR_UNSUPPORTED;
+		}
+		uint8_t apdu[OSP_GBT_MAX_APDU];
+		uint32_t apdu_len = 0;
+		osp_err_t gr = osp_gbt_transport_recv(s->transport, s->framing, s->rx_buf, sizeof(s->rx_buf), apdu, sizeof(apdu), &apdu_len,
+		                                        s->tx_buf, sizeof(s->tx_buf), timeout_ms, s->rx_buf, rx_len);
+		if (gr != OSP_OK || apdu_len == 0) {
+			return gr != OSP_OK ? gr : OSP_ERR_INVALID;
+		}
+		if (apdu_len > sizeof(s->rx_buf)) {
+			return OSP_ERR_NOMEM;
+		}
+		memcpy(s->rx_buf, apdu, apdu_len);
+		rx_len = apdu_len;
+		tag = s->rx_buf[0];
 	}
 
 	/* xDLMS service messages (A-XDR) */

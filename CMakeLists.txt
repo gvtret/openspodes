@@ -124,7 +124,7 @@ target_include_directories(openspodes_test_phase1 PRIVATE tests tests/fixtures $
 target_link_libraries(openspodes_test_phase1 PRIVATE openspodes cmocka)
 add_test(NAME openspodes_test_phase1 COMMAND openspodes_test_phase1)
 
-add_executable(openspodes_test_phase2 tests/test_phase2.c)
+add_executable(openspodes_test_phase2 tests/test_phase2.c tests/mock_transport.c)
 target_include_directories(openspodes_test_phase2 PRIVATE ${cmocka_SOURCE_DIR}/include)
 target_link_libraries(openspodes_test_phase2 PRIVATE openspodes cmocka)
 add_test(NAME openspodes_test_phase2 COMMAND openspodes_test_phase2)
