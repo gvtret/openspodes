@@ -26,6 +26,9 @@ extern "C" {
 osp_err_t osp_value_read(osp_buf_t *buf, osp_value_t *val);
 osp_err_t osp_value_write(osp_buf_t *buf, const osp_value_t *val);
 
+/* Encode COSEM compact-array (tag 19) from a normal array value. */
+osp_err_t osp_value_write_compact_array(osp_buf_t *buf, const osp_value_t *val);
+
 /* Skip a value without storing it (for selective access) */
 osp_err_t osp_value_skip(osp_buf_t *buf);
 

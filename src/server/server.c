@@ -12,7 +12,7 @@ static osp_err_t handle_get_next(osp_server_t *s, uint8_t invoke_id_priority, ui
 static osp_err_t send_action_response(osp_server_t *s, const osp_action_response_t *resp);
 static osp_err_t handle_action_resp_next(osp_server_t *s, uint8_t invoke_id_priority, uint32_t acked_block);
 static osp_err_t send_action_invoke_result(osp_server_t *s, uint8_t invoke_id_priority, osp_dar_t dar, const osp_value_t *result);
-static osp_err_t accumulate_action_pblock(osp_server_t *s, uint8_t invoke_id_priority, const osp_data_block_t *block);
+static osp_err_t accumulate_action_param_block(osp_server_t *s, uint8_t invoke_id_priority, const osp_data_block_t *block);
 
 void osp_server_set_max_pdu(osp_server_t *s, uint32_t max_pdu) {
 	if (s) {
@@ -354,11 +354,11 @@ static osp_err_t handle_action_resp_next(osp_server_t *s, uint8_t invoke_id_prio
 	bool last_block = end >= s->pending_action_out.data_len;
 	osp_action_response_t resp = {0};
 	resp.invoke_id_priority = invoke_id_priority;
-	resp.type = OSP_ACTION_RESP_WITH_PBLOCK;
-	resp.as.pblock.pblock.block_number = block_number;
-	resp.as.pblock.pblock.last_block = last_block;
-	resp.as.pblock.pblock.raw_data_len = end - start;
-	memcpy(resp.as.pblock.pblock.raw_data, &s->pending_action_out.data[start], resp.as.pblock.pblock.raw_data_len);
+	resp.type = OSP_ACTION_RESP_WITH_PARAM_BLOCK;
+	resp.as.with_param_block.param_block.block_number = block_number;
+	resp.as.with_param_block.param_block.last_block = last_block;
+	resp.as.with_param_block.param_block.raw_data_len = end - start;
+	memcpy(resp.as.with_param_block.param_block.raw_data, &s->pending_action_out.data[start], resp.as.with_param_block.param_block.raw_data_len);
 	s->pending_action_out.next_block++;
 	if (last_block) {
 		s->pending_action_out.active = false;
@@ -402,7 +402,7 @@ static osp_err_t send_action_invoke_result(osp_server_t *s, uint8_t invoke_id_pr
 	return send_action_response(s, &resp);
 }
 
-static osp_err_t accumulate_action_pblock(osp_server_t *s, uint8_t invoke_id_priority, const osp_data_block_t *block) {
+static osp_err_t accumulate_action_param_block(osp_server_t *s, uint8_t invoke_id_priority, const osp_data_block_t *block) {
 	if (!s->pending_action_in.active) {
 		osp_action_response_t resp = {0};
 		resp.invoke_id_priority = invoke_id_priority;
@@ -427,8 +427,8 @@ static osp_err_t accumulate_action_pblock(osp_server_t *s, uint8_t invoke_id_pri
 	if (!block->last_block) {
 		osp_action_response_t resp = {0};
 		resp.invoke_id_priority = invoke_id_priority;
-		resp.type = OSP_ACTION_RESP_NEXT_PBLOCK;
-		resp.as.next_pblock.block_number = block->block_number;
+		resp.type = OSP_ACTION_RESP_NEXT_PARAM_BLOCK;
+		resp.as.next_param_block.block_number = block->block_number;
 		return send_action_response(s, &resp);
 	}
 
@@ -454,17 +454,17 @@ static osp_err_t accumulate_action_pblock(osp_server_t *s, uint8_t invoke_id_pri
 }
 
 static osp_err_t handle_action(osp_server_t *s, const osp_action_request_t *req) {
-	if (req->type == OSP_ACTION_NEXT_PBLOCK) {
-		return handle_action_resp_next(s, req->invoke_id_priority, req->as.next_pblock.block_number);
+	if (req->type == OSP_ACTION_NEXT_PARAM_BLOCK) {
+		return handle_action_resp_next(s, req->invoke_id_priority, req->as.next_param_block.block_number);
 	}
-	if (req->type == OSP_ACTION_WITH_FIRST_PBLOCK) {
+	if (req->type == OSP_ACTION_WITH_FIRST_PARAM_BLOCK) {
 		s->pending_action_in.active = true;
-		s->pending_action_in.method = req->as.first_pblock.method;
+		s->pending_action_in.method = req->as.first_param_block.method;
 		s->pending_action_in.buffer_len = 0;
-		return accumulate_action_pblock(s, req->invoke_id_priority, &req->as.first_pblock.pblock);
+		return accumulate_action_param_block(s, req->invoke_id_priority, &req->as.first_param_block.param_block);
 	}
-	if (req->type == OSP_ACTION_WITH_PBLOCK) {
-		return accumulate_action_pblock(s, req->invoke_id_priority, &req->as.pblock.pblock);
+	if (req->type == OSP_ACTION_WITH_PARAM_BLOCK) {
+		return accumulate_action_param_block(s, req->invoke_id_priority, &req->as.with_param_block.param_block);
 	}
 
 	osp_action_response_t resp;

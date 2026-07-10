@@ -563,21 +563,21 @@ int osp_action_request_encode(osp_buf_t *buf, const osp_action_request_t *req) {
 				}
 			}
 			break;
-		case OSP_ACTION_NEXT_PBLOCK:
+		case OSP_ACTION_NEXT_PARAM_BLOCK:
 			osp_axdr_write_u8(buf, 2);
 			osp_axdr_write_u8(buf, req->invoke_id_priority);
-			osp_axdr_write_u32(buf, req->as.next_pblock.block_number);
+			osp_axdr_write_u32(buf, req->as.next_param_block.block_number);
 			break;
-		case OSP_ACTION_WITH_FIRST_PBLOCK:
+		case OSP_ACTION_WITH_FIRST_PARAM_BLOCK:
 			osp_axdr_write_u8(buf, 4);
 			osp_axdr_write_u8(buf, req->invoke_id_priority);
-			encode_method_descriptor(buf, &req->as.first_pblock.method);
-			osp_data_block_sa_encode(buf, &req->as.first_pblock.pblock);
+			encode_method_descriptor(buf, &req->as.first_param_block.method);
+			osp_data_block_sa_encode(buf, &req->as.first_param_block.param_block);
 			break;
-		case OSP_ACTION_WITH_PBLOCK:
+		case OSP_ACTION_WITH_PARAM_BLOCK:
 			osp_axdr_write_u8(buf, 6);
 			osp_axdr_write_u8(buf, req->invoke_id_priority);
-			osp_data_block_sa_encode(buf, &req->as.pblock.pblock);
+			osp_data_block_sa_encode(buf, &req->as.with_param_block.param_block);
 			break;
 		default:
 			return -1;
@@ -638,17 +638,17 @@ int osp_action_request_decode(osp_buf_t *buf, osp_action_request_t *req) {
 			break;
 		}
 		case 2:
-			req->type = OSP_ACTION_NEXT_PBLOCK;
-			osp_axdr_read_u32(buf, &req->as.next_pblock.block_number);
+			req->type = OSP_ACTION_NEXT_PARAM_BLOCK;
+			osp_axdr_read_u32(buf, &req->as.next_param_block.block_number);
 			break;
 		case 4:
-			req->type = OSP_ACTION_WITH_FIRST_PBLOCK;
-			decode_method_descriptor(buf, &req->as.first_pblock.method);
-			osp_data_block_sa_decode(buf, &req->as.first_pblock.pblock);
+			req->type = OSP_ACTION_WITH_FIRST_PARAM_BLOCK;
+			decode_method_descriptor(buf, &req->as.first_param_block.method);
+			osp_data_block_sa_decode(buf, &req->as.first_param_block.param_block);
 			break;
 		case 6:
-			req->type = OSP_ACTION_WITH_PBLOCK;
-			osp_data_block_sa_decode(buf, &req->as.pblock.pblock);
+			req->type = OSP_ACTION_WITH_PARAM_BLOCK;
+			osp_data_block_sa_decode(buf, &req->as.with_param_block.param_block);
 			break;
 		default:
 			return -1;
@@ -689,15 +689,15 @@ int osp_action_response_encode(osp_buf_t *buf, const osp_action_response_t *resp
 				}
 			}
 			break;
-		case OSP_ACTION_RESP_WITH_PBLOCK:
+		case OSP_ACTION_RESP_WITH_PARAM_BLOCK:
 			osp_axdr_write_u8(buf, 2);
 			osp_axdr_write_u8(buf, resp->invoke_id_priority);
-			osp_data_block_sa_encode(buf, &resp->as.pblock.pblock);
+			osp_data_block_sa_encode(buf, &resp->as.with_param_block.param_block);
 			break;
-		case OSP_ACTION_RESP_NEXT_PBLOCK:
+		case OSP_ACTION_RESP_NEXT_PARAM_BLOCK:
 			osp_axdr_write_u8(buf, 4);
 			osp_axdr_write_u8(buf, resp->invoke_id_priority);
-			osp_axdr_write_u32(buf, resp->as.next_pblock.block_number);
+			osp_axdr_write_u32(buf, resp->as.next_param_block.block_number);
 			break;
 		default:
 			return -1;
@@ -776,12 +776,12 @@ int osp_action_response_decode(osp_buf_t *buf, osp_action_response_t *resp) {
 			break;
 		}
 		case 2:
-			resp->type = OSP_ACTION_RESP_WITH_PBLOCK;
-			osp_data_block_sa_decode(buf, &resp->as.pblock.pblock);
+			resp->type = OSP_ACTION_RESP_WITH_PARAM_BLOCK;
+			osp_data_block_sa_decode(buf, &resp->as.with_param_block.param_block);
 			break;
 		case 4:
-			resp->type = OSP_ACTION_RESP_NEXT_PBLOCK;
-			osp_axdr_read_u32(buf, &resp->as.next_pblock.block_number);
+			resp->type = OSP_ACTION_RESP_NEXT_PARAM_BLOCK;
+			osp_axdr_read_u32(buf, &resp->as.next_param_block.block_number);
 			break;
 		default:
 			return -1;

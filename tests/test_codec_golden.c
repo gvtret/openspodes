@@ -1228,6 +1228,89 @@ static void test_cosem_structure_nested_golden(void **state) {
 	assert_memory_equal(mem, expected, sizeof(expected));
 }
 
+/* Golden: compact-array of unsigned { 1, 2, 3 } → 13 11 03 01 02 03 */
+static void test_cosem_compact_array_unsigned_golden(void **state) {
+	(void)state;
+	uint8_t mem[32];
+	osp_buf_t w = make_wbuf(mem, sizeof(mem));
+
+	osp_value_t items[3] = {osp_val_u8(1), osp_val_u8(2), osp_val_u8(3)};
+	osp_value_t arr;
+	arr.tag = OSP_TAG_ARRAY;
+	arr.as.array.elements.items = items;
+	arr.as.array.elements.count = 3;
+	arr.as.array.elements.capacity = 3;
+
+	assert_int_equal(osp_value_write_compact_array(&w, &arr), OSP_OK);
+
+	const uint8_t expected[] = {0x13, 0x11, 0x03, 0x01, 0x02, 0x03};
+	assert_int_equal(w.wr, sizeof(expected));
+	assert_memory_equal(mem, expected, sizeof(expected));
+
+	osp_buf_t r = make_rbuf(mem, w.wr);
+	osp_value_t decoded;
+	assert_int_equal(osp_value_read(&r, &decoded), OSP_OK);
+	assert_int_equal(decoded.tag, OSP_TAG_ARRAY);
+	assert_int_equal(decoded.as.array.elements.count, 3);
+	assert_int_equal(decoded.as.array.elements.items[0].as.uint8.value, 1);
+	assert_int_equal(decoded.as.array.elements.items[1].as.uint8.value, 2);
+	assert_int_equal(decoded.as.array.elements.items[2].as.uint8.value, 3);
+}
+
+/* Golden: compact-array of structure{ u8, u16 } x2
+ * → 13 02 02 11 12 06 01 01 02 02 03 04 */
+static void test_cosem_compact_array_struct_golden(void **state) {
+	(void)state;
+	uint8_t mem[32];
+	osp_buf_t w = make_wbuf(mem, sizeof(mem));
+
+	osp_value_t row1_fields[2] = {osp_val_u8(1), osp_val_u16(0x0102)};
+	osp_value_t row2_fields[2] = {osp_val_u8(2), osp_val_u16(0x0304)};
+	osp_value_t row1, row2;
+	row1.tag = OSP_TAG_STRUCTURE;
+	row1.as.structure.elements.items = row1_fields;
+	row1.as.structure.elements.count = 2;
+	row1.as.structure.elements.capacity = 2;
+	row2.tag = OSP_TAG_STRUCTURE;
+	row2.as.structure.elements.items = row2_fields;
+	row2.as.structure.elements.count = 2;
+	row2.as.structure.elements.capacity = 2;
+
+	osp_value_t items[2] = {row1, row2};
+	osp_value_t arr;
+	arr.tag = OSP_TAG_ARRAY;
+	arr.as.array.elements.items = items;
+	arr.as.array.elements.count = 2;
+	arr.as.array.elements.capacity = 2;
+
+	assert_int_equal(osp_value_write_compact_array(&w, &arr), OSP_OK);
+
+	const uint8_t expected[] = {0x13, 0x02, 0x02, 0x11, 0x12, 0x06, 0x01, 0x01, 0x02, 0x02, 0x03, 0x04};
+	assert_int_equal(w.wr, sizeof(expected));
+	assert_memory_equal(mem, expected, sizeof(expected));
+
+	osp_buf_t r = make_rbuf(mem, w.wr);
+	osp_value_t decoded;
+	assert_int_equal(osp_value_read(&r, &decoded), OSP_OK);
+	assert_int_equal(decoded.tag, OSP_TAG_ARRAY);
+	assert_int_equal(decoded.as.array.elements.count, 2);
+	assert_int_equal(decoded.as.array.elements.items[0].tag, OSP_TAG_STRUCTURE);
+	assert_int_equal(decoded.as.array.elements.items[0].as.structure.elements.items[0].as.uint8.value, 1);
+	assert_int_equal(decoded.as.array.elements.items[0].as.structure.elements.items[1].as.uint16.value, 0x0102);
+	assert_int_equal(decoded.as.array.elements.items[1].as.structure.elements.items[0].as.uint8.value, 2);
+	assert_int_equal(decoded.as.array.elements.items[1].as.structure.elements.items[1].as.uint16.value, 0x0304);
+}
+
+static void test_cosem_compact_array_decode_only_golden(void **state) {
+	(void)state;
+	const uint8_t golden[] = {0x13, 0x11, 0x03, 0x01, 0x02, 0x03};
+	osp_buf_t r = make_rbuf((uint8_t *)golden, sizeof(golden));
+	osp_value_t decoded;
+	assert_int_equal(osp_value_read(&r, &decoded), OSP_OK);
+	assert_int_equal(decoded.tag, OSP_TAG_ARRAY);
+	assert_int_equal(decoded.as.array.elements.count, 3);
+}
+
 static void test_cosem_multi_roundtrip(void **state) {
 	(void)state;
 	uint8_t mem[512];
@@ -2034,7 +2117,7 @@ static void test_action_request_with_data_roundtrip(void **state) {
 
 static void test_action_request_with_block_roundtrip(void **state) {
 	(void)state;
-	/* ACTION pblock transfer codec deferred — DataBlock-SA helper covered in SET test */
+	/* ACTION param_block transfer codec deferred — DataBlock-SA helper covered in SET test */
 	osp_data_block_t block = {0};
 	block.last_block = true;
 	block.block_number = 5;
@@ -2342,6 +2425,9 @@ int main(void) {
 	    cmocka_unit_test(test_cosem_array),
 	    cmocka_unit_test(test_cosem_structure),
 	    cmocka_unit_test(test_cosem_structure_nested_golden),
+	    cmocka_unit_test(test_cosem_compact_array_unsigned_golden),
+	    cmocka_unit_test(test_cosem_compact_array_struct_golden),
+	    cmocka_unit_test(test_cosem_compact_array_decode_only_golden),
 
 	    /* BER TLV golden vectors */
 	    cmocka_unit_test(test_ber_tlv_application_0),

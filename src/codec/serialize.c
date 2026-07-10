@@ -14,6 +14,10 @@ static uint16_t value_read_pool_used;
 static uint8_t value_read_depth;
 
 static osp_err_t osp_value_read_impl(osp_buf_t *buf, osp_value_t *val);
+static osp_err_t axdr_read_f32(osp_buf_t *buf, float *f);
+static osp_err_t axdr_write_f32(osp_buf_t *buf, float f);
+static osp_err_t axdr_read_f64(osp_buf_t *buf, double *f);
+static osp_err_t axdr_write_f64(osp_buf_t *buf, double f);
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  PRIMITIVE HELPERS
@@ -436,6 +440,640 @@ osp_err_t osp_bitstring_write(osp_buf_t *buf, const uint8_t *bits, uint32_t num_
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+ *  COMPACT-ARRAY (COSEM Data tag 19)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+static uint8_t dlms_encoded_len_size(uint32_t v) {
+	if (v < 0x80u) {
+		return 1;
+	}
+	if (v <= 0xFFu) {
+		return 2;
+	}
+	if (v <= 0xFFFFu) {
+		return 3;
+	}
+	if (v <= 0xFFFFFFu) {
+		return 4;
+	}
+	return 5;
+}
+
+static osp_err_t skip_type_description(osp_buf_t *buf) {
+	uint8_t tag;
+	osp_err_t r = osp_axdr_read_u8(buf, &tag);
+	if (r != OSP_OK) {
+		return r;
+	}
+	if (tag == OSP_TAG_STRUCTURE) {
+		uint32_t n;
+		r = osp_ber_read_length(buf, &n);
+		if (r != OSP_OK) {
+			return r;
+		}
+		for (uint32_t i = 0; i < n; i++) {
+			r = skip_type_description(buf);
+			if (r != OSP_OK) {
+				return r;
+			}
+		}
+	} else if (tag == OSP_TAG_ARRAY) {
+		if (osp_buf_unread(buf) < 2) {
+			return OSP_ERR_INVALID;
+		}
+		buf->rd += 2;
+		r = skip_type_description(buf);
+	}
+	return r;
+}
+
+static osp_err_t write_type_description(osp_buf_t *buf, const osp_value_t *val) {
+	if (!buf || !val) {
+		return OSP_ERR_INVALID;
+	}
+
+	osp_err_t r = osp_axdr_write_u8(buf, val->tag);
+	if (r != OSP_OK) {
+		return r;
+	}
+
+	switch (val->tag) {
+		case OSP_TAG_STRUCTURE: {
+			const osp_value_list_t *list = &val->as.structure.elements;
+			r = osp_ber_write_length(buf, list->count);
+			if (r != OSP_OK) {
+				return r;
+			}
+			for (uint8_t i = 0; i < list->count; i++) {
+				r = write_type_description(buf, &list->items[i]);
+				if (r != OSP_OK) {
+					return r;
+				}
+			}
+			return OSP_OK;
+		}
+		case OSP_TAG_ARRAY: {
+			const osp_value_list_t *list = &val->as.array.elements;
+			if (list->count == 0) {
+				return OSP_ERR_INVALID;
+			}
+			r = osp_axdr_write_u16(buf, list->count);
+			if (r != OSP_OK) {
+				return r;
+			}
+			return write_type_description(buf, &list->items[0]);
+		}
+		default:
+			return OSP_OK;
+	}
+}
+
+static size_t packed_value_size(const osp_value_t *val) {
+	if (!val) {
+		return 0;
+	}
+
+	switch (val->tag) {
+		case OSP_TAG_NULL:
+			return 0;
+		case OSP_TAG_BOOLEAN:
+		case OSP_TAG_BCD:
+		case OSP_TAG_INTEGER:
+		case OSP_TAG_UNSIGNED:
+		case OSP_TAG_ENUM:
+			return 1;
+		case OSP_TAG_LONG:
+		case OSP_TAG_LONG_UNSIGNED:
+			return 2;
+		case OSP_TAG_DOUBLE_LONG:
+		case OSP_TAG_DOUBLE_LONG_UNS:
+		case OSP_TAG_FLOAT32:
+			return 4;
+		case OSP_TAG_LONG64:
+		case OSP_TAG_LONG64_UNSIGNED:
+		case OSP_TAG_FLOAT64:
+			return 8;
+		case OSP_TAG_DATE:
+			return 5;
+		case OSP_TAG_TIME:
+			return 4;
+		case OSP_TAG_DATETIME:
+			return 12;
+		case OSP_TAG_OCTETSTRING:
+		case OSP_TAG_VISIBLESTRING:
+		case OSP_TAG_UTF8STRING:
+			return dlms_encoded_len_size(val->as.octetstring.len) + val->as.octetstring.len;
+		case OSP_TAG_BITSTRING:
+			return dlms_encoded_len_size(val->as.bitstring.num_bits) + (val->as.bitstring.num_bits + 7u) / 8u;
+		case OSP_TAG_ARRAY:
+		case OSP_TAG_STRUCTURE: {
+			const osp_value_list_t *list = (val->tag == OSP_TAG_ARRAY) ? &val->as.array.elements : &val->as.structure.elements;
+			size_t sum = 0;
+			for (uint8_t i = 0; i < list->count; i++) {
+				sum += packed_value_size(&list->items[i]);
+			}
+			return sum;
+		}
+		default:
+			return 0;
+	}
+}
+
+static osp_err_t pack_value(osp_buf_t *buf, const osp_value_t *val) {
+	if (!buf || !val) {
+		return OSP_ERR_INVALID;
+	}
+
+	osp_err_t r;
+	switch (val->tag) {
+		case OSP_TAG_NULL:
+			return OSP_OK;
+		case OSP_TAG_BOOLEAN:
+			return osp_axdr_write_u8(buf, val->as.boolean.value ? 1u : 0u);
+		case OSP_TAG_BCD:
+		case OSP_TAG_INTEGER:
+			return osp_axdr_write_i8(buf, val->as.int8.value);
+		case OSP_TAG_UNSIGNED:
+		case OSP_TAG_ENUM:
+			return osp_axdr_write_u8(buf, val->as.uint8.value);
+		case OSP_TAG_LONG:
+			return osp_axdr_write_i16(buf, val->as.int16.value);
+		case OSP_TAG_LONG_UNSIGNED:
+			return osp_axdr_write_u16(buf, val->as.uint16.value);
+		case OSP_TAG_DOUBLE_LONG:
+			return osp_axdr_write_i32(buf, val->as.int32.value);
+		case OSP_TAG_DOUBLE_LONG_UNS:
+			return osp_axdr_write_u32(buf, val->as.uint32.value);
+		case OSP_TAG_LONG64:
+			return osp_axdr_write_i64(buf, val->as.int64.value);
+		case OSP_TAG_LONG64_UNSIGNED:
+			return osp_axdr_write_u64(buf, val->as.uint64.value);
+		case OSP_TAG_FLOAT32:
+			return axdr_write_f32(buf, val->as.float32.value);
+		case OSP_TAG_FLOAT64:
+			return axdr_write_f64(buf, val->as.float64.value);
+		case OSP_TAG_OCTETSTRING:
+			r = osp_ber_write_length(buf, val->as.octetstring.len);
+			if (r != OSP_OK) {
+				return r;
+			}
+			if (osp_buf_free(buf) < val->as.octetstring.len) {
+				return OSP_ERR_NOMEM;
+			}
+			memcpy(&buf->buf[buf->wr], val->as.octetstring.data, val->as.octetstring.len);
+			buf->wr += val->as.octetstring.len;
+			return OSP_OK;
+		case OSP_TAG_VISIBLESTRING:
+			r = osp_ber_write_length(buf, val->as.visiblestring.len);
+			if (r != OSP_OK) {
+				return r;
+			}
+			if (osp_buf_free(buf) < val->as.visiblestring.len) {
+				return OSP_ERR_NOMEM;
+			}
+			memcpy(&buf->buf[buf->wr], val->as.visiblestring.data, val->as.visiblestring.len);
+			buf->wr += val->as.visiblestring.len;
+			return OSP_OK;
+		case OSP_TAG_UTF8STRING:
+			r = osp_ber_write_length(buf, val->as.utf8string.len);
+			if (r != OSP_OK) {
+				return r;
+			}
+			if (osp_buf_free(buf) < val->as.utf8string.len) {
+				return OSP_ERR_NOMEM;
+			}
+			memcpy(&buf->buf[buf->wr], val->as.utf8string.data, val->as.utf8string.len);
+			buf->wr += val->as.utf8string.len;
+			return OSP_OK;
+		case OSP_TAG_BITSTRING: {
+			uint32_t num_bits = val->as.bitstring.num_bits;
+			uint32_t num_bytes = (num_bits + 7u) / 8u;
+			r = osp_ber_write_length(buf, num_bits);
+			if (r != OSP_OK) {
+				return r;
+			}
+			if (osp_buf_free(buf) < num_bytes) {
+				return OSP_ERR_NOMEM;
+			}
+			if (num_bytes > 0) {
+				memcpy(&buf->buf[buf->wr], val->as.bitstring.bits, num_bytes);
+				buf->wr += num_bytes;
+			}
+			return OSP_OK;
+		}
+		case OSP_TAG_DATE:
+			return osp_date_write(buf, &val->as.date);
+		case OSP_TAG_TIME:
+			return osp_time_write(buf, &val->as.time);
+		case OSP_TAG_DATETIME:
+			return osp_datetime_write(buf, &val->as.datetime);
+		case OSP_TAG_ARRAY:
+		case OSP_TAG_STRUCTURE: {
+			const osp_value_list_t *list = (val->tag == OSP_TAG_ARRAY) ? &val->as.array.elements : &val->as.structure.elements;
+			for (uint8_t i = 0; i < list->count; i++) {
+				r = pack_value(buf, &list->items[i]);
+				if (r != OSP_OK) {
+					return r;
+				}
+			}
+			return OSP_OK;
+		}
+		default:
+			return OSP_ERR_UNSUPPORTED;
+	}
+}
+
+static osp_err_t read_packed_bitstring(osp_buf_t *buf, osp_bitstring_t *bs) {
+	uint32_t num_bits;
+	osp_err_t r = osp_ber_read_length(buf, &num_bits);
+	if (r != OSP_OK) {
+		return r;
+	}
+	uint32_t num_bytes = (num_bits + 7u) / 8u;
+	if (num_bits > (uint32_t)OSP_MAX_BITSTRING_LEN * 8u || osp_buf_unread(buf) < num_bytes) {
+		return OSP_ERR_INVALID;
+	}
+	bs->num_bits = num_bits;
+	if (num_bytes > 0) {
+		memcpy(bs->bits, &buf->buf[buf->rd], num_bytes);
+		buf->rd += num_bytes;
+	}
+	return OSP_OK;
+}
+
+static osp_err_t read_packed_value(osp_buf_t *buf, uint8_t tag, osp_value_t *val) {
+	memset(val, 0, sizeof(*val));
+	val->tag = tag;
+
+	osp_err_t r;
+	switch (tag) {
+		case OSP_TAG_NULL:
+			return OSP_OK;
+		case OSP_TAG_BOOLEAN: {
+			uint8_t b;
+			r = osp_axdr_read_u8(buf, &b);
+			if (r == OSP_OK) {
+				val->as.boolean.value = (b != 0);
+			}
+			return r;
+		}
+		case OSP_TAG_BCD:
+		case OSP_TAG_INTEGER:
+			return osp_axdr_read_i8(buf, &val->as.int8.value);
+		case OSP_TAG_UNSIGNED:
+			return osp_axdr_read_u8(buf, &val->as.uint8.value);
+		case OSP_TAG_LONG:
+			return osp_axdr_read_i16(buf, &val->as.int16.value);
+		case OSP_TAG_LONG_UNSIGNED:
+			return osp_axdr_read_u16(buf, &val->as.uint16.value);
+		case OSP_TAG_DOUBLE_LONG:
+			return osp_axdr_read_i32(buf, &val->as.int32.value);
+		case OSP_TAG_DOUBLE_LONG_UNS:
+			return osp_axdr_read_u32(buf, &val->as.uint32.value);
+		case OSP_TAG_LONG64:
+			return osp_axdr_read_i64(buf, &val->as.int64.value);
+		case OSP_TAG_LONG64_UNSIGNED:
+			return osp_axdr_read_u64(buf, &val->as.uint64.value);
+		case OSP_TAG_ENUM:
+			return osp_axdr_read_u8(buf, &val->as.enum_val.value);
+		case OSP_TAG_FLOAT32:
+			return axdr_read_f32(buf, &val->as.float32.value);
+		case OSP_TAG_FLOAT64:
+			return axdr_read_f64(buf, &val->as.float64.value);
+		case OSP_TAG_OCTETSTRING: {
+			uint32_t slen;
+			r = osp_ber_read_length(buf, &slen);
+			if (r != OSP_OK) {
+				return r;
+			}
+			if (slen > OSP_MAX_OCTET_LEN || osp_buf_unread(buf) < slen) {
+				return OSP_ERR_INVALID;
+			}
+			memcpy(val->as.octetstring.data, &buf->buf[buf->rd], slen);
+			buf->rd += slen;
+			val->as.octetstring.len = slen;
+			return OSP_OK;
+		}
+		case OSP_TAG_VISIBLESTRING: {
+			uint32_t slen;
+			r = osp_ber_read_length(buf, &slen);
+			if (r != OSP_OK) {
+				return r;
+			}
+			if (slen > OSP_MAX_STRING_LEN - 1 || osp_buf_unread(buf) < slen) {
+				return OSP_ERR_INVALID;
+			}
+			memcpy(val->as.visiblestring.data, &buf->buf[buf->rd], slen);
+			buf->rd += slen;
+			val->as.visiblestring.data[slen] = '\0';
+			val->as.visiblestring.len = slen;
+			return OSP_OK;
+		}
+		case OSP_TAG_UTF8STRING: {
+			uint32_t slen;
+			r = osp_ber_read_length(buf, &slen);
+			if (r != OSP_OK) {
+				return r;
+			}
+			if (slen > OSP_MAX_STRING_LEN || osp_buf_unread(buf) < slen) {
+				return OSP_ERR_INVALID;
+			}
+			memcpy(val->as.utf8string.data, &buf->buf[buf->rd], slen);
+			buf->rd += slen;
+			val->as.utf8string.len = slen;
+			return OSP_OK;
+		}
+		case OSP_TAG_BITSTRING:
+			return read_packed_bitstring(buf, &val->as.bitstring);
+		case OSP_TAG_DATE:
+			return osp_date_read(buf, &val->as.date);
+		case OSP_TAG_TIME:
+			return osp_time_read(buf, &val->as.time);
+		case OSP_TAG_DATETIME:
+			return osp_datetime_read(buf, &val->as.datetime);
+		default:
+			return OSP_ERR_UNSUPPORTED;
+	}
+}
+
+static osp_err_t skip_packed_value(osp_buf_t *buf, uint8_t tag) {
+	uint8_t fixed = osp_axdr_type_size(tag);
+	if (fixed > 0) {
+		if (osp_buf_unread(buf) < fixed) {
+			return OSP_ERR_INVALID;
+		}
+		buf->rd += fixed;
+		return OSP_OK;
+	}
+
+	uint32_t slen;
+	osp_err_t r;
+	switch (tag) {
+		case OSP_TAG_NULL:
+			return OSP_OK;
+		case OSP_TAG_OCTETSTRING:
+		case OSP_TAG_VISIBLESTRING:
+		case OSP_TAG_UTF8STRING:
+			r = osp_ber_read_length(buf, &slen);
+			if (r != OSP_OK) {
+				return r;
+			}
+			if (osp_buf_unread(buf) < slen) {
+				return OSP_ERR_INVALID;
+			}
+			buf->rd += slen;
+			return OSP_OK;
+		case OSP_TAG_BITSTRING:
+			r = osp_ber_read_length(buf, &slen);
+			if (r != OSP_OK) {
+				return r;
+			}
+			slen = (slen + 7u) / 8u;
+			if (osp_buf_unread(buf) < slen) {
+				return OSP_ERR_INVALID;
+			}
+			buf->rd += slen;
+			return OSP_OK;
+		default:
+			return OSP_ERR_UNSUPPORTED;
+	}
+}
+
+static osp_err_t compact_skip_description(osp_buf_t *desc, osp_buf_t *contents) {
+	uint8_t tag;
+	osp_err_t r = osp_axdr_read_u8(desc, &tag);
+	if (r != OSP_OK) {
+		return r;
+	}
+
+	if (tag == OSP_TAG_STRUCTURE) {
+		uint32_t n;
+		r = osp_ber_read_length(desc, &n);
+		if (r != OSP_OK) {
+			return r;
+		}
+		for (uint32_t i = 0; i < n; i++) {
+			r = compact_skip_description(desc, contents);
+			if (r != OSP_OK) {
+				return r;
+			}
+		}
+		return OSP_OK;
+	}
+
+	if (tag == OSP_TAG_ARRAY) {
+		uint16_t n;
+		r = osp_axdr_read_u16(desc, &n);
+		if (r != OSP_OK) {
+			return r;
+		}
+		uint32_t elem_desc = desc->rd;
+		for (uint16_t i = 0; i < n; i++) {
+			desc->rd = elem_desc;
+			r = compact_skip_description(desc, contents);
+			if (r != OSP_OK) {
+				return r;
+			}
+		}
+		return OSP_OK;
+	}
+
+	return skip_packed_value(contents, tag);
+}
+
+static osp_err_t compact_count_elements(osp_buf_t *desc, osp_buf_t *contents, uint8_t *count) {
+	*count = 0;
+	while (contents->rd < contents->wr) {
+		if (*count >= OSP_MAX_ARRAY_LEN) {
+			return OSP_ERR_NOMEM;
+		}
+		desc->rd = 0;
+		osp_err_t r = compact_skip_description(desc, contents);
+		if (r != OSP_OK) {
+			return r;
+		}
+		(*count)++;
+	}
+	return OSP_OK;
+}
+
+static osp_err_t compact_walk_description(osp_buf_t *desc, osp_buf_t *contents, osp_value_t *out);
+
+static osp_err_t compact_decode_elements(osp_buf_t *desc, osp_buf_t *contents, osp_value_t *out) {
+	uint8_t count;
+	osp_err_t r = compact_count_elements(desc, contents, &count);
+	if (r != OSP_OK) {
+		return r;
+	}
+	if (value_read_pool_used + count > (uint16_t)(sizeof(value_read_pool) / sizeof(value_read_pool[0]))) {
+		return OSP_ERR_NOMEM;
+	}
+
+	osp_value_t *items = &value_read_pool[value_read_pool_used];
+	value_read_pool_used += count;
+	contents->rd = 0;
+
+	for (uint8_t i = 0; i < count; i++) {
+		desc->rd = 0;
+		r = compact_walk_description(desc, contents, &items[i]);
+		if (r != OSP_OK) {
+			return r;
+		}
+	}
+
+	out->tag = OSP_TAG_ARRAY;
+	out->as.array.elements.items = items;
+	out->as.array.elements.count = count;
+	out->as.array.elements.capacity = count;
+	return OSP_OK;
+}
+
+static osp_err_t compact_walk_description(osp_buf_t *desc, osp_buf_t *contents, osp_value_t *out) {
+	uint8_t tag;
+	osp_err_t r = osp_axdr_read_u8(desc, &tag);
+	if (r != OSP_OK) {
+		return r;
+	}
+
+	if (tag == OSP_TAG_STRUCTURE) {
+		uint32_t n;
+		r = osp_ber_read_length(desc, &n);
+		if (r != OSP_OK) {
+			return r;
+		}
+		if (n > OSP_MAX_STRUCT_LEN || value_read_pool_used + n > (uint16_t)(sizeof(value_read_pool) / sizeof(value_read_pool[0]))) {
+			return OSP_ERR_NOMEM;
+		}
+		osp_value_t *items = &value_read_pool[value_read_pool_used];
+		value_read_pool_used += (uint16_t)n;
+		for (uint32_t i = 0; i < n; i++) {
+			r = compact_walk_description(desc, contents, &items[i]);
+			if (r != OSP_OK) {
+				return r;
+			}
+		}
+		out->tag = OSP_TAG_STRUCTURE;
+		out->as.structure.elements.items = items;
+		out->as.structure.elements.count = (uint8_t)n;
+		out->as.structure.elements.capacity = (uint8_t)n;
+		return OSP_OK;
+	}
+
+	if (tag == OSP_TAG_ARRAY) {
+		uint16_t n;
+		r = osp_axdr_read_u16(desc, &n);
+		if (r != OSP_OK) {
+			return r;
+		}
+		if (n > OSP_MAX_ARRAY_LEN || value_read_pool_used + n > (uint16_t)(sizeof(value_read_pool) / sizeof(value_read_pool[0]))) {
+			return OSP_ERR_NOMEM;
+		}
+		uint32_t elem_desc = desc->rd;
+		osp_value_t *items = &value_read_pool[value_read_pool_used];
+		value_read_pool_used += n;
+		for (uint16_t i = 0; i < n; i++) {
+			desc->rd = elem_desc;
+			r = compact_walk_description(desc, contents, &items[i]);
+			if (r != OSP_OK) {
+				return r;
+			}
+		}
+		out->tag = OSP_TAG_ARRAY;
+		out->as.array.elements.items = items;
+		out->as.array.elements.count = n;
+		out->as.array.elements.capacity = n;
+		return OSP_OK;
+	}
+
+	return read_packed_value(contents, tag, out);
+}
+
+static osp_err_t read_compact_array(osp_buf_t *buf, osp_value_t *val) {
+	if (!buf || !val) {
+		return OSP_ERR_INVALID;
+	}
+
+	uint32_t desc_start = buf->rd;
+	osp_buf_t desc_probe;
+	desc_probe.buf = buf->buf;
+	desc_probe.size = buf->size;
+	desc_probe.rd = buf->rd;
+	desc_probe.wr = buf->wr;
+
+	osp_err_t r = skip_type_description(&desc_probe);
+	if (r != OSP_OK) {
+		return r;
+	}
+	uint32_t desc_len = desc_probe.rd - desc_start;
+
+	osp_buf_t desc;
+	desc.buf = &buf->buf[desc_start];
+	desc.size = buf->size;
+	desc.rd = 0;
+	desc.wr = desc_len;
+	buf->rd = desc_start + desc_len;
+
+	uint32_t clen;
+	r = osp_ber_read_length(buf, &clen);
+	if (r != OSP_OK) {
+		return r;
+	}
+	if (osp_buf_unread(buf) < clen) {
+		return OSP_ERR_INVALID;
+	}
+
+	uint32_t contents_start = buf->rd;
+
+	osp_buf_t contents;
+	contents.buf = &buf->buf[contents_start];
+	contents.size = buf->size;
+	contents.rd = 0;
+	contents.wr = clen;
+
+	r = compact_decode_elements(&desc, &contents, val);
+	buf->rd = contents_start + clen;
+	return r;
+}
+
+osp_err_t osp_value_write_compact_array(osp_buf_t *buf, const osp_value_t *val) {
+	if (!buf || !val || val->tag != OSP_TAG_ARRAY) {
+		return OSP_ERR_INVALID;
+	}
+	const osp_value_list_t *list = &val->as.array.elements;
+	if (list->count == 0) {
+		return OSP_ERR_INVALID;
+	}
+
+	osp_err_t r = osp_axdr_write_u8(buf, OSP_TAG_COMPACT_ARRAY);
+	if (r != OSP_OK) {
+		return r;
+	}
+	r = write_type_description(buf, &list->items[0]);
+	if (r != OSP_OK) {
+		return r;
+	}
+
+	size_t total = 0;
+	for (uint8_t i = 0; i < list->count; i++) {
+		total += packed_value_size(&list->items[i]);
+	}
+	if (total > 0xFFFFFFFFu) {
+		return OSP_ERR_INVALID;
+	}
+	r = osp_ber_write_length(buf, (uint32_t)total);
+	if (r != OSP_OK) {
+		return r;
+	}
+	for (uint8_t i = 0; i < list->count; i++) {
+		r = pack_value(buf, &list->items[i]);
+		if (r != OSP_OK) {
+			return r;
+		}
+	}
+	return OSP_OK;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
  *  GENERIC VALUE (tagged union)
  * ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -614,7 +1252,7 @@ static osp_err_t osp_value_read_impl(osp_buf_t *buf, osp_value_t *val) {
 		}
 
 		case OSP_TAG_COMPACT_ARRAY:
-			return OSP_ERR_UNSUPPORTED;
+			return read_compact_array(buf, val);
 
 		default:
 			return OSP_ERR_UNSUPPORTED;

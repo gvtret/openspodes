@@ -457,7 +457,7 @@ static void test_client_set_via_blocks(void **state) {
 	assert_int_equal(got.as.octetstring.len, 40);
 }
 
-static void test_action_pblock_invoke(void **state) {
+static void test_action_param_block_invoke(void **state) {
 	(void)state;
 	mock_crypto_init();
 	mock_transport_pair_t pair;
@@ -491,7 +491,7 @@ int main(void) {
 	    cmocka_unit_test(test_get_block_transfer),
 	    cmocka_unit_test(test_set_block_transfer),
 	    cmocka_unit_test(test_client_set_via_blocks),
-	    cmocka_unit_test(test_action_pblock_invoke),
+	    cmocka_unit_test(test_action_param_block_invoke),
 	};
 	return cmocka_run_group_tests(tests, NULL, NULL);
 }

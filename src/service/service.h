@@ -328,39 +328,39 @@ typedef struct {
 
 typedef enum {
 	OSP_ACTION_NORMAL = 1,
-	OSP_ACTION_NEXT_PBLOCK = 2,
+	OSP_ACTION_NEXT_PARAM_BLOCK = 2,
 	OSP_ACTION_WITH_LIST = 3,
-	OSP_ACTION_WITH_FIRST_PBLOCK = 4,
-	OSP_ACTION_WITH_PBLOCK = 6,
+	OSP_ACTION_WITH_FIRST_PARAM_BLOCK = 4,
+	OSP_ACTION_WITH_PARAM_BLOCK = 6,
 } osp_action_request_type;
 
 typedef enum {
 	OSP_ACTION_RESP_NORMAL = 1,
-	OSP_ACTION_RESP_WITH_PBLOCK = 2,
+	OSP_ACTION_RESP_WITH_PARAM_BLOCK = 2,
 	OSP_ACTION_RESP_WITH_LIST = 3,
-	OSP_ACTION_RESP_NEXT_PBLOCK = 4,
+	OSP_ACTION_RESP_NEXT_PARAM_BLOCK = 4,
 } osp_action_response_type;
 
 typedef struct {
 	osp_method_descriptor_t method;
-	osp_data_block_t pblock;
-} osp_action_request_first_pblock_t;
+	osp_data_block_t param_block;
+} osp_action_request_first_param_block_t;
 
 typedef struct {
-	osp_data_block_t pblock;
-} osp_action_request_pblock_t;
-
-typedef struct {
-	uint32_t block_number;
-} osp_action_request_next_pblock_t;
-
-typedef struct {
-	osp_data_block_t pblock;
-} osp_action_response_pblock_t;
+	osp_data_block_t param_block;
+} osp_action_request_param_block_t;
 
 typedef struct {
 	uint32_t block_number;
-} osp_action_response_next_pblock_t;
+} osp_action_request_next_param_block_t;
+
+typedef struct {
+	osp_data_block_t param_block;
+} osp_action_response_param_block_t;
+
+typedef struct {
+	uint32_t block_number;
+} osp_action_response_next_param_block_t;
 
 typedef struct {
 	osp_action_request_item_t items[OSP_XDLMS_MAX_LIST];
@@ -379,9 +379,9 @@ typedef struct {
 	union {
 		osp_action_request_normal_t normal;
 		osp_action_request_with_list_t with_list;
-		osp_action_request_first_pblock_t first_pblock;
-		osp_action_request_pblock_t pblock;
-		osp_action_request_next_pblock_t next_pblock;
+		osp_action_request_first_param_block_t first_param_block;
+		osp_action_request_param_block_t with_param_block;
+		osp_action_request_next_param_block_t next_param_block;
 	} as;
 } osp_action_request_t;
 
@@ -401,8 +401,8 @@ typedef struct {
 	union {
 		osp_action_response_normal_t normal;
 		osp_action_response_with_list_t with_list;
-		osp_action_response_pblock_t pblock;
-		osp_action_response_next_pblock_t next_pblock;
+		osp_action_response_param_block_t with_param_block;
+		osp_action_response_next_param_block_t next_param_block;
 	} as;
 } osp_action_response_t;
 

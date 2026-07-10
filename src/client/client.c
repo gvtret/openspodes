@@ -410,7 +410,7 @@ static osp_err_t client_recv_action_response(osp_client_t *c, osp_action_respons
 	return OSP_OK;
 }
 
-static osp_err_t client_action_pblocks(osp_client_t *c, uint8_t invoke_id_priority, uint16_t class_id, const osp_obis_t *obis,
+static osp_err_t client_action_param_blocks(osp_client_t *c, uint8_t invoke_id_priority, uint16_t class_id, const osp_obis_t *obis,
                                       uint8_t method_id, const uint8_t *param_bytes, uint32_t param_len,
                                       osp_action_response_t *out_resp) {
 	uint32_t offset = 0;
@@ -428,20 +428,20 @@ static osp_err_t client_action_pblocks(osp_client_t *c, uint8_t invoke_id_priori
 		memset(&req, 0, sizeof(req));
 		req.invoke_id_priority = invoke_id_priority;
 		if (offset == 0) {
-			req.type = OSP_ACTION_WITH_FIRST_PBLOCK;
-			req.as.first_pblock.method.class_id = class_id;
-			req.as.first_pblock.method.instance_id = *obis;
-			req.as.first_pblock.method.method_id = method_id;
-			req.as.first_pblock.pblock.last_block = last;
-			req.as.first_pblock.pblock.block_number = block_number;
-			req.as.first_pblock.pblock.raw_data_len = chunk;
-			memcpy(req.as.first_pblock.pblock.raw_data, &param_bytes[offset], chunk);
+			req.type = OSP_ACTION_WITH_FIRST_PARAM_BLOCK;
+			req.as.first_param_block.method.class_id = class_id;
+			req.as.first_param_block.method.instance_id = *obis;
+			req.as.first_param_block.method.method_id = method_id;
+			req.as.first_param_block.param_block.last_block = last;
+			req.as.first_param_block.param_block.block_number = block_number;
+			req.as.first_param_block.param_block.raw_data_len = chunk;
+			memcpy(req.as.first_param_block.param_block.raw_data, &param_bytes[offset], chunk);
 		} else {
-			req.type = OSP_ACTION_WITH_PBLOCK;
-			req.as.pblock.pblock.last_block = last;
-			req.as.pblock.pblock.block_number = block_number;
-			req.as.pblock.pblock.raw_data_len = chunk;
-			memcpy(req.as.pblock.pblock.raw_data, &param_bytes[offset], chunk);
+			req.type = OSP_ACTION_WITH_PARAM_BLOCK;
+			req.as.with_param_block.param_block.last_block = last;
+			req.as.with_param_block.param_block.block_number = block_number;
+			req.as.with_param_block.param_block.raw_data_len = chunk;
+			memcpy(req.as.with_param_block.param_block.raw_data, &param_bytes[offset], chunk);
 		}
 
 		osp_buf_init(&buf, c->tx_buf, sizeof(c->tx_buf));
@@ -460,7 +460,7 @@ static osp_err_t client_action_pblocks(osp_client_t *c, uint8_t invoke_id_priori
 		if (last) {
 			return OSP_OK;
 		}
-		if (out_resp->type != OSP_ACTION_RESP_NEXT_PBLOCK) {
+		if (out_resp->type != OSP_ACTION_RESP_NEXT_PARAM_BLOCK) {
 			return OSP_ERR_NOT_FOUND;
 		}
 
@@ -483,21 +483,21 @@ static osp_err_t client_action_finish_response(osp_client_t *c, uint8_t invoke_i
 
 	uint8_t acc[OSP_CLIENT_REASSEMBLE_MAX];
 	uint32_t acc_len = 0;
-	while (resp->type == OSP_ACTION_RESP_WITH_PBLOCK) {
-		if (acc_len + resp->as.pblock.pblock.raw_data_len > sizeof(acc)) {
+	while (resp->type == OSP_ACTION_RESP_WITH_PARAM_BLOCK) {
+		if (acc_len + resp->as.with_param_block.param_block.raw_data_len > sizeof(acc)) {
 			return OSP_ERR_NOMEM;
 		}
-		memcpy(&acc[acc_len], resp->as.pblock.pblock.raw_data, resp->as.pblock.pblock.raw_data_len);
-		acc_len += resp->as.pblock.pblock.raw_data_len;
-		if (resp->as.pblock.pblock.last_block) {
+		memcpy(&acc[acc_len], resp->as.with_param_block.param_block.raw_data, resp->as.with_param_block.param_block.raw_data_len);
+		acc_len += resp->as.with_param_block.param_block.raw_data_len;
+		if (resp->as.with_param_block.param_block.last_block) {
 			break;
 		}
 
 		osp_action_request_t next;
 		memset(&next, 0, sizeof(next));
-		next.type = OSP_ACTION_NEXT_PBLOCK;
+		next.type = OSP_ACTION_NEXT_PARAM_BLOCK;
 		next.invoke_id_priority = invoke_id_priority;
-		next.as.next_pblock.block_number = resp->as.pblock.pblock.block_number;
+		next.as.next_param_block.block_number = resp->as.with_param_block.param_block.block_number;
 
 		osp_buf_t buf;
 		osp_buf_init(&buf, c->tx_buf, sizeof(c->tx_buf));
@@ -544,7 +544,7 @@ osp_err_t osp_client_action(osp_client_t *c, uint16_t class_id, const osp_obis_t
 	osp_err_t r;
 
 	if (param_len > OSP_CLIENT_BLOCK_SIZE) {
-		r = client_action_pblocks(c, iidp, class_id, obis, method_id, param_bytes, param_len, &resp);
+		r = client_action_param_blocks(c, iidp, class_id, obis, method_id, param_bytes, param_len, &resp);
 		if (r != OSP_OK) {
 			return r;
 		}
