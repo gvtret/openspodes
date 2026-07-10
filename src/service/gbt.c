@@ -4,7 +4,6 @@
 
 #define OSP_GBT_LAST_BLOCK 0x80u
 #define OSP_GBT_STREAMING  0x40u
-#define OSP_GBT_WINDOW_MASK 0x3Fu
 
 static osp_err_t gbt_send_block(osp_transport_t *transport, osp_framing_type_t framing, const osp_general_block_transfer_t *gbt,
                                 uint8_t *tx_scratch, uint32_t tx_scratch_size) {
@@ -35,28 +34,43 @@ static osp_err_t gbt_recv_block(osp_transport_t *transport, osp_framing_type_t f
 	return OSP_OK;
 }
 
-static osp_err_t gbt_send_ack(osp_transport_t *transport, osp_framing_type_t framing, uint16_t block_number_ack, uint8_t *tx_scratch,
-                              uint32_t tx_scratch_size) {
+static osp_err_t gbt_send_ack(osp_transport_t *transport, osp_framing_type_t framing, uint8_t window, uint16_t block_number_ack,
+                              uint8_t *tx_scratch, uint32_t tx_scratch_size) {
 	osp_general_block_transfer_t ack = {0};
 	ack.last_block = true;
 	ack.streaming = false;
-	ack.window = 1;
+	ack.window = window & OSP_GBT_WINDOW_MASK;
 	ack.block_number = 1;
 	ack.block_number_ack = block_number_ack;
 	ack.block_data_len = 0;
 	return gbt_send_block(transport, framing, &ack, tx_scratch, tx_scratch_size);
 }
 
+static osp_err_t gbt_wait_for_ack(osp_transport_t *transport, osp_framing_type_t framing, uint16_t block_number_ack, uint8_t *rx_scratch,
+                                  uint32_t rx_scratch_size, uint32_t timeout_ms) {
+	osp_general_block_transfer_t ack;
+	osp_err_t r = gbt_recv_block(transport, framing, &ack, rx_scratch, rx_scratch_size, timeout_ms);
+	if (r != OSP_OK) {
+		return r;
+	}
+	if (ack.block_number_ack < block_number_ack) {
+		return OSP_ERR_INVALID;
+	}
+	return OSP_OK;
+}
+
 osp_err_t osp_gbt_transport_send(osp_transport_t *transport, osp_framing_type_t framing, const uint8_t *apdu, uint32_t apdu_len,
-                                 uint32_t block_payload_max, uint8_t *rx_scratch, uint32_t rx_scratch_size, uint32_t timeout_ms) {
+                                 uint32_t block_payload_max, uint8_t window, uint8_t *tx_scratch, uint32_t tx_scratch_size,
+                                 uint8_t *rx_scratch, uint32_t rx_scratch_size, uint32_t timeout_ms) {
 	if (!transport || !apdu || apdu_len == 0 || apdu_len > OSP_GBT_MAX_APDU || block_payload_max == 0 || block_payload_max > OSP_MAX_OCTET_LEN ||
-	    !rx_scratch) {
+	    !tx_scratch || !rx_scratch) {
 		return OSP_ERR_INVALID;
 	}
 
-	uint8_t tx_scratch[OSP_GBT_HEADER_MAX + OSP_MAX_OCTET_LEN];
+	uint8_t win = window & OSP_GBT_WINDOW_MASK;
 	uint32_t offset = 0;
 	uint16_t block_number = 1;
+	uint16_t blocks_in_window = 0;
 
 	while (offset < apdu_len) {
 		uint32_t chunk = apdu_len - offset;
@@ -68,19 +82,29 @@ osp_err_t osp_gbt_transport_send(osp_transport_t *transport, osp_framing_type_t 
 		osp_general_block_transfer_t gbt = {0};
 		gbt.last_block = last;
 		gbt.streaming = false;
-		gbt.window = 0;
+		gbt.window = win;
 		gbt.block_number = block_number;
 		gbt.block_number_ack = 0;
 		gbt.block_data_len = chunk;
 		memcpy(gbt.block_data, &apdu[offset], chunk);
 
-		osp_err_t r = gbt_send_block(transport, framing, &gbt, tx_scratch, sizeof(tx_scratch));
+		osp_err_t r = gbt_send_block(transport, framing, &gbt, tx_scratch, tx_scratch_size);
 		if (r != OSP_OK) {
 			return r;
 		}
 
 		offset += chunk;
+		blocks_in_window++;
 		block_number++;
+
+		/* Confirmed mode: wait for ack after each window (not after the last block). */
+		if (win > 0 && !last && blocks_in_window >= win) {
+			r = gbt_wait_for_ack(transport, framing, block_number - 1, rx_scratch, rx_scratch_size, timeout_ms);
+			if (r != OSP_OK) {
+				return r;
+			}
+			blocks_in_window = 0;
+		}
 	}
 	return OSP_OK;
 }
@@ -94,6 +118,7 @@ osp_err_t osp_gbt_transport_recv(osp_transport_t *transport, osp_framing_type_t 
 
 	uint32_t acc_len = 0;
 	uint16_t expected_block = 1;
+	uint8_t peer_window = 0;
 	bool have_first = (first_block != NULL && first_block_len > 0);
 
 	while (true) {
@@ -119,6 +144,9 @@ osp_err_t osp_gbt_transport_recv(osp_transport_t *transport, osp_framing_type_t 
 		if (gbt.block_number != expected_block) {
 			return OSP_ERR_INVALID;
 		}
+		if (gbt.window > 0) {
+			peer_window = gbt.window;
+		}
 		if (acc_len + gbt.block_data_len > apdu_size) {
 			return OSP_ERR_NOMEM;
 		}
@@ -130,8 +158,8 @@ osp_err_t osp_gbt_transport_recv(osp_transport_t *transport, osp_framing_type_t 
 			return OSP_OK;
 		}
 
-		if (gbt.window > 0) {
-			r = gbt_send_ack(transport, framing, expected_block, tx_scratch, tx_scratch_size);
+		if (peer_window > 0) {
+			r = gbt_send_ack(transport, framing, peer_window, expected_block, tx_scratch, tx_scratch_size);
 			if (r != OSP_OK) {
 				return r;
 			}

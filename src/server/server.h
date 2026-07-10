@@ -63,6 +63,7 @@ typedef struct {
 	uint32_t max_pdu;
 	bool gbt_enabled;
 	uint32_t gbt_block_size;
+	uint8_t gbt_window;
 	bool ciphering_enabled;
 	osp_sec_context_t cipher_tx;
 	osp_sec_context_t cipher_rx;
@@ -83,6 +84,9 @@ void osp_server_set_max_pdu(osp_server_t *s, uint32_t max_pdu);
 
 /* Enable general block transfer for APDUs longer than block_size (default payload 56 B) */
 void osp_server_enable_gbt(osp_server_t *s, uint32_t block_size);
+
+/* Set GBT window (0=unconfirmed, 1+=confirmed with ack between windows) */
+void osp_server_set_gbt_window(osp_server_t *s, uint8_t window);
 
 /* Enable glo-ciphering (rx unprotects requests, tx protects responses) */
 void osp_server_set_ciphering(osp_server_t *s, const osp_sec_context_t *tx, const osp_sec_context_t *rx);

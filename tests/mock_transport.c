@@ -1,5 +1,7 @@
 #include "mock_transport.h"
 #include "../src/server/server.h"
+#include "../src/service/gbt.h"
+#include "../src/codec/codec.h"
 #include <string.h>
 
 osp_err_t mock_loopback_send(mock_transport_pair_t *pair, osp_server_t *server, const uint8_t *data, uint32_t len) {
@@ -10,6 +12,17 @@ osp_err_t mock_loopback_send(mock_transport_pair_t *pair, osp_server_t *server, 
 	osp_err_t r = mock_send_to_peer(&pair->server_rx, data, len);
 	if (r != OSP_OK) {
 		return r;
+	}
+
+	/* GBT ack-only APDUs (empty block-data) must not re-enter the server dispatcher */
+	if (len > 0 && data[0] == OSP_TAG_GENERAL_BLOCK_TRANSFER) {
+		osp_general_block_transfer_t gbt;
+		osp_buf_t buf;
+		osp_buf_init(&buf, (uint8_t *)data, len);
+		buf.wr = len;
+		if (osp_gbt_decode(&buf, &gbt) == 0 && gbt.block_data_len == 0) {
+			return OSP_OK;
+		}
 	}
 
 	if (server) {
@@ -53,6 +66,47 @@ osp_err_t mock_recv_from_peer(mock_buf_t *src, uint8_t *buf, uint32_t size, uint
 	return OSP_OK;
 }
 
+/* Peek the latest queued GBT block in client_rx and post an ack to server_rx (does not consume client messages). */
+static osp_err_t mock_gbt_ack_pump(mock_transport_pair_t *p) {
+	if (!p->gbt_ack_pump || p->client_rx.msg_count == 0) {
+		return OSP_ERR_TIMEOUT;
+	}
+	uint32_t last = p->client_rx.msg_count - 1;
+	uint32_t start = p->client_rx.msg_starts[last];
+	uint32_t end = (last + 1 < p->client_rx.msg_count) ? p->client_rx.msg_starts[last + 1] : p->client_rx.len;
+	uint32_t msg_len = end - start;
+	if (msg_len < 2 || p->client_rx.data[start] != OSP_TAG_GENERAL_BLOCK_TRANSFER) {
+		return OSP_ERR_TIMEOUT;
+	}
+
+	osp_general_block_transfer_t gbt;
+	osp_buf_t buf;
+	osp_buf_init(&buf, &p->client_rx.data[start], msg_len);
+	buf.wr = msg_len;
+	if (osp_gbt_decode(&buf, &gbt) != 0 || gbt.window == 0 || gbt.last_block) {
+		return OSP_ERR_TIMEOUT;
+	}
+
+	uint8_t tx[32];
+	osp_buf_t w;
+	osp_buf_init(&w, tx, sizeof(tx));
+	osp_general_block_transfer_t ack = {0};
+	ack.last_block = true;
+	ack.window = gbt.window;
+	ack.block_number = 1;
+	ack.block_number_ack = gbt.block_number;
+	if (osp_gbt_encode(&w, &ack) != 0) {
+		return OSP_ERR_INVALID;
+	}
+	return mock_send_to_peer(&p->server_rx, tx, w.wr);
+}
+
+void mock_transport_enable_gbt_ack_pump(mock_transport_pair_t *p, bool enable) {
+	if (p) {
+		p->gbt_ack_pump = enable;
+	}
+}
+
 /* Client send → write to server_rx */
 static osp_err_t client_send(void *ctx, const uint8_t *data, uint32_t len) {
 	mock_transport_pair_t *p = (mock_transport_pair_t *)ctx;
@@ -62,6 +116,9 @@ static osp_err_t client_send(void *ctx, const uint8_t *data, uint32_t len) {
 /* Server recv ← read from server_rx (what client sent) */
 static osp_err_t server_recv(void *ctx, uint8_t *buf, uint32_t size, uint32_t *out_len, uint32_t timeout) {
 	mock_transport_pair_t *p = (mock_transport_pair_t *)ctx;
+	if (p->server_rx.msg_index >= p->server_rx.msg_count) {
+		(void)mock_gbt_ack_pump(p);
+	}
 	return mock_recv_from_peer(&p->server_rx, buf, size, out_len, timeout);
 }
 

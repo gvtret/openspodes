@@ -28,6 +28,7 @@ typedef struct {
 	osp_transport_t server_transport;
 	mock_buf_t server_rx; /* client send → here */
 	mock_buf_t client_rx; /* server send → here */
+	bool gbt_ack_pump;
 } mock_transport_pair_t;
 
 void mock_transport_pair_init(mock_transport_pair_t *p);
@@ -38,5 +39,8 @@ osp_err_t mock_recv_from_peer(mock_buf_t *src, uint8_t *buf, uint32_t size, uint
 
 /* Client send + optional server_accept; propagates either transport error */
 osp_err_t mock_loopback_send(mock_transport_pair_t *pair, osp_server_t *server, const uint8_t *data, uint32_t len);
+
+/* Auto-send GBT acks while server blocks waiting for client confirmation (loopback only) */
+void mock_transport_enable_gbt_ack_pump(mock_transport_pair_t *p, bool enable);
 
 #endif

@@ -505,6 +505,39 @@ static void test_gbt_get_large_value(void **state) {
 	}
 }
 
+/* ── Test: GET large value via GBT confirmed mode (window=1) ────────────── */
+
+static void test_gbt_get_large_value_confirmed(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
+	osp_server_enable_gbt(&server, 48);
+	osp_server_set_gbt_window(&server, 1);
+
+	osp_obis_t obis = {0, 0, 0x82, 0, 0, 255};
+	osp_ic_data_t data_obj;
+	osp_ic_data_init(&data_obj, obis);
+	data_obj.value = make_octets(0xDE, 180);
+	osp_server_register(&server, osp_ic_data_class(), &data_obj);
+
+	osp_client_t client;
+	make_pair(&pair, &server, &client);
+	mock_transport_enable_gbt_ack_pump(&pair, true);
+	osp_client_enable_gbt(&client, 48);
+	osp_client_set_gbt_window(&client, 1);
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+
+	osp_value_t result;
+	assert_int_equal(osp_client_get(&client, 1, &obis, 1, &result), OSP_OK);
+	assert_int_equal(result.tag, OSP_TAG_OCTETSTRING);
+	assert_int_equal(result.as.octetstring.len, 180);
+	for (uint32_t i = 0; i < 180; i++) {
+		assert_int_equal(result.as.octetstring.data[i], 0xDE);
+	}
+}
+
 /* ── Test: SET reassembled from datablocks ───────────────────────────────── */
 
 static void test_set_block_transfer(void **state) {
@@ -839,6 +872,7 @@ int main(void) {
 	    cmocka_unit_test(test_client_release_disconnect),
 	    cmocka_unit_test(test_get_block_transfer),
 	    cmocka_unit_test(test_gbt_get_large_value),
+	    cmocka_unit_test(test_gbt_get_large_value_confirmed),
 	    cmocka_unit_test(test_set_block_transfer),
 	    cmocka_unit_test(test_client_set_via_blocks),
 	    cmocka_unit_test(test_action_param_block_invoke),

@@ -32,6 +32,7 @@ typedef struct {
 	uint8_t invoke_id;
 	bool gbt_enabled;
 	uint32_t gbt_block_size;
+	uint8_t gbt_window;
 	bool ciphering_enabled;
 	osp_sec_context_t cipher_tx;
 	osp_sec_context_t cipher_rx;
@@ -49,6 +50,9 @@ void osp_client_set_security(osp_client_t *c, const osp_sec_context_t *sec);
 
 /* Enable general block transfer for APDUs longer than block_size */
 void osp_client_enable_gbt(osp_client_t *c, uint32_t block_size);
+
+/* Set GBT window (0=unconfirmed, 1+=confirmed with ack between windows) */
+void osp_client_set_gbt_window(osp_client_t *c, uint8_t window);
 
 /* Enable glo-ciphering (tx protects requests, rx unprotects responses) */
 void osp_client_set_ciphering(osp_client_t *c, const osp_sec_context_t *tx, const osp_sec_context_t *rx);

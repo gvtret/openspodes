@@ -40,10 +40,10 @@ ctest --test-dir build-linux --output-on-failure
 | `openspodes_test_golden` | `tests/test_codec_golden.c` | ~104 | Golden vectors, BER/ACSE/xDLMS, thirdparty cross-check |
 | `openspodes_test_errors` | `tests/test_errors.c` | 34 | Error paths |
 | `openspodes_test_ic` | `tests/test_ic_smoke.c` | 3 | All IC classes smoke |
-| `openspodes_test_integration` | `tests/test_integration.c` | 18 | Client↔server E2E loopback (+ HLS hash handshakes) |
+| `openspodes_test_integration` | `tests/test_integration.c` | 21 | Client↔server E2E loopback (+ HLS/GBT) |
 | `openspodes_test_phase0` | `tests/test_phase0.c` | 7 | SPODUS helpers |
 | `openspodes_test_phase1` | `tests/test_phase1.c` | 8 | Table manager / profile filter |
-| `openspodes_test_phase2` | `tests/test_phase2.c` | 8 | WithList codec, blocks, GBT, compact data |
+| `openspodes_test_phase2` | `tests/test_phase2.c` | 9 | WithList codec, blocks, GBT confirmed |
 | `openspodes_test_security` | `tests/test_security_glo.c` | 2 | glo-ciphering E.5 + roundtrip (OpenSSL) |
 
 ## Recent accomplishments (Phase 2)
@@ -59,6 +59,7 @@ ctest --test-dir build-linux --output-on-failure
 - **GBT runtime E2E**: `osp_server_enable_gbt` / `osp_client_enable_gbt`, transport send/recv
 - **glo-ciphering**: `osp_glo_protect/unprotect`, `osp_client_set_ciphering`, E.5 vector test
 - **HLS MD5/SHA1/SHA256**: `osp_hls_pass3/4_*`, client/server handshake, OpenSSL hash HAL
+- **GBT confirmed mode**: `osp_*_set_gbt_window`, ack between windows, loopback E2E
 
 ## Client API
 
@@ -72,9 +73,10 @@ ctest --test-dir build-linux --output-on-failure
 | `osp_client_action` | ✅ + param/return blocks |
 | `osp_client_action_with_list` | ✅ |
 | `osp_client_recv_data_notification` | ✅ |
-| GBT runtime (xDLMS only) | ✅ unconfirmed multi-block |
+| GBT runtime (xDLMS only) | ✅ unconfirmed + confirmed (window>0) |
 | glo-ciphering | ✅ protect/unprotect + client/server session |
 | HLS MD5/SHA1/SHA256 | ✅ pass 3/4 + E2E loopback |
+| GBT confirmed (window>0) | ✅ ack + E2E loopback |
 | HLS GOST (8–10) | ❌ |
 
 ## IC Classes (40 implemented)
@@ -91,7 +93,7 @@ TableManager(8200) ProfileDataFilter(8201)
 ## Known gaps
 
 ### Protocol / implementation
-- GBT confirmed mode with streaming/ack (window>0) not implemented
+- GBT streaming / lost-block recovery not implemented
 - `GET_WITH_LIST_BLOCK` enum only (no codec)
 - HLS MD5/SHA1/SHA256/GOST mechanisms not implemented
 - Selective access stubbed (encode writes 0)
@@ -104,11 +106,9 @@ TableManager(8200) ProfileDataFilter(8201)
 - spodes-rs ahead: GOST security, glo-ciphering, general-ciphering, Concentrator runtime, examples
 
 ## Next steps (suggested)
-1. HLS mechanisms 4–10 (MD5/SHA/GOST)
-2. GBT confirmed/streaming mode (window>0, lost-block recovery)
-3. Example app: loopback client/server CLI
-4. Example app: loopback client/server CLI
-5. Deepen stub ICs (26, 31, 61, 63, 65, 76)
+1. GOST mechanisms 8–10
+2. Example app: loopback client/server CLI
+3. GBT streaming / lost-block recovery
 
 ## User Instructions (MUST follow)
 - **Consult doc-rag-remote when implementing features**
