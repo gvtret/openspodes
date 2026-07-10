@@ -20,6 +20,7 @@
 #include "ic/data.h"
 #include "mock_transport.h"
 #include "mock_crypto.h"
+#include "security/security.h"
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  Codec error paths
@@ -150,6 +151,163 @@ static void test_obis_errors(void **state) {
 	osp_buf_init(&buf, mem, 2);
 	buf.wr = 2;
 	assert_int_equal(osp_obis_write(&buf, &(osp_obis_t){1, 2, 3, 4, 5, 6}), OSP_ERR_INVALID);
+}
+
+static void test_ber_length_and_octet_string(void **state) {
+	(void)state;
+	uint8_t mem[512];
+	osp_buf_t buf;
+	uint32_t len;
+	uint32_t enc_len;
+	uint8_t out[64];
+
+	/* BER length 0x81 (one-byte long form) */
+	osp_buf_init(&buf, mem, sizeof(mem));
+	assert_int_equal(osp_ber_write_length(&buf, 200), OSP_OK);
+	enc_len = buf.wr;
+	osp_buf_init(&buf, mem, enc_len);
+	buf.wr = enc_len;
+	assert_int_equal(osp_ber_read_length(&buf, &len), OSP_OK);
+	assert_int_equal(len, 200);
+
+	/* BER length 0x82 (two-byte long form) */
+	osp_buf_init(&buf, mem, sizeof(mem));
+	assert_int_equal(osp_ber_write_length(&buf, 300), OSP_OK);
+	enc_len = buf.wr;
+	osp_buf_init(&buf, mem, enc_len);
+	buf.wr = enc_len;
+	assert_int_equal(osp_ber_read_length(&buf, &len), OSP_OK);
+	assert_int_equal(len, 300);
+
+	/* Unsupported length form */
+	mem[0] = 0x83;
+	osp_buf_init(&buf, mem, 1);
+	buf.wr = 1;
+	assert_int_equal(osp_ber_read_length(&buf, &len), OSP_ERR_UNSUPPORTED);
+
+	/* Truncated long tag number */
+	mem[0] = 0x1F;
+	osp_buf_init(&buf, mem, 1);
+	buf.wr = 1;
+	osp_ber_tag_t tag;
+	assert_int_equal(osp_ber_read_tag(&buf, &tag), OSP_ERR_INVALID);
+
+	/* Octet string roundtrip (out_len optional) */
+	const uint8_t payload[] = {0xDE, 0xAD, 0xBE, 0xEF};
+	osp_buf_init(&buf, mem, sizeof(mem));
+	assert_int_equal(osp_ber_write_octet_string(&buf, payload, sizeof(payload)), OSP_OK);
+	enc_len = buf.wr;
+	osp_buf_init(&buf, mem, enc_len);
+	buf.wr = enc_len;
+	assert_int_equal(osp_ber_read_octet_string(&buf, out, sizeof(out), NULL), OSP_OK);
+
+	osp_buf_init(&buf, mem, enc_len);
+	buf.wr = enc_len;
+	assert_int_equal(osp_ber_read_octet_string(&buf, out, sizeof(out), &len), OSP_OK);
+	assert_int_equal(len, sizeof(payload));
+	assert_memory_equal(out, payload, sizeof(payload));
+
+	/* Write octet string NOMEM */
+	osp_buf_init(&buf, mem, 2);
+	assert_int_equal(osp_ber_write_octet_string(&buf, payload, sizeof(payload)), OSP_ERR_NOMEM);
+}
+
+static void test_axdr_octet_string_roundtrip(void **state) {
+	(void)state;
+	uint8_t mem[32];
+	osp_buf_t buf;
+	uint8_t out[8];
+	const uint8_t payload[] = {0x01, 0x02, 0x03};
+
+	mem[0] = OSP_AXDR_OCTETSTRING;
+	mem[1] = 0x00;
+	mem[2] = 0x00;
+	mem[3] = 0x00;
+	mem[4] = sizeof(payload);
+	memcpy(&mem[5], payload, sizeof(payload));
+
+	osp_buf_init(&buf, mem, sizeof(mem));
+	buf.wr = 5 + sizeof(payload);
+	assert_int_equal(osp_axdr_read_octet_string(&buf, out, sizeof(out), NULL), OSP_OK);
+
+	osp_buf_init(&buf, mem, buf.wr);
+	buf.wr = 5 + sizeof(payload);
+	uint32_t out_len;
+	assert_int_equal(osp_axdr_read_octet_string(&buf, out, sizeof(out), &out_len), OSP_OK);
+	assert_int_equal(out_len, sizeof(payload));
+	assert_memory_equal(out, payload, sizeof(payload));
+}
+
+static void test_serialize_access_and_objects(void **state) {
+	(void)state;
+	uint8_t mem[256];
+	osp_buf_t w, r;
+
+	osp_access_right_t ar = {0};
+	ar.attr_count = 1;
+	ar.attr_items[0].attribute_id = 2;
+	ar.attr_items[0].access_mode = OSP_ACCESS_READ_WRITE;
+	ar.method_count = 1;
+	ar.method_items[0].method_id = 1;
+	ar.method_items[0].access_mode = OSP_METHOD_ACCESS;
+
+	assert_int_equal(osp_access_right_read(NULL, &ar), OSP_ERR_INVALID);
+	assert_int_equal(osp_access_right_write(NULL, &ar), OSP_ERR_INVALID);
+
+	osp_buf_init(&w, mem, sizeof(mem));
+	assert_int_equal(osp_access_right_write(&w, &ar), OSP_OK);
+	osp_buf_init(&r, mem, w.wr);
+	r.wr = w.wr;
+	osp_access_right_t ar2 = {0};
+	assert_int_equal(osp_access_right_read(&r, &ar2), OSP_OK);
+	assert_int_equal(ar2.attr_count, 1);
+	assert_int_equal(ar2.attr_items[0].attribute_id, 2);
+	assert_int_equal(ar2.method_count, 1);
+	assert_int_equal(ar2.method_items[0].method_id, 1);
+
+	osp_object_list_element_t elem = {
+	    .class_id = 3,
+	    .version = 0,
+	    .logical_name = {0, 0, 1, 0, 0, 255},
+	    .access_rights = ar,
+	};
+	osp_buf_init(&w, mem, sizeof(mem));
+	assert_int_equal(osp_object_list_element_write(&w, &elem), OSP_OK);
+	osp_buf_init(&r, mem, w.wr);
+	r.wr = w.wr;
+	osp_object_list_element_t elem2;
+	assert_int_equal(osp_object_list_element_read(&r, &elem2), OSP_OK);
+	assert_int_equal(elem2.class_id, 3);
+	assert_true(osp_obis_eq(&elem2.logical_name, &elem.logical_name));
+
+	osp_capture_object_t co = {
+	    .class_id = 1,
+	    .logical_name = {0, 0, 96, 1, 0, 255},
+	    .attribute_index = 2,
+	    .data_index = 0,
+	};
+	osp_buf_init(&w, mem, sizeof(mem));
+	assert_int_equal(osp_capture_object_write(&w, &co), OSP_OK);
+	osp_buf_init(&r, mem, w.wr);
+	r.wr = w.wr;
+	osp_capture_object_t co2;
+	assert_int_equal(osp_capture_object_read(&r, &co2), OSP_OK);
+	assert_int_equal(co2.class_id, 1);
+	assert_int_equal(co2.attribute_index, 2);
+
+	osp_value_definition_t vd = {
+	    .class_id = 3,
+	    .logical_name = {1, 0, 0, 9, 1, 255},
+	    .attribute_index = 2,
+	};
+	osp_buf_init(&w, mem, sizeof(mem));
+	assert_int_equal(osp_value_definition_write(&w, &vd), OSP_OK);
+	osp_buf_init(&r, mem, w.wr);
+	r.wr = w.wr;
+	osp_value_definition_t vd2;
+	assert_int_equal(osp_value_definition_read(&r, &vd2), OSP_OK);
+	assert_int_equal(vd2.class_id, 3);
+	assert_int_equal(vd2.attribute_index, 2);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -312,6 +470,135 @@ static void test_client_transport_failure(void **state) {
 	assert_int_equal(osp_client_connect(&client, 5000), OSP_ERR_NOMEM);
 }
 
+static osp_err_t fail_open(void *ctx) {
+	(void)ctx;
+	return OSP_ERR_NOMEM;
+}
+
+static void test_client_open_failure(void **state) {
+	(void)state;
+	mock_transport_pair_t pair;
+	mock_transport_pair_init(&pair);
+	pair.client_transport.open = fail_open;
+
+	osp_client_t client;
+	osp_client_init(&client, &pair.client_transport, OSP_FRAMING_NONE);
+	osp_sec_context_t sec;
+	osp_sec_context_init(&sec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
+	osp_client_set_security(&client, &sec);
+
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_ERR_NOMEM);
+}
+
+static void test_client_aare_rejected(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+	mock_transport_pair_init(&pair);
+
+	osp_server_t server;
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
+
+	pair.client_transport.send = loopback_send;
+	pair.client_transport.recv = loopback_recv;
+	pair.client_transport.ctx = &pair;
+	g_server = &server;
+
+	osp_client_t client;
+	osp_client_init(&client, &pair.client_transport, OSP_FRAMING_NONE);
+	osp_sec_context_t sec;
+	osp_sec_context_init(&sec, OSP_SUITE_0, OSP_MECH_HLS_MD5, NULL);
+	osp_client_set_security(&client, &sec);
+
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_ERR_SECURITY);
+	g_server = NULL;
+}
+
+static int g_bad_aare_recv_calls;
+
+static osp_err_t bad_aare_recv(void *ctx, uint8_t *buf, uint32_t size, uint32_t *out_len, uint32_t timeout) {
+	mock_transport_pair_t *p = (mock_transport_pair_t *)ctx;
+	if (g_bad_aare_recv_calls++ == 0) {
+		(void)timeout;
+		if (size < 2) {
+			return OSP_ERR_NOMEM;
+		}
+		buf[0] = 0xFF;
+		buf[1] = 0xFF;
+		*out_len = 2;
+		return OSP_OK;
+	}
+	return mock_recv_from_peer(&p->client_rx, buf, size, out_len, timeout);
+}
+
+static void test_client_bad_aare_response(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+	mock_transport_pair_init(&pair);
+
+	pair.client_transport.send = loopback_send;
+	pair.client_transport.recv = bad_aare_recv;
+	pair.client_transport.ctx = &pair;
+
+	osp_server_t server;
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
+	g_server = &server;
+	g_bad_aare_recv_calls = 0;
+
+	osp_client_t client;
+	osp_client_init(&client, &pair.client_transport, OSP_FRAMING_NONE);
+	osp_sec_context_t sec;
+	osp_sec_context_init(&sec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
+	osp_client_set_security(&client, &sec);
+
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_ERR_INVALID);
+	g_server = NULL;
+	g_bad_aare_recv_calls = 0;
+}
+
+static void test_security_hls_errors(void **state) {
+	(void)state;
+	mock_crypto_init();
+
+	osp_sec_context_t ctx;
+	osp_sec_context_init(&ctx, OSP_SUITE_0, OSP_MECH_HLS_GMAC, NULL);
+	ctx.stoc_len = 8;
+	memset(ctx.stoc, 0x55, 8);
+
+	uint8_t out[17];
+	assert_int_equal(osp_hls_pass3_build(NULL, out, sizeof(out)), -1);
+	assert_int_equal(osp_hls_pass3_build(&ctx, out, 16), -1);
+	assert_int_equal(osp_hls_pass3_build(&ctx, out, sizeof(out)), 17);
+
+	uint8_t tag[OSP_SEC_TAG_SIZE];
+	assert_int_equal(osp_hls_gmac(&ctx, ctx.system_title, 1, ctx.stoc, ctx.stoc_len, tag), 0);
+
+	void (*saved_gcm)(osp_sec_key_id, uint32_t, const uint8_t *, uint32_t, const uint8_t *, uint32_t) = osp_hal_gcm_init;
+	osp_hal_gcm_init = NULL;
+	assert_int_equal(osp_hls_gmac(&ctx, ctx.system_title, 1, ctx.stoc, ctx.stoc_len, tag), -1);
+	osp_hal_gcm_init = saved_gcm;
+
+	uint8_t bad_f[17];
+	memcpy(bad_f, out, sizeof(out));
+	bad_f[16] ^= 0xFF;
+	ctx.hls_failures = 0;
+	ctx.ic_valid = false;
+	assert_int_equal(osp_hls_pass3_verify(&ctx, bad_f, 17), -5);
+
+	uint8_t replay[17];
+	memcpy(replay, out, sizeof(out));
+	ctx.ic_valid = true;
+	ctx.last_peer_ic = ((uint32_t)replay[1] << 24) | ((uint32_t)replay[2] << 16) | ((uint32_t)replay[3] << 8) | (uint32_t)replay[4];
+	ctx.hls_failures = 0;
+	assert_int_equal(osp_hls_pass3_verify(&ctx, replay, 17), -3);
+
+	ctx.hls_failures = 5;
+	assert_int_equal(osp_hls_pass3_verify(&ctx, out, 17), -2);
+
+	osp_sec_context_init(NULL, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
+}
+
 static void test_server_invalid_and_unsupported(void **state) {
 	(void)state;
 	mock_transport_pair_t pair;
@@ -364,6 +651,9 @@ int main(void) {
 	    cmocka_unit_test(test_axdr_read_errors),
 	    cmocka_unit_test(test_value_read_errors),
 	    cmocka_unit_test(test_obis_errors),
+	    cmocka_unit_test(test_ber_length_and_octet_string),
+	    cmocka_unit_test(test_axdr_octet_string_roundtrip),
+	    cmocka_unit_test(test_serialize_access_and_objects),
 	    cmocka_unit_test(test_wrapper_errors),
 	    cmocka_unit_test(test_hdlc_deframe_errors),
 	    cmocka_unit_test(test_transport_apdu_errors),
@@ -371,6 +661,10 @@ int main(void) {
 	    cmocka_unit_test(test_client_not_connected),
 	    cmocka_unit_test(test_client_get_not_found),
 	    cmocka_unit_test(test_client_transport_failure),
+	    cmocka_unit_test(test_client_open_failure),
+	    cmocka_unit_test(test_client_aare_rejected),
+	    cmocka_unit_test(test_client_bad_aare_response),
+	    cmocka_unit_test(test_security_hls_errors),
 	    cmocka_unit_test(test_server_invalid_and_unsupported),
 	    cmocka_unit_test(test_server_init_errors),
 	};

@@ -1,6 +1,9 @@
 build/
 build-coverage/
 logs/
+.cache/
+.claude/
+.mimocode/
 *.o
 *.a
 *.so
