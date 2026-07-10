@@ -62,6 +62,7 @@ ctest --test-dir build-linux --output-on-failure
 - **HLS MD5/SHA1/SHA256**: `osp_hls_pass3/4_*`, client/server handshake, OpenSSL hash HAL
 - **GBT confirmed mode**: `osp_*_set_gbt_window`, ack between windows, loopback E2E
 - **Example CLI**: `openspodes_loopback_cli` — in-process GET/SET demo
+- **TCP examples**: `openspodes_tcp_server` / `openspodes_tcp_client` — wrapper over TCP:4059
 
 ## Client API
 
@@ -110,7 +111,7 @@ TableManager(8200) ProfileDataFilter(8201)
 ## Next steps (suggested)
 1. GOST mechanisms 8–10 (Kuznyechik/Streebog HAL)
 2. GBT streaming / lost-block recovery
-3. TCP wrapper example (like spodes-rs tcp_client/tcp_server)
+3. TCP example CTest (optional, port-based smoke)
 
 ## User Instructions (MUST follow)
 - **Consult doc-rag-remote when implementing features**

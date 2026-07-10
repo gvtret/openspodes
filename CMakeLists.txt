@@ -151,6 +151,22 @@ target_include_directories(openspodes_loopback_cli PRIVATE tests)
 target_link_libraries(openspodes_loopback_cli PRIVATE openspodes)
 add_test(NAME openspodes_loopback_cli_demo COMMAND openspodes_loopback_cli demo)
 
+add_executable(openspodes_tcp_server
+	examples/tcp_server.c
+	examples/tcp_socket.c
+	tests/mock_crypto.c
+)
+target_include_directories(openspodes_tcp_server PRIVATE tests examples)
+target_link_libraries(openspodes_tcp_server PRIVATE openspodes)
+
+add_executable(openspodes_tcp_client
+	examples/tcp_client.c
+	examples/tcp_socket.c
+	tests/mock_crypto.c
+)
+target_include_directories(openspodes_tcp_client PRIVATE tests examples)
+target_link_libraries(openspodes_tcp_client PRIVATE openspodes)
+
 if(ENABLE_COVERAGE)
 	find_package(Python3 COMPONENTS Interpreter REQUIRED)
 	add_custom_target(coverage
