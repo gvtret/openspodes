@@ -1,5 +1,10 @@
 build/
+build-coverage/
+logs/
 *.o
 *.a
 *.so
 *.dylib
+*.gcno
+*.gcda
+*.gcov

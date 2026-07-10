@@ -119,12 +119,22 @@ osp_err_t osp_ber_write_tag(osp_buf_t *buf, uint8_t tag_class, bool constructed,
 		}
 		buf->buf[buf->wr++] = first | tag_number;
 	} else {
-		/* Long tag: need 2+ bytes */
-		if (osp_buf_free(buf) < 2) {
+		/* Long tag: base-128 encoding with continuation bits */
+		uint8_t temp[2];
+		int n = 0;
+		uint8_t val = tag_number;
+		do {
+			temp[n++] = val & 0x7F;
+			val >>= 7;
+		} while (val > 0);
+
+		if (osp_buf_free(buf) < 1 + (uint32_t)n) {
 			return OSP_ERR_NOMEM;
 		}
 		buf->buf[buf->wr++] = first | 0x1F;
-		buf->buf[buf->wr++] = tag_number & 0x7F;
+		for (int i = n - 1; i >= 0; i--) {
+			buf->buf[buf->wr++] = temp[i] | (i > 0 ? 0x80 : 0x00);
+		}
 	}
 	return OSP_OK;
 }
@@ -219,28 +229,35 @@ osp_err_t osp_axdr_read_tag(osp_buf_t *buf, uint8_t *tag) {
 }
 
 osp_err_t osp_axdr_read_u8(osp_buf_t *buf, uint8_t *val) {
-	if (!buf || !val || osp_buf_unread(buf) < 1) {
+	if (!buf || osp_buf_unread(buf) < 1) {
 		return OSP_ERR_INVALID;
 	}
-	*val = buf->buf[buf->rd++];
+	if (val) {
+		*val = buf->buf[buf->rd];
+	}
+	buf->rd++;
 	return OSP_OK;
 }
 
 osp_err_t osp_axdr_read_u16(osp_buf_t *buf, uint16_t *val) {
-	if (!buf || !val || osp_buf_unread(buf) < 2) {
+	if (!buf || osp_buf_unread(buf) < 2) {
 		return OSP_ERR_INVALID;
 	}
-	*val = ((uint16_t)buf->buf[buf->rd] << 8) | buf->buf[buf->rd + 1];
+	if (val) {
+		*val = ((uint16_t)buf->buf[buf->rd] << 8) | buf->buf[buf->rd + 1];
+	}
 	buf->rd += 2;
 	return OSP_OK;
 }
 
 osp_err_t osp_axdr_read_u32(osp_buf_t *buf, uint32_t *val) {
-	if (!buf || !val || osp_buf_unread(buf) < 4) {
+	if (!buf || osp_buf_unread(buf) < 4) {
 		return OSP_ERR_INVALID;
 	}
-	*val = ((uint32_t)buf->buf[buf->rd] << 24) | ((uint32_t)buf->buf[buf->rd + 1] << 16) | ((uint32_t)buf->buf[buf->rd + 2] << 8) |
-	    (uint32_t)buf->buf[buf->rd + 3];
+	if (val) {
+		*val = ((uint32_t)buf->buf[buf->rd] << 24) | ((uint32_t)buf->buf[buf->rd + 1] << 16) | ((uint32_t)buf->buf[buf->rd + 2] << 8) |
+		    (uint32_t)buf->buf[buf->rd + 3];
+	}
 	buf->rd += 4;
 	return OSP_OK;
 }
@@ -330,11 +347,7 @@ osp_err_t osp_axdr_write_bool(osp_buf_t *buf, bool val) {
 }
 
 osp_err_t osp_axdr_write_octet_string(osp_buf_t *buf, const uint8_t *data, uint32_t len) {
-	osp_err_t r = osp_axdr_write_tag(buf, OSP_AXDR_OCTETSTRING);
-	if (r != OSP_OK) {
-		return r;
-	}
-	r = osp_axdr_write_u32(buf, len);
+	osp_err_t r = osp_ber_write_length(buf, len);
 	if (r != OSP_OK) {
 		return r;
 	}

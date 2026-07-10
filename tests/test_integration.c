@@ -1,0 +1,318 @@
+/**
+ * test_integration.c — End-to-end integration tests
+ *
+ * Full client↔server flow through loopback transport:
+ * AARQ→AARE→HLS handshake→GET/SET/RELEASE.
+ */
+
+#include <stdarg.h>
+#include <stddef.h>
+#include <setjmp.h>
+#include <string.h>
+#include <cmocka.h>
+
+#include "../src/openspodes.h"
+#include "../src/client/client.h"
+#include "../src/server/server.h"
+#include "../src/ic/data.h"
+#include "../src/ic/disconnect_control.h"
+#include "../src/security/security.h"
+#include "mock_transport.h"
+#include "mock_crypto.h"
+
+/* Global server reference for loopback transport */
+static osp_server_t *g_server = NULL;
+
+/* ── Loopback transport: auto-processes server on client send ────────────── */
+
+static osp_err_t loopback_send(void *ctx, const uint8_t *data, uint32_t len) {
+	mock_transport_pair_t *p = (mock_transport_pair_t *)ctx;
+	mock_send_to_peer(&p->server_rx, data, len);
+	if (g_server) {
+		osp_server_accept(g_server, 0);
+	}
+	return OSP_OK;
+}
+
+static osp_err_t loopback_recv(void *ctx, uint8_t *buf, uint32_t size, uint32_t *out_len, uint32_t timeout) {
+	mock_transport_pair_t *p = (mock_transport_pair_t *)ctx;
+	return mock_recv_from_peer(&p->client_rx, buf, size, out_len, timeout);
+}
+
+static void setup(mock_transport_pair_t *pair, osp_server_t *server) {
+	mock_transport_pair_init(pair);
+	pair->client_transport.send = loopback_send;
+	pair->client_transport.recv = loopback_recv;
+	pair->client_transport.ctx = pair;
+	g_server = server;
+}
+
+/* Helper: create a low-security client+server pair */
+static void make_pair(mock_transport_pair_t *pair, osp_server_t *server, osp_client_t *client) {
+	setup(pair, server);
+	osp_client_init(client, &pair->client_transport, OSP_FRAMING_NONE);
+	osp_sec_context_t csec;
+	osp_sec_context_init(&csec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
+	osp_client_set_security(client, &csec);
+	osp_sec_context_t ssec;
+	osp_sec_context_init(&ssec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
+	osp_server_set_security(server, &ssec);
+}
+
+/* ── Test: full AARQ→HLS→GET ────────────────────────────────────────────── */
+
+static void test_aarq_hls_get(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+
+	osp_server_t server;
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
+
+	osp_ic_data_t data_obj;
+	osp_ic_data_init(&data_obj, (osp_obis_t){0, 0, 1, 0, 0, 255});
+	osp_value_t init_val = osp_val_u32(42);
+	data_obj.value = init_val;
+	osp_server_register(&server, osp_ic_data_class(), &data_obj);
+
+	osp_sec_context_t sec;
+	osp_sec_context_init(&sec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
+	osp_server_set_security(&server, &sec);
+
+	setup(&pair, &server);
+
+	osp_client_t client;
+	osp_client_init(&client, &pair.client_transport, OSP_FRAMING_NONE);
+	osp_sec_context_t csec;
+	osp_sec_context_init(&csec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
+	osp_client_set_security(&client, &csec);
+
+	/* Connect */
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+
+	/* GET value (should be 42) */
+	osp_value_t result;
+	osp_obis_t dobis = {0, 0, 1, 0, 0, 255};
+	assert_int_equal(osp_client_get(&client, 1, &dobis, 1, &result), OSP_OK);
+	assert_int_equal(result.tag, OSP_TAG_DOUBLE_LONG_UNS);
+	assert_int_equal(result.as.uint32.value, 42);
+
+	/* SET new value */
+	osp_value_t newval = osp_val_u32(100);
+	assert_int_equal(osp_client_set(&client, 1, &dobis, 1, &newval), OSP_OK);
+	osp_value_t get_val;
+	get_val = data_obj.value;
+	assert_int_equal(get_val.as.uint32.value, 100);
+
+	/* GET back */
+	assert_int_equal(osp_client_get(&client, 1, &dobis, 1, &result), OSP_OK);
+	assert_int_equal(result.as.uint32.value, 100);
+
+	/* Release */
+	assert_int_equal(osp_client_release(&client), OSP_OK);
+}
+
+/* ── Test: AARQ rejected ────────────────────────────────────────────────── */
+
+static void test_aarq_rejected(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+
+	osp_server_t server;
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
+	setup(&pair, &server);
+
+	osp_client_t client;
+	osp_client_init(&client, &pair.client_transport, OSP_FRAMING_NONE);
+	osp_sec_context_t sec;
+	osp_sec_context_init(&sec, OSP_SUITE_0, 99, NULL);
+	osp_client_set_security(&client, &sec);
+
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_ERR_SECURITY);
+}
+
+/* ── Test: multi-object dispatch ─────────────────────────────────────────── */
+
+static void test_multi_object(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
+	osp_client_t client;
+
+	osp_ic_data_t d1, d2;
+	osp_ic_data_init(&d1, (osp_obis_t){0, 0, 1, 0, 0, 255});
+	osp_value_t v1 = osp_val_u32(111);
+	d1.value = v1;
+	osp_ic_data_init(&d2, (osp_obis_t){0, 0, 2, 0, 0, 255});
+	osp_value_t v2 = osp_val_u32(222);
+	d2.value = v2;
+	osp_server_register(&server, osp_ic_data_class(), &d1);
+	osp_server_register(&server, osp_ic_data_class(), &d2);
+
+	osp_sec_context_t sec;
+	osp_sec_context_init(&sec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
+	osp_server_set_security(&server, &sec);
+
+	make_pair(&pair, &server, &client);
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+
+	osp_value_t result;
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(result.as.uint32.value, 111);
+
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 2, 0, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(result.as.uint32.value, 222);
+}
+
+/* ── Test: SET+GET roundtrip ─────────────────────────────────────────────── */
+
+static void test_set_get(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
+	osp_client_t client;
+
+	osp_ic_data_t d;
+	osp_ic_data_init(&d, (osp_obis_t){0, 0, 1, 0, 0, 255});
+	osp_value_t zero = osp_val_u32(0);
+	d.value = zero;
+	osp_server_register(&server, osp_ic_data_class(), &d);
+
+	osp_sec_context_t sec;
+	osp_sec_context_init(&sec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
+	osp_server_set_security(&server, &sec);
+	make_pair(&pair, &server, &client);
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+
+	/* SET 777 */
+	osp_value_t sv = osp_val_u32(777);
+	assert_int_equal(osp_client_set(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &sv), OSP_OK);
+	osp_value_t gv = d.value;
+	assert_int_equal(gv.as.uint32.value, 777);
+
+	/* GET back */
+	osp_value_t result;
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(result.as.uint32.value, 777);
+
+	/* SET 999 */
+	osp_value_t sv2 = osp_val_u32(999);
+	assert_int_equal(osp_client_set(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &sv2), OSP_OK);
+	osp_value_t result2;
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result2), OSP_OK);
+	assert_int_equal(result2.as.uint32.value, 999);
+}
+
+/* ── Test: HLS GMAC handshake via loopback ───────────────────────────────── */
+
+static void test_hls_handshake(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+
+	osp_server_t server;
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
+
+	osp_ic_data_t data_obj;
+	osp_ic_data_init(&data_obj, (osp_obis_t){0, 0, 1, 0, 0, 255});
+	osp_value_t init = osp_val_u32(555);
+	data_obj.value = init;
+	osp_server_register(&server, osp_ic_data_class(), &data_obj);
+
+	osp_sec_context_t server_sec;
+	osp_sec_context_init(&server_sec, OSP_SUITE_0, OSP_MECH_HLS_GMAC, NULL);
+	osp_server_set_security(&server, &server_sec);
+	setup(&pair, &server);
+
+	osp_client_t client;
+	osp_client_init(&client, &pair.client_transport, OSP_FRAMING_NONE);
+	osp_sec_context_t client_sec;
+	osp_sec_context_init(&client_sec, OSP_SUITE_0, OSP_MECH_HLS_GMAC, NULL);
+	osp_client_set_security(&client, &client_sec);
+
+	/* Connect with HLS GMAC: AARQ→AARE→pass3→pass4 */
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+	assert_true(client.associated);
+
+	/* Verify HLS worked: GET should succeed */
+	osp_value_t result;
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(result.as.uint32.value, 555);
+
+	/* Verify server-side IC tracked correctly */
+	assert_int_equal(server.associated, true);
+}
+
+/* ── Test: client ACTION (disconnect control) ────────────────────────────── */
+
+static void test_client_action(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+
+	osp_server_t server;
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
+
+	osp_ic_disconnect_control_t dc;
+	osp_ic_disconnect_control_init(&dc, (osp_obis_t){0, 0, 96, 3, 10, 255});
+	dc.output_state = 1;
+	osp_server_register(&server, osp_ic_disconnect_control_class(), &dc);
+
+	osp_sec_context_t sec;
+	osp_sec_context_init(&sec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
+	osp_server_set_security(&server, &sec);
+
+	osp_client_t client;
+	make_pair(&pair, &server, &client);
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+
+	osp_value_t result;
+	osp_obis_t obis = {0, 0, 96, 3, 10, 255};
+	assert_int_equal(osp_client_action(&client, 70, &obis, 1, NULL, &result), OSP_OK);
+	assert_int_equal(dc.output_state, 0);
+	assert_int_equal(result.tag, OSP_TAG_NULL);
+}
+
+/* ── Test: client release + disconnect ───────────────────────────────────── */
+
+static void test_client_release_disconnect(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+
+	osp_server_t server;
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
+
+	osp_ic_data_t data_obj;
+	osp_ic_data_init(&data_obj, (osp_obis_t){0, 0, 1, 0, 0, 255});
+	data_obj.value = osp_val_u32(1);
+	osp_server_register(&server, osp_ic_data_class(), &data_obj);
+
+	osp_client_t client;
+	make_pair(&pair, &server, &client);
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+	assert_true(client.associated);
+
+	assert_int_equal(osp_client_release(&client), OSP_OK);
+	assert_false(client.associated);
+
+	assert_int_equal(osp_client_disconnect(&client), OSP_OK);
+	assert_int_equal(osp_client_disconnect(NULL), OSP_ERR_INVALID);
+}
+
+/* ── Runner ──────────────────────────────────────────────────────────────── */
+
+int main(void) {
+	const struct CMUnitTest tests[] = {
+	    cmocka_unit_test(test_aarq_hls_get), cmocka_unit_test(test_aarq_rejected), cmocka_unit_test(test_multi_object),
+	    cmocka_unit_test(test_set_get),      	    cmocka_unit_test(test_hls_handshake),
+	    cmocka_unit_test(test_client_action),
+	    cmocka_unit_test(test_client_release_disconnect),
+	};
+	return cmocka_run_group_tests(tests, NULL, NULL);
+}

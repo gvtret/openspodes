@@ -56,12 +56,58 @@ add_library(openspodes STATIC
 
 target_include_directories(openspodes PUBLIC src)
 
+option(ENABLE_COVERAGE "Build with gcov coverage instrumentation" OFF)
+if(ENABLE_COVERAGE)
+	add_compile_options(--coverage -O0 -g)
+	add_link_options(--coverage)
+endif()
+
 # Tests
-find_library(CMOCKA_LIBRARY cmocka)
-find_path(CMOCKA_INCLUDE_DIR cmocka.h)
+include(FetchContent)
+FetchContent_Declare(
+    cmocka
+    GIT_REPOSITORY https://git.cryptomilk.org/projects/cmocka.git
+    GIT_TAG        cmocka-1.1.7
+)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(WITH_CMOCKERY_SUPPORT OFF CACHE BOOL "" FORCE)
+set(WITH_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(UNIT_TESTING OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(cmocka)
 
 enable_testing()
 add_executable(openspodes_test tests/test_core.c)
-target_include_directories(openspodes_test PRIVATE ${CMOCKA_INCLUDE_DIR})
-target_link_libraries(openspodes_test PRIVATE openspodes ${CMOCKA_LIBRARY})
+target_include_directories(openspodes_test PRIVATE ${cmocka_SOURCE_DIR}/include)
+target_link_libraries(openspodes_test PRIVATE openspodes cmocka)
 add_test(NAME openspodes_test COMMAND openspodes_test)
+
+add_executable(openspodes_test_golden tests/test_codec_golden.c)
+target_include_directories(openspodes_test_golden PRIVATE ${cmocka_SOURCE_DIR}/include)
+target_link_libraries(openspodes_test_golden PRIVATE openspodes cmocka)
+add_test(NAME openspodes_test_golden COMMAND openspodes_test_golden)
+
+add_executable(openspodes_test_errors tests/test_errors.c tests/mock_transport.c tests/mock_crypto.c)
+target_include_directories(openspodes_test_errors PRIVATE ${cmocka_SOURCE_DIR}/include)
+target_link_libraries(openspodes_test_errors PRIVATE openspodes cmocka)
+add_test(NAME openspodes_test_errors COMMAND openspodes_test_errors)
+
+add_executable(openspodes_test_ic tests/test_ic_smoke.c)
+target_include_directories(openspodes_test_ic PRIVATE ${cmocka_SOURCE_DIR}/include)
+target_link_libraries(openspodes_test_ic PRIVATE openspodes cmocka)
+add_test(NAME openspodes_test_ic COMMAND openspodes_test_ic)
+
+add_executable(openspodes_test_integration tests/test_integration.c tests/mock_transport.c tests/mock_crypto.c)
+target_include_directories(openspodes_test_integration PRIVATE ${cmocka_SOURCE_DIR}/include)
+target_link_libraries(openspodes_test_integration PRIVATE openspodes cmocka)
+add_test(NAME openspodes_test_integration COMMAND openspodes_test_integration)
+
+if(ENABLE_COVERAGE)
+	find_package(Python3 COMPONENTS Interpreter REQUIRED)
+	add_custom_target(coverage
+		COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
+		COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/coverage_report.py
+		WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+		DEPENDS openspodes_test openspodes_test_golden openspodes_test_ic openspodes_test_errors openspodes_test_integration
+		COMMENT "Run tests and print gcov coverage report"
+	)
+endif()

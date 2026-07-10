@@ -8,18 +8,21 @@
 #include <stddef.h>
 #include <setjmp.h>
 #include <string.h>
-#include <cmocka.h>
+#include "cmocka.h"
 
 #include "openspodes.h"
 #include "codec/codec.h"
 #include "codec/types.h"
 #include "codec/serialize.h"
 #include "codec/structures.h"
+#include "service/service.h"
 #include "server/dispatcher.h"
 #include "ic/data.h"
 #include "ic/register.h"
 #include "ic/extended_register.h"
 #include "ic/clock.h"
+#include "ic/disconnect_control.h"
+#include "ic/security_setup.h"
 #include "transport/transport.h"
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -478,6 +481,52 @@ static void test_wrapper_roundtrip(void **state) {
 	assert_memory_equal(apdu_out, apdu, 6);
 }
 
+static void test_ber_read_errors(void **state) {
+	(void)state;
+	uint8_t mem[8];
+	osp_buf_t buf;
+	osp_ber_tag_t tag;
+	uint32_t len;
+
+	osp_buf_init(&buf, mem, sizeof(mem));
+	assert_int_equal(osp_ber_read_tag(NULL, &tag), OSP_ERR_INVALID);
+	assert_int_equal(osp_ber_read_tag(&buf, NULL), OSP_ERR_INVALID);
+	assert_int_equal(osp_ber_read_tag(&buf, &tag), OSP_ERR_INVALID);
+
+	osp_buf_init(&buf, mem, sizeof(mem));
+	assert_int_equal(osp_ber_read_length(NULL, &len), OSP_ERR_INVALID);
+	assert_int_equal(osp_ber_read_length(&buf, &len), OSP_ERR_INVALID);
+
+	mem[0] = 0x85;
+	osp_buf_init(&buf, mem, 1);
+	buf.wr = 1;
+	assert_int_equal(osp_ber_read_length(&buf, &len), OSP_ERR_UNSUPPORTED);
+}
+
+static void test_service_decode_invalid(void **state) {
+	(void)state;
+	uint8_t mem[4] = {0xFF, 0x01, 0x00, 0x00};
+	osp_buf_t buf;
+	osp_buf_init(&buf, mem, sizeof(mem));
+	buf.wr = sizeof(mem);
+
+	osp_get_request_t req;
+	assert_int_equal(osp_get_request_decode(&buf, &req), -1);
+
+	osp_buf_init(&buf, mem, sizeof(mem));
+	buf.wr = sizeof(mem);
+	osp_set_request_t sreq;
+	assert_int_equal(osp_set_request_decode(&buf, &sreq), -1);
+
+	osp_buf_init(&buf, mem, sizeof(mem));
+	buf.wr = sizeof(mem);
+	osp_action_request_t areq;
+	assert_int_equal(osp_action_request_decode(&buf, &areq), -1);
+
+	assert_int_equal(osp_get_request_decode(NULL, &req), -1);
+	assert_int_equal(osp_get_request_decode(&buf, NULL), -1);
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  *  IC class tests (Register, Extended Register, Clock)
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -575,6 +624,68 @@ static void test_ic_dispatcher_multi(void **state) {
 	assert_int_equal(v.tag, OSP_TAG_DATETIME);
 }
 
+static void test_ic_disconnect_control(void **state) {
+	(void)state;
+	const osp_ic_class_t *cls = osp_ic_disconnect_control_class();
+	assert_int_equal(cls->class_id, 70);
+
+	osp_ic_disconnect_control_t dc;
+	osp_ic_disconnect_control_init(&dc, (osp_obis_t){0, 0, 96, 3, 10, 255});
+	dc.output_state = 1;
+
+	osp_value_t v;
+	assert_int_equal(cls->get_attr(&dc, 2, &v), OSP_OK);
+	assert_int_equal(osp_get_u8(&v), 1);
+
+	osp_value_t result;
+	assert_int_equal(cls->invoke(&dc, 1, NULL, &result), OSP_OK);
+	assert_int_equal(dc.output_state, 0);
+}
+
+static void test_ic_security_setup(void **state) {
+	(void)state;
+	const osp_ic_class_t *cls = osp_ic_security_setup_class();
+	assert_int_equal(cls->class_id, 64);
+
+	osp_ic_security_setup_t ss;
+	osp_ic_security_setup_init(&ss, (osp_obis_t){0, 0, 43, 0, 0, 255});
+	ss.security_policy = 3;
+	ss.security_suite = 0;
+
+	osp_value_t v;
+	assert_int_equal(cls->get_attr(&ss, 2, &v), OSP_OK);
+	assert_int_equal(osp_get_u8(&v), 3);
+
+	osp_value_t title;
+	title.tag = OSP_TAG_OCTETSTRING;
+	title.as.octetstring.len = 4;
+	memcpy(title.as.octetstring.data, "CLNT", 4);
+	assert_int_equal(cls->set_attr(&ss, 4, &title), OSP_OK);
+	assert_int_equal(ss.client_system_title.len, 4);
+
+	osp_value_t result;
+	assert_int_equal(cls->invoke(&ss, 1, NULL, &result), OSP_OK);
+	assert_int_equal(result.tag, OSP_TAG_NULL);
+}
+
+static void test_ic_dispatcher_action(void **state) {
+	(void)state;
+	osp_dispatcher_t disp;
+	osp_dispatcher_init(&disp);
+
+	osp_ic_disconnect_control_t dc;
+	osp_ic_disconnect_control_init(&dc, (osp_obis_t){0, 0, 96, 3, 10, 255});
+	dc.output_state = 1;
+	assert_int_equal(osp_dispatcher_register(&disp, osp_ic_disconnect_control_class(), &dc), OSP_OK);
+
+	osp_value_t result;
+	assert_int_equal(
+	    osp_dispatcher_action(&disp, 70, &(osp_obis_t){0, 0, 96, 3, 10, 255}, 1, NULL, &result),
+	    OSP_OK
+	);
+	assert_int_equal(dc.output_state, 0);
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  *  Test runner
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -603,11 +714,16 @@ int main(void) {
 	    cmocka_unit_test(test_ic_register),
 	    cmocka_unit_test(test_ic_extended_register),
 	    cmocka_unit_test(test_ic_clock),
+	    cmocka_unit_test(test_ic_disconnect_control),
+	    cmocka_unit_test(test_ic_security_setup),
+	    cmocka_unit_test(test_ic_dispatcher_action),
 	    cmocka_unit_test(test_ic_dispatcher_multi),
 	    /* Transport */
 	    cmocka_unit_test(test_hdlc_crc),
 	    cmocka_unit_test(test_hdlc_frame_roundtrip),
 	    cmocka_unit_test(test_wrapper_roundtrip),
+	    cmocka_unit_test(test_ber_read_errors),
+	    cmocka_unit_test(test_service_decode_invalid),
 	};
 	return cmocka_run_group_tests(tests, NULL, NULL);
 }

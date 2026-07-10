@@ -96,6 +96,7 @@ osp_err_t osp_client_connect(osp_client_t *c, uint32_t timeout_ms) {
 	osp_aare_t aare;
 	osp_buf_t rbuf;
 	osp_buf_init(&rbuf, c->rx_buf, rx_len);
+	rbuf.wr = rx_len; /* data already received */
 	if (osp_aare_decode(&rbuf, &aare) != 0) {
 		return OSP_ERR_INVALID;
 	}
@@ -146,6 +147,7 @@ osp_err_t osp_client_connect(osp_client_t *c, uint32_t timeout_ms) {
 		osp_action_response_t act_resp;
 		osp_buf_t arbuf;
 		osp_buf_init(&arbuf, c->rx_buf, act_rx_len);
+		arbuf.wr = act_rx_len; /* data already received */
 		if (osp_action_response_decode(&arbuf, &act_resp) != 0) {
 			return OSP_ERR_INVALID;
 		}
@@ -193,6 +195,7 @@ osp_err_t osp_client_get(osp_client_t *c, uint16_t class_id, const osp_obis_t *o
 	osp_get_response_t resp;
 	osp_buf_t rbuf;
 	osp_buf_init(&rbuf, c->rx_buf, rx_len);
+	rbuf.wr = rx_len; /* data already received */
 	if (osp_get_response_decode(&rbuf, &resp) != 0) {
 		return OSP_ERR_INVALID;
 	}
@@ -236,6 +239,7 @@ osp_err_t osp_client_set(osp_client_t *c, uint16_t class_id, const osp_obis_t *o
 	osp_set_response_t resp;
 	osp_buf_t rbuf;
 	osp_buf_init(&rbuf, c->rx_buf, rx_len);
+	rbuf.wr = rx_len; /* data already received */
 	if (osp_set_response_decode(&rbuf, &resp) != 0) {
 		return OSP_ERR_INVALID;
 	}
@@ -274,6 +278,7 @@ osp_err_t osp_client_action(osp_client_t *c, uint16_t class_id, const osp_obis_t
 	osp_action_response_t resp;
 	osp_buf_t rbuf;
 	osp_buf_init(&rbuf, c->rx_buf, rx_len);
+	rbuf.wr = rx_len; /* data already received */
 	if (osp_action_response_decode(&rbuf, &resp) != 0) {
 		return OSP_ERR_INVALID;
 	}

@@ -5,6 +5,7 @@
 
 #include "server.h"
 #include <string.h>
+#include <stdio.h>
 
 osp_err_t osp_server_init(osp_server_t *s, osp_transport_t *transport, osp_framing_type_t framing) {
 	if (!s || !transport) {
@@ -220,6 +221,7 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 		osp_aarq_t aarq;
 		osp_buf_t buf;
 		osp_buf_init(&buf, s->rx_buf, rx_len);
+		buf.wr = rx_len; /* data already received */
 
 		if (osp_aarq_decode(&buf, &aarq) != 0) {
 			return OSP_ERR_INVALID;
@@ -245,6 +247,7 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 	/* xDLMS service messages (A-XDR) */
 	osp_buf_t rbuf;
 	osp_buf_init(&rbuf, s->rx_buf, rx_len);
+	rbuf.wr = rx_len; /* data already received */
 
 	switch (tag) {
 		case OSP_TAG_GET_REQUEST: {

@@ -118,7 +118,7 @@ osp_err_t osp_axdr_read_visible_string(osp_buf_t *buf, char *out, uint32_t max, 
 	}
 
 	uint32_t slen;
-	r = osp_axdr_read_u32(buf, &slen);
+	r = osp_ber_read_length(buf, &slen);
 	if (r != OSP_OK) {
 		return r;
 	}
@@ -143,7 +143,7 @@ osp_err_t osp_axdr_write_visible_string(osp_buf_t *buf, const char *str, uint32_
 	if (r != OSP_OK) {
 		return r;
 	}
-	r = osp_axdr_write_u32(buf, len);
+	r = osp_ber_write_length(buf, len);
 	if (r != OSP_OK) {
 		return r;
 	}
@@ -306,7 +306,7 @@ osp_err_t osp_bitstring_read(osp_buf_t *buf, uint8_t *bits, uint32_t max_bits, u
 	}
 
 	uint32_t len;
-	r = osp_axdr_read_u32(buf, &len);
+	r = osp_ber_read_length(buf, &len);
 	if (r != OSP_OK) {
 		return r;
 	}
@@ -348,7 +348,7 @@ osp_err_t osp_bitstring_write(osp_buf_t *buf, const uint8_t *bits, uint32_t num_
 	uint8_t unused = (uint8_t)((num_bytes * 8) - num_bits);
 
 	/* Total: 1 (unused count) + num_bytes */
-	r = osp_axdr_write_u32(buf, 1 + num_bytes);
+	r = osp_ber_write_length(buf, 1 + num_bytes);
 	if (r != OSP_OK) {
 		return r;
 	}
@@ -418,7 +418,7 @@ osp_err_t osp_value_read(osp_buf_t *buf, osp_value_t *val) {
 
 		case OSP_TAG_OCTETSTRING: {
 			uint32_t slen;
-			r = osp_axdr_read_u32(buf, &slen);
+			r = osp_ber_read_length(buf, &slen);
 			if (r != OSP_OK) {
 				return r;
 			}
@@ -436,7 +436,7 @@ osp_err_t osp_value_read(osp_buf_t *buf, osp_value_t *val) {
 
 		case OSP_TAG_VISIBLESTRING: {
 			uint32_t slen;
-			r = osp_axdr_read_u32(buf, &slen);
+			r = osp_ber_read_length(buf, &slen);
 			if (r != OSP_OK) {
 				return r;
 			}

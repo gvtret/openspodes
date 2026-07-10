@@ -38,6 +38,24 @@ static int ber_read_oid(osp_buf_t *buf, uint8_t *last_arc) {
 	return 0;
 }
 
+static const uint8_t OID_PREFIX_APP[] = {0x60, 0x85, 0x74, 0x05, 0x08, 0x01};
+static const uint8_t OID_PREFIX_MECH[] = {0x60, 0x85, 0x74, 0x05, 0x08, 0x02};
+
+/* BER length backpatch: reserve 1 byte, then fix up after content is written.
+ * Uses short form for < 128, shifts content and uses long form otherwise. */
+static void ber_backpatch_length(osp_buf_t *buf, uint32_t len_pos) {
+	uint32_t content_len = buf->wr - len_pos - 1;
+	if (content_len < 0x80) {
+		buf->buf[len_pos] = (uint8_t)content_len;
+	} else {
+		/* Shift content right by 1 byte to make room for 0x81 prefix */
+		memmove(&buf->buf[len_pos + 2], &buf->buf[len_pos + 1], content_len);
+		buf->buf[len_pos] = 0x81;
+		buf->buf[len_pos + 1] = (uint8_t)content_len;
+		buf->wr++;
+	}
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  *  AARQ
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -46,66 +64,72 @@ int osp_aarq_encode(osp_aarq_t *aarq, osp_buf_t *buf) {
 	if (!aarq || !buf)
 		return -1;
 
-	osp_ber_write_tag(buf, 0, true, 0); /* [APPLICATION 0] constructed */
+	osp_ber_write_tag(buf, 1, true, 0); /* [APPLICATION 0] constructed */
 
-	/* Reserve length placeholder */
+	/* Reserve 1-byte length placeholder, backpatch later */
 	uint32_t len_pos = buf->wr;
-	osp_ber_write_length(buf, 0); /* placeholder */
+	if (osp_buf_free(buf) < 1)
+		return -1;
+	buf->buf[buf->wr++] = 0x00;
 
-	/* [1] application-context-name */
-	osp_ber_write_tag(buf, 1, false, 16);
-	osp_ber_write_length(buf, 2);
-	osp_axdr_write_u8(buf, 6); /* version */
-	osp_axdr_write_u8(buf, aarq->application_context);
+	/* [1] application-context-name: EXPLICIT, wraps OID */
+	osp_ber_write_tag(buf, 2, true, 1);
+	uint32_t oid_len_pos = buf->wr;
+	if (osp_buf_free(buf) < 1)
+		return -1;
+	buf->buf[buf->wr++] = 0x00; /* placeholder */
+	ber_write_oid(buf, OID_PREFIX_APP, 6, aarq->application_context);
+	ber_backpatch_length(buf, oid_len_pos);
 
-	/* [10] sender-acse-requirements */
-	osp_ber_write_tag(buf, 0, false, 10);
+	/* [10] sender-acse-requirements: IMPLICIT BIT STRING */
+	osp_ber_write_tag(buf, 2, false, 10);
 	osp_ber_write_length(buf, 2);
 	osp_axdr_write_u8(buf, 7);    /* unused bits */
 	osp_axdr_write_u8(buf, 0x80); /* auth required */
 
-	/* [11] mechanism-name */
-	static const uint8_t OID_PREFIX[] = {0x60, 0x85, 0x74, 0x05, 0x08, 0x02};
-	ber_write_oid(buf, OID_PREFIX, 6, aarq->mechanism);
+	/* [11] mechanism-name: IMPLICIT OID */
+	osp_ber_write_tag(buf, 2, false, 11);
+	uint32_t mech_len_pos = buf->wr;
+	if (osp_buf_free(buf) < 1)
+		return -1;
+	buf->buf[buf->wr++] = 0x00; /* placeholder */
+	ber_write_oid(buf, OID_PREFIX_MECH, 6, aarq->mechanism);
+	ber_backpatch_length(buf, mech_len_pos);
 
-	/* [12] calling-acse-association-identifier (system title) */
+	/* [6] calling-AP-title: EXPLICIT wraps OCTET STRING (system title)
+	 * Per Rust spodes-rs: 0xA6 <len> 04 <datalen> <data> */
 	if (aarq->calling_ap_title_len > 0) {
-		osp_ber_write_tag(buf, 1, true, 12);
+		osp_ber_write_tag(buf, 2, true, 6); /* A6: context constructed 6 */
 		osp_ber_write_length(buf, aarq->calling_ap_title_len + 2);
-		osp_axdr_write_u8(buf, 4); /* OCTET STRING */
+		osp_axdr_write_u8(buf, 4); /* OCTET STRING tag */
 		osp_axdr_write_u8(buf, aarq->calling_ap_title_len);
 		for (uint8_t i = 0; i < aarq->calling_ap_title_len; i++) {
 			osp_axdr_write_u8(buf, aarq->calling_ap_title[i]);
 		}
 	}
 
-	/* [12] calling-authentication-value */
-	osp_ber_write_tag(buf, 1, true, 12);
-	osp_ber_write_length(buf, aarq->calling_auth_value_len + 4);
-	osp_axdr_write_u8(buf, 0); /* user-information */
-	osp_axdr_write_u8(buf, 1); /* octet string */
+	/* [12] calling-authentication-value: EXPLICIT Authentication-value
+	 * Per Green Book Table D.4: AC <len> 80 <datalen> <data>
+	 * 80 = charstring [0] IMPLICIT GraphicString */
+	osp_ber_write_tag(buf, 2, true, 12);
+	osp_ber_write_length(buf, aarq->calling_auth_value_len + 2);
+	osp_axdr_write_u8(buf, 0x80); /* charstring [0] */
 	osp_axdr_write_u8(buf, aarq->calling_auth_value_len);
 	for (uint8_t i = 0; i < aarq->calling_auth_value_len; i++) {
 		osp_axdr_write_u8(buf, aarq->calling_auth_value[i]);
 	}
 
-	/* [196] user-information */
-	osp_ber_write_tag(buf, 1, true, 196);
+	/* [30] user-information: EXPLICIT wraps OCTET STRING */
+	osp_ber_write_tag(buf, 2, true, 30); /* BE: context constructed 30 */
 	osp_ber_write_length(buf, aarq->user_info_len + 2);
-	osp_axdr_write_u8(buf, 4); /* OCTET STRING */
+	osp_axdr_write_u8(buf, 4); /* OCTET STRING tag */
 	osp_axdr_write_u8(buf, aarq->user_info_len);
 	for (uint32_t i = 0; i < aarq->user_info_len; i++) {
 		osp_axdr_write_u8(buf, aarq->user_info[i]);
 	}
 
-	/* Fix length */
-	uint32_t payload_len = buf->wr - len_pos - 2;
-	if (payload_len < 128) {
-		buf->buf[len_pos] = (uint8_t)payload_len;
-	} else {
-		buf->buf[len_pos] = 0x81;
-		buf->buf[len_pos + 1] = (uint8_t)payload_len;
-	}
+	/* Backpatch outer AARQ length */
+	ber_backpatch_length(buf, len_pos);
 
 	return 0;
 }
@@ -128,8 +152,8 @@ int osp_aarq_decode(osp_buf_t *buf, osp_aarq_t *aarq) {
 	uint32_t end = buf->rd + len;
 
 	while (buf->rd < end) {
-		uint8_t tag_num;
-		if (osp_axdr_read_u8(buf, &tag_num) != OSP_OK)
+		osp_ber_tag_t ftag;
+		if (osp_ber_read_tag(buf, &ftag) != OSP_OK)
 			break;
 
 		uint32_t field_len;
@@ -138,48 +162,66 @@ int osp_aarq_decode(osp_buf_t *buf, osp_aarq_t *aarq) {
 
 		uint32_t field_start = buf->rd;
 
-		switch (tag_num) {
-			case 1:           /* application-context-name */
-				buf->rd += 2; /* skip version */
-				osp_axdr_read_u8(buf, &aarq->application_context);
-				break;
+		if (ftag.tag_class == 2) {
+			/* Context-specific: dispatch by tag number */
+			switch (ftag.tag_number) {
+				case 0: /* [0] protocol-version: skip */
+					break;
 
-			case 11: /* mechanism-name */
-				ber_read_oid(buf, &aarq->mechanism);
-				break;
+				case 1: /* [1] application-context-name: EXPLICIT wraps OID */
+					ber_read_oid(buf, &aarq->application_context);
+					break;
 
-			case 12: /* calling-ap-title or calling-auth-value */
-			{
-				/* Peek next sub-tag to distinguish */
-				uint8_t sub_tag;
-				if (osp_axdr_read_u8(buf, &sub_tag) == OSP_OK && sub_tag == 0) {
-					/* authentication value */
-					uint8_t len2;
-					osp_axdr_read_u8(buf, &len2);
-					aarq->calling_auth_value_len = len2;
-					for (uint8_t i = 0; i < len2 && i < 64; i++) {
-						osp_axdr_read_u8(buf, &aarq->calling_auth_value[i]);
+				case 6: /* [6] calling-AP-title: EXPLICIT wraps OCTET STRING */
+				{
+					osp_ber_tag_t otag;
+					osp_ber_read_tag(buf, &otag);
+					uint32_t olen;
+					osp_ber_read_length(buf, &olen);
+					aarq->calling_ap_title_len = (uint8_t)olen;
+					for (uint32_t i = 0; i < olen && i < 8; i++) {
+						osp_axdr_read_u8(buf, &aarq->calling_ap_title[i]);
 					}
 				}
-				break;
-			}
+					break;
 
-			case 196: /* user-information */
-			{
-				osp_ber_tag_t utag;
-				osp_ber_read_tag(buf, &utag);
-				uint32_t utlen;
-				osp_ber_read_length(buf, &utlen);
-				aarq->user_info_len = utlen;
-				for (uint32_t i = 0; i < utlen && i < 128; i++) {
-					osp_axdr_read_u8(buf, &aarq->user_info[i]);
+				case 10: /* [10] sender-acse-requirements: skip */
+					break;
+
+				case 11: /* [11] mechanism-name: IMPLICIT OID */
+					ber_read_oid(buf, &aarq->mechanism);
+					break;
+
+				case 12: /* [12] calling-authentication-value: EXPLICIT wraps Authentication-value */
+				{
+					osp_ber_tag_t atag;
+					if (osp_ber_read_tag(buf, &atag) == OSP_OK && atag.tag_number == 0 && !atag.tag_constructed) {
+						uint32_t alen;
+						osp_ber_read_length(buf, &alen);
+						aarq->calling_auth_value_len = (uint8_t)alen;
+						for (uint32_t i = 0; i < alen && i < 64; i++) {
+							osp_axdr_read_u8(buf, &aarq->calling_auth_value[i]);
+						}
+					}
+					break;
 				}
-				break;
-			}
 
-			default:
-				/* Skip unknown fields */
-				break;
+				case 30: /* [30] user-information: EXPLICIT wraps OCTET STRING */
+				{
+					osp_ber_tag_t utag;
+					osp_ber_read_tag(buf, &utag);
+					uint32_t utlen;
+					osp_ber_read_length(buf, &utlen);
+					aarq->user_info_len = utlen;
+					for (uint32_t i = 0; i < utlen && i < 128; i++) {
+						osp_axdr_read_u8(buf, &aarq->user_info[i]);
+					}
+					break;
+				}
+
+				default:
+					break;
+			}
 		}
 
 		/* Ensure we consume exactly field_len bytes */
@@ -200,74 +242,80 @@ int osp_aare_encode(osp_aare_t *aare, osp_buf_t *buf) {
 		return -1;
 
 	osp_ber_write_tag(buf, 1, true, 1); /* [APPLICATION 1] constructed */
-	uint32_t len_pos = buf->wr;
-	osp_ber_write_length(buf, 0);
 
-	/* [2] result */
-	osp_ber_write_tag(buf, 2, false, 16);
-	osp_ber_write_length(buf, 1);
+	/* Reserve 1-byte length placeholder, backpatch later */
+	uint32_t len_pos = buf->wr;
+	if (osp_buf_free(buf) < 1)
+		return -1;
+	buf->buf[buf->wr++] = 0x00;
+
+	/* [2] result: EXPLICIT wraps INTEGER
+	 * Per Green Book Table D.6: A2 03 02 01 <value> */
+	osp_ber_write_tag(buf, 2, true, 2);
+	osp_ber_write_length(buf, 3);
+	osp_axdr_write_u8(buf, 2); /* INTEGER tag */
+	osp_axdr_write_u8(buf, 1); /* length */
 	osp_axdr_write_u8(buf, aare->result);
 
-	/* [3] result-source-diagnostic */
+	/* [3] result-source-diagnostic: EXPLICIT wraps CHOICE
+	 * Per Green Book: A3 05 A1 03 02 01 <value> */
 	if (aare->result_source_diagnostic != 0) {
-		osp_ber_write_tag(buf, 1, true, 3);
+		osp_ber_write_tag(buf, 2, true, 3);
 		osp_ber_write_length(buf, 5);
-		osp_ber_write_tag(buf, 1, false, 1);
-		osp_ber_write_length(buf, 1);
-		osp_axdr_write_u8(buf, 1); /* ACSE service user */
-		osp_ber_write_tag(buf, 2, false, 2);
-		osp_ber_write_length(buf, 1);
+		osp_ber_write_tag(buf, 2, true, 1); /* [1] acse-service-user */
+		osp_ber_write_length(buf, 3);
+		osp_axdr_write_u8(buf, 2); /* INTEGER tag */
+		osp_axdr_write_u8(buf, 1); /* length */
 		osp_axdr_write_u8(buf, aare->result_source_diagnostic);
 	}
 
-	/* [4] responding-ap-title */
+	/* [4] responding-AP-title: EXPLICIT wraps OCTET STRING */
 	if (aare->responding_ap_title_len > 0) {
-		osp_ber_write_tag(buf, 1, true, 4);
+		osp_ber_write_tag(buf, 2, true, 4); /* A4: context constructed 4 */
 		osp_ber_write_length(buf, aare->responding_ap_title_len + 2);
-		osp_axdr_write_u8(buf, 4);
+		osp_axdr_write_u8(buf, 4); /* OCTET STRING tag */
 		osp_axdr_write_u8(buf, aare->responding_ap_title_len);
 		for (uint8_t i = 0; i < aare->responding_ap_title_len; i++) {
 			osp_axdr_write_u8(buf, aare->responding_ap_title[i]);
 		}
 	}
 
-	/* [10] responding-acse-requirements */
-	osp_ber_write_tag(buf, 1, false, 10);
+	/* [8] responder-acse-requirements: IMPLICIT BIT STRING */
+	osp_ber_write_tag(buf, 2, false, 8);
 	osp_ber_write_length(buf, 2);
 	osp_axdr_write_u8(buf, 7);
 	osp_axdr_write_u8(buf, 0x80);
 
-	/* [11] mechanism-name */
-	static const uint8_t OID_PREFIX[] = {0x60, 0x85, 0x74, 0x05, 0x08, 0x02};
-	ber_write_oid(buf, OID_PREFIX, 6, aare->mechanism);
+	/* [9] mechanism-name: IMPLICIT OID */
+	osp_ber_write_tag(buf, 2, false, 9);
+	uint32_t mech_len_pos = buf->wr;
+	if (osp_buf_free(buf) < 1)
+		return -1;
+	buf->buf[buf->wr++] = 0x00; /* placeholder */
+	ber_write_oid(buf, OID_PREFIX_MECH, 6, aare->mechanism);
+	ber_backpatch_length(buf, mech_len_pos);
 
-	/* [12] responding-authentication-value */
-	osp_ber_write_tag(buf, 1, true, 12);
-	osp_ber_write_length(buf, aare->responding_auth_value_len + 4);
-	osp_axdr_write_u8(buf, 0);
-	osp_axdr_write_u8(buf, 1);
+	/* [10] responding-authentication-value: EXPLICIT Authentication-value
+	 * Per Green Book: AA <len> 80 <datalen> <data> */
+	osp_ber_write_tag(buf, 2, true, 10);
+	osp_ber_write_length(buf, aare->responding_auth_value_len + 2);
+	osp_axdr_write_u8(buf, 0x80); /* charstring [0] */
 	osp_axdr_write_u8(buf, aare->responding_auth_value_len);
 	for (uint8_t i = 0; i < aare->responding_auth_value_len; i++) {
 		osp_axdr_write_u8(buf, aare->responding_auth_value[i]);
 	}
 
-	/* [196] user-information */
-	osp_ber_write_tag(buf, 1, true, 196);
+	/* [30] user-information: EXPLICIT wraps OCTET STRING */
+	osp_ber_write_tag(buf, 2, true, 30);
 	osp_ber_write_length(buf, aare->user_info_len + 2);
-	osp_axdr_write_u8(buf, 4);
+	osp_axdr_write_u8(buf, 4); /* OCTET STRING tag */
 	osp_axdr_write_u8(buf, aare->user_info_len);
 	for (uint32_t i = 0; i < aare->user_info_len; i++) {
 		osp_axdr_write_u8(buf, aare->user_info[i]);
 	}
 
-	/* Fix length */
-	uint32_t payload_len = buf->wr - len_pos - 2;
-	if (payload_len < 128) {
-		buf->buf[len_pos] = (uint8_t)payload_len;
-	} else {
-		buf->buf[len_pos] = 0x81;
-		buf->buf[len_pos + 1] = (uint8_t)payload_len;
-	}
+	/* Backpatch outer AARE length */
+	ber_backpatch_length(buf, len_pos);
 
 	return 0;
 }
@@ -290,8 +338,8 @@ int osp_aare_decode(osp_buf_t *buf, osp_aare_t *aare) {
 	uint32_t end = buf->rd + len;
 
 	while (buf->rd < end) {
-		uint8_t tag_num;
-		if (osp_axdr_read_u8(buf, &tag_num) != OSP_OK)
+		osp_ber_tag_t ftag;
+		if (osp_ber_read_tag(buf, &ftag) != OSP_OK)
 			break;
 
 		uint32_t field_len;
@@ -300,40 +348,89 @@ int osp_aare_decode(osp_buf_t *buf, osp_aare_t *aare) {
 
 		uint32_t field_start = buf->rd;
 
-		switch (tag_num) {
-			case 2: /* result */
-				osp_axdr_read_u8(buf, &aare->result);
-				break;
+		if (ftag.tag_class == 2) {
+			/* Context-specific: dispatch by tag number */
+			switch (ftag.tag_number) {
+				case 0: /* [0] protocol-version: skip */
+					break;
 
-			case 12: /* responding-auth-value */
-			{
-				uint8_t sub_tag;
-				if (osp_axdr_read_u8(buf, &sub_tag) == OSP_OK && sub_tag == 0) {
-					uint8_t len2;
-					osp_axdr_read_u8(buf, &len2);
-					aare->responding_auth_value_len = len2;
-					for (uint8_t i = 0; i < len2 && i < 64; i++) {
-						osp_axdr_read_u8(buf, &aare->responding_auth_value[i]);
+				case 1: /* [1] application-context-name: EXPLICIT wraps OID, skip */
+					break;
+
+				case 2: /* [2] result: EXPLICIT wraps INTEGER */
+				{
+					osp_ber_tag_t rtag;
+					osp_ber_read_tag(buf, &rtag);
+					uint32_t rlen;
+					osp_ber_read_length(buf, &rlen);
+					osp_axdr_read_u8(buf, &aare->result);
+					break;
+				}
+
+				case 3: /* [3] result-source-diagnostic: EXPLICIT wraps CHOICE */
+				{
+					osp_ber_tag_t dtag;
+					osp_ber_read_tag(buf, &dtag);
+					uint32_t dlen;
+					osp_ber_read_length(buf, &dlen);
+					osp_ber_tag_t itag;
+					osp_ber_read_tag(buf, &itag);
+					uint32_t ilen;
+					osp_ber_read_length(buf, &ilen);
+					osp_axdr_read_u8(buf, &aare->result_source_diagnostic);
+					break;
+				}
+
+				case 4: /* [4] responding-AP-title: EXPLICIT wraps OCTET STRING */
+				{
+					osp_ber_tag_t otag;
+					osp_ber_read_tag(buf, &otag);
+					uint32_t olen;
+					osp_ber_read_length(buf, &olen);
+					aare->responding_ap_title_len = (uint8_t)olen;
+					for (uint32_t i = 0; i < olen && i < 8; i++) {
+						osp_axdr_read_u8(buf, &aare->responding_ap_title[i]);
 					}
 				}
-				break;
-			}
+					break;
 
-			case 196: /* user-information */
-			{
-				osp_ber_tag_t utag;
-				osp_ber_read_tag(buf, &utag);
-				uint32_t utlen;
-				osp_ber_read_length(buf, &utlen);
-				aare->user_info_len = utlen;
-				for (uint32_t i = 0; i < utlen && i < 128; i++) {
-					osp_axdr_read_u8(buf, &aare->user_info[i]);
+				case 8: /* [8] responder-acse-requirements: skip */
+					break;
+
+				case 9: /* [9] mechanism-name: IMPLICIT OID */
+					ber_read_oid(buf, &aare->mechanism);
+					break;
+
+				case 10: /* [10] responding-authentication-value: EXPLICIT wraps Authentication-value */
+				{
+					osp_ber_tag_t atag;
+					if (osp_ber_read_tag(buf, &atag) == OSP_OK && atag.tag_number == 0 && !atag.tag_constructed) {
+						uint32_t alen;
+						osp_ber_read_length(buf, &alen);
+						aare->responding_auth_value_len = (uint8_t)alen;
+						for (uint32_t i = 0; i < alen && i < 64; i++) {
+							osp_axdr_read_u8(buf, &aare->responding_auth_value[i]);
+						}
+					}
+					break;
 				}
-				break;
-			}
 
-			default:
-				break;
+				case 30: /* [30] user-information: EXPLICIT wraps OCTET STRING */
+				{
+					osp_ber_tag_t utag;
+					osp_ber_read_tag(buf, &utag);
+					uint32_t utlen;
+					osp_ber_read_length(buf, &utlen);
+					aare->user_info_len = utlen;
+					for (uint32_t i = 0; i < utlen && i < 128; i++) {
+						osp_axdr_read_u8(buf, &aare->user_info[i]);
+					}
+					break;
+				}
+
+				default:
+					break;
+			}
 		}
 
 		if (buf->rd < field_start + field_len) {
@@ -349,7 +446,7 @@ int osp_aare_decode(osp_buf_t *buf, osp_aare_t *aare) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static int encode_release(osp_buf_t *buf, uint8_t apdu_tag, uint8_t reason) {
-	osp_ber_write_tag(buf, 1, false, apdu_tag);
+	osp_ber_write_tag(buf, 2, false, apdu_tag);
 	osp_ber_write_length(buf, 1);
 	osp_axdr_write_u8(buf, reason);
 	return 0;
@@ -500,10 +597,14 @@ int osp_get_response_decode(osp_buf_t *buf, osp_get_response_t *resp) {
 			resp->type = OSP_GET_RESP_DATA;
 			osp_value_read(buf, &resp->data);
 		} else {
+			uint8_t error_code = dar;
+			if (dar == 1) {
+				osp_axdr_read_u8(buf, &error_code);
+			}
 			resp->type = OSP_GET_RESP_DATA_ERROR;
-			resp->data_access_result = (osp_dar_t)dar;
+			resp->data_access_result = (osp_dar_t)error_code;
 		}
-	} else if (type == 3) {
+	} else if (type == 2) {
 		resp->type = OSP_GET_RESP_BLOCK;
 		{
 			uint8_t _lb;
@@ -517,7 +618,7 @@ int osp_get_response_decode(osp_buf_t *buf, osp_get_response_t *resp) {
 		for (uint32_t i = 0; i < resp->data_block.raw_data_len && i < OSP_MAX_OCTET_LEN; i++) {
 			osp_axdr_read_u8(buf, &resp->data_block.raw_data[i]);
 		}
-	} else if (type == 4) {
+	} else if (type == 3) {
 		resp->type = OSP_GET_RESP_BLOCK_LAST;
 		{
 			uint8_t _lb;
@@ -552,7 +653,6 @@ int osp_set_request_encode(osp_buf_t *buf, const osp_set_request_t *req) {
 		osp_obis_write(buf, &req->as.normal.items[0].attr.instance_id);
 		osp_axdr_write_u8(buf, (uint8_t)req->as.normal.items[0].attr.attribute_id);
 		osp_axdr_write_u8(buf, 0); /* no selective access */
-		osp_axdr_write_u8(buf, 1); /* data present */
 		osp_value_write(buf, &req->as.normal.items[0].data);
 	} else if (req->type == OSP_GET_WITH_BLOCK) {
 		osp_axdr_write_u8(buf, 2);
@@ -581,7 +681,6 @@ int osp_set_request_decode(osp_buf_t *buf, osp_set_request_t *req) {
 		osp_obis_read(buf, &req->as.normal.items[0].attr.instance_id);
 		osp_axdr_read_i8(buf, &req->as.normal.items[0].attr.attribute_id);
 		osp_axdr_read_u8(buf, NULL); /* skip selective access */
-		osp_axdr_read_u8(buf, NULL); /* skip data-present flag */
 		osp_value_read(buf, &req->as.normal.items[0].data);
 	} else if (type == 2) {
 		req->type = OSP_GET_WITH_BLOCK;
@@ -680,6 +779,8 @@ int osp_action_request_decode(osp_buf_t *buf, osp_action_request_t *req) {
 		osp_axdr_read_u8(buf, &have_data);
 		if (have_data) {
 			osp_value_read(buf, &req->as.normal.items[0].data);
+		} else {
+			req->as.normal.items[0].data = osp_val_null();
 		}
 	} else if (type == 2) {
 		req->type = OSP_GET_WITH_BLOCK;
@@ -734,6 +835,8 @@ int osp_action_response_decode(osp_buf_t *buf, osp_action_response_t *resp) {
 		if (have_return) {
 			osp_axdr_read_u8(buf, NULL); /* skip data tag */
 			osp_value_read(buf, &resp->as.normal.items[0].return_data);
+		} else {
+			resp->as.normal.items[0].return_data = osp_val_null();
 		}
 	}
 
