@@ -445,34 +445,61 @@ int osp_aare_decode(osp_buf_t *buf, osp_aare_t *aare) {
  *  RLRQ / RLRE
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-static int encode_release(osp_buf_t *buf, uint8_t apdu_tag, uint8_t reason) {
-	osp_ber_write_tag(buf, 2, false, apdu_tag);
-	osp_ber_write_length(buf, 1);
-	osp_axdr_write_u8(buf, reason);
+static int decode_release(osp_buf_t *buf, osp_rlrq_t *rl, uint8_t expected_tag_num) {
+	if (!buf || !rl) {
+		return -1;
+	}
+	osp_ber_tag_t tag;
+	if (osp_ber_read_tag(buf, &tag) != OSP_OK) {
+		return -1;
+	}
+	if (tag.tag_class != 1 || !tag.tag_constructed || tag.tag_number != expected_tag_num) {
+		return -1;
+	}
+	uint32_t len;
+	if (osp_ber_read_length(buf, &len) != OSP_OK) {
+		return -1;
+	}
+	if (len < 1 || osp_buf_unread(buf) < 1) {
+		return -1;
+	}
+	if (osp_axdr_read_u8(buf, &rl->reason) != OSP_OK) {
+		return -1;
+	}
+	return 0;
+}
+
+static int encode_release(osp_buf_t *buf, uint8_t apdu_tag_num, uint8_t reason) {
+	if (!buf) {
+		return -1;
+	}
+	/* RLRQ/RLRE: [APPLICATION n] IMPLICIT SEQUENCE → wire tag 0x62 / 0x63 */
+	if (osp_ber_write_tag(buf, 1, true, apdu_tag_num) != OSP_OK) {
+		return -1;
+	}
+	if (osp_ber_write_length(buf, 1) != OSP_OK) {
+		return -1;
+	}
+	if (osp_axdr_write_u8(buf, reason) != OSP_OK) {
+		return -1;
+	}
 	return 0;
 }
 
 int osp_rlrq_encode(osp_rlrq_t *rlrq, osp_buf_t *buf) {
-	return encode_release(buf, OSP_ACSE_RLRQ_TAG, rlrq ? rlrq->reason : 0);
+	return encode_release(buf, 2, rlrq ? rlrq->reason : 0);
 }
 
 int osp_rlre_encode(osp_rlrq_t *rlre, osp_buf_t *buf) {
-	return encode_release(buf, OSP_ACSE_RLRE_TAG, rlre ? rlre->reason : 0);
+	return encode_release(buf, 3, rlre ? rlre->reason : 0);
 }
 
 int osp_rlrq_decode(osp_buf_t *buf, osp_rlrq_t *rlrq) {
-	if (!buf || !rlrq)
-		return -1;
-	osp_ber_tag_t tag;
-	osp_ber_read_tag(buf, &tag);
-	uint32_t len;
-	osp_ber_read_length(buf, &len);
-	osp_axdr_read_u8(buf, &rlrq->reason);
-	return 0;
+	return decode_release(buf, rlrq, 2);
 }
 
 int osp_rlre_decode(osp_buf_t *buf, osp_rlrq_t *rlre) {
-	return osp_rlrq_decode(buf, rlre);
+	return decode_release(buf, rlre, 3);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

@@ -302,11 +302,27 @@ osp_err_t osp_client_release(osp_client_t *c) {
 	rlrq.reason = 0; /* normal */
 	osp_buf_t buf;
 	osp_buf_init(&buf, c->tx_buf, sizeof(c->tx_buf));
-	osp_rlrq_encode(&rlrq, &buf);
+	if (osp_rlrq_encode(&rlrq, &buf) != 0) {
+		return OSP_ERR_INVALID;
+	}
 
 	uint32_t rx_len;
-	osp_transport_send_apdu(c->transport, c->framing, buf.buf, buf.wr);
-	osp_transport_recv_apdu(c->transport, c->framing, c->rx_buf, sizeof(c->rx_buf), &rx_len, 2000);
+	osp_err_t r = osp_transport_send_apdu(c->transport, c->framing, buf.buf, buf.wr);
+	if (r != OSP_OK) {
+		return r;
+	}
+	r = osp_transport_recv_apdu(c->transport, c->framing, c->rx_buf, sizeof(c->rx_buf), &rx_len, 2000);
+	if (r != OSP_OK) {
+		return r;
+	}
+
+	osp_buf_t rbuf;
+	osp_buf_init(&rbuf, c->rx_buf, rx_len);
+	rbuf.wr = rx_len;
+	osp_rlrq_t rlre;
+	if (rx_len == 0 || osp_rlre_decode(&rbuf, &rlre) != 0) {
+		return OSP_ERR_INVALID;
+	}
 
 	c->associated = false;
 	return OSP_OK;

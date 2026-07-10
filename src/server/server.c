@@ -5,7 +5,6 @@
 
 #include "server.h"
 #include <string.h>
-#include <stdio.h>
 
 osp_err_t osp_server_init(osp_server_t *s, osp_transport_t *transport, osp_framing_type_t framing) {
 	if (!s || !transport) {
@@ -229,13 +228,23 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 		return handle_aarq(s, &aarq);
 	}
 
-	if (tag == 0x62) {
-		/* Client release request — send RLRE */
+	if (tag == OSP_ACSE_RLRQ_TAG) {
+		/* Client release request — decode RLRQ, send RLRE */
+		osp_rlrq_t rlrq;
+		osp_buf_t buf;
+		osp_buf_init(&buf, s->rx_buf, rx_len);
+		buf.wr = rx_len;
+
+		if (osp_rlrq_decode(&buf, &rlrq) != 0) {
+			return OSP_ERR_INVALID;
+		}
+
 		osp_rlrq_t rlre;
 		rlre.reason = 0;
-		osp_buf_t buf;
 		osp_buf_init(&buf, s->tx_buf, sizeof(s->tx_buf));
-		osp_rlre_encode(&rlre, &buf);
+		if (osp_rlre_encode(&rlre, &buf) != 0) {
+			return OSP_ERR_INVALID;
+		}
 		s->associated = false;
 		return server_send(s, buf.buf, buf.wr);
 	}

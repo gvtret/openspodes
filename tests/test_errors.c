@@ -749,8 +749,12 @@ static void test_server_rlrq_release(void **state) {
 	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
 	server.associated = true;
 
-	const uint8_t rlrq_min[] = {0x62, 0x01, 0x00};
-	mock_send_to_peer(&pair.server_rx, rlrq_min, sizeof(rlrq_min));
+	osp_rlrq_t rlrq = {.reason = 0};
+	uint8_t mem[16];
+	osp_buf_t buf = {mem, sizeof(mem), 0, 0};
+	assert_int_equal(osp_rlrq_encode(&rlrq, &buf), 0);
+	assert_int_equal(mem[0], OSP_ACSE_RLRQ_TAG);
+	mock_send_to_peer(&pair.server_rx, mem, buf.wr);
 
 	assert_int_equal(osp_server_accept(&server, 5000), OSP_OK);
 	assert_false(server.associated);
@@ -758,7 +762,8 @@ static void test_server_rlrq_release(void **state) {
 	uint8_t rx[64];
 	uint32_t rx_len;
 	assert_int_equal(osp_transport_recv_apdu(&pair.client_transport, OSP_FRAMING_NONE, rx, sizeof(rx), &rx_len, 100), OSP_OK);
-	assert_true(rx_len > 0);
+	assert_true(rx_len >= 3);
+	assert_int_equal(rx[0], OSP_ACSE_RLRE_TAG);
 }
 
 static void test_server_invalid_and_unsupported(void **state) {

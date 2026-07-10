@@ -67,6 +67,14 @@ cmake --build build-coverage --target coverage
 
 No file below 80% line coverage.
 
+## Recent fixes (2026-07-10)
+
+### RLRQ/RLRE ACSE encoding (fixed)
+- `encode_release` now uses **APPLICATION constructed** tags 2/3 → wire bytes `0x62`/`0x63` per COSEMpdu_GB83.asn
+- `osp_rlrq_decode` / `osp_rlre_decode` validate APPLICATION class + tag number
+- `osp_server_accept` decodes RLRQ via `osp_rlrq_decode`, responds with `osp_rlre_encode`
+- `osp_client_release` verifies RLRE response before clearing association
+
 ## Recent commits (main)
 
 1. `77a97bd` — test suites, coverage tooling, service-layer decode fixes
@@ -106,7 +114,6 @@ GSMDiagnostic(47) MBusSlaveSetup(76) TableManager(8200)
 ## Known issues / gaps
 
 ### Protocol / implementation
-- `osp_server_accept` detects RLRQ by raw first byte `0x62`; `osp_rlrq_encode` emits BER context tag (`0x9F…`), not `0x62` — release path mismatch (integration passes because client ignores server decode)
 - `osp_hdlc_deframe` multi-byte address roundtrip incomplete (extension-bit parsing)
 - `osp_ber_write_length` unsupported for lengths > 65535
 - `osp_ber_write_tag` takes `uint8_t` — tags ≥ 256 not encodable
@@ -132,11 +139,10 @@ GSMDiagnostic(47) MBusSlaveSetup(76) TableManager(8200)
 - No example applications yet
 
 ## Next steps (suggested)
-1. Fix RLRQ/RLRE: server should `osp_ber_read_tag` + match `OSP_ACSE_RLRQ_TAG`, not raw `0x62`
-2. Client HLS GMAC failure tests (bad pass4 response)
-3. HDLC multi-byte address deframe fix + tests
-4. `osp_server_run` test harness (inject transport errors)
-5. Example app: loopback client/server CLI
+1. Client HLS GMAC failure tests (bad pass4 response)
+2. HDLC multi-byte address deframe fix + tests
+3. `osp_server_run` test harness (inject transport errors)
+4. Example app: loopback client/server CLI
 
 ## Reference files
 - `docs/golden_vectors.txt` — BER/AXDR golden test vectors

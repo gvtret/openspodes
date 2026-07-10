@@ -67,10 +67,10 @@ typedef enum {
  *  ACSE (IEC 62056-5-3 section 7)
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-#define OSP_ACSE_AARQ_TAG 0x60
-#define OSP_ACSE_AARE_TAG 0x61
-#define OSP_ACSE_RLRQ_TAG 0x62
-#define OSP_ACSE_RLRE_TAG 0x63
+#define OSP_ACSE_AARQ_TAG 0x60 /* APPLICATION 0 constructed */
+#define OSP_ACSE_AARE_TAG 0x61 /* APPLICATION 1 constructed */
+#define OSP_ACSE_RLRQ_TAG 0x62 /* APPLICATION 2 constructed */
+#define OSP_ACSE_RLRE_TAG 0x63 /* APPLICATION 3 constructed */
 
 /* Application context identifiers */
 #define OSP_CTX_LN           1

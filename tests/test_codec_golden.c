@@ -1567,6 +1567,9 @@ static void test_rlrq_rlre_roundtrip(void **state) {
 	osp_rlrq_t rlrq = {.reason = 3};
 	int rc = osp_rlrq_encode(&rlrq, &w);
 	assert_int_equal(rc, 0);
+	assert_int_equal(mem[0], OSP_ACSE_RLRQ_TAG);
+	assert_int_equal(mem[1], 0x01);
+	assert_int_equal(mem[2], 0x03);
 
 	osp_buf_t r = make_rbuf(mem, w.wr);
 	osp_rlrq_t decoded;
@@ -1578,6 +1581,7 @@ static void test_rlrq_rlre_roundtrip(void **state) {
 	osp_rlrq_t rlre = {.reason = 0};
 	rc = osp_rlre_encode(&rlre, &w);
 	assert_int_equal(rc, 0);
+	assert_int_equal(mem[0], OSP_ACSE_RLRE_TAG);
 
 	r = make_rbuf(mem, w.wr);
 	rc = osp_rlre_decode(&r, &decoded);
