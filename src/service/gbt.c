@@ -34,20 +34,20 @@ static osp_err_t gbt_recv_block(osp_transport_t *transport, osp_framing_type_t f
 	return OSP_OK;
 }
 
-static osp_err_t gbt_send_ack(osp_transport_t *transport, osp_framing_type_t framing, uint8_t window, uint16_t block_number_ack,
-                              uint8_t *tx_scratch, uint32_t tx_scratch_size) {
+static osp_err_t gbt_send_ack(osp_transport_t *transport, osp_framing_type_t framing, uint8_t window, uint16_t block_number,
+                              uint16_t block_number_ack, uint8_t *tx_scratch, uint32_t tx_scratch_size) {
 	osp_general_block_transfer_t ack = {0};
 	ack.last_block = true;
 	ack.streaming = false;
 	ack.window = window & OSP_GBT_WINDOW_MASK;
-	ack.block_number = 1;
+	ack.block_number = block_number;
 	ack.block_number_ack = block_number_ack;
 	ack.block_data_len = 0;
 	return gbt_send_block(transport, framing, &ack, tx_scratch, tx_scratch_size);
 }
 
 static osp_err_t gbt_wait_for_ack(osp_transport_t *transport, osp_framing_type_t framing, uint16_t block_number_ack, uint8_t *rx_scratch,
-                                  uint32_t rx_scratch_size, uint32_t timeout_ms) {
+                                  uint32_t rx_scratch_size, uint32_t timeout_ms, osp_general_block_transfer_t *ack_out) {
 	osp_general_block_transfer_t ack;
 	osp_err_t r = gbt_recv_block(transport, framing, &ack, rx_scratch, rx_scratch_size, timeout_ms);
 	if (r != OSP_OK) {
@@ -55,6 +55,9 @@ static osp_err_t gbt_wait_for_ack(osp_transport_t *transport, osp_framing_type_t
 	}
 	if (ack.block_number_ack < block_number_ack) {
 		return OSP_ERR_INVALID;
+	}
+	if (ack_out) {
+		*ack_out = ack;
 	}
 	return OSP_OK;
 }
@@ -99,9 +102,21 @@ osp_err_t osp_gbt_transport_send(osp_transport_t *transport, osp_framing_type_t 
 
 		/* Confirmed mode: wait for ack after each window (not after the last block). */
 		if (win > 0 && !last && blocks_in_window >= win) {
-			r = gbt_wait_for_ack(transport, framing, block_number - 1, rx_scratch, rx_scratch_size, timeout_ms);
+			osp_general_block_transfer_t ack;
+			r = gbt_wait_for_ack(transport, framing, block_number - 1, rx_scratch, rx_scratch_size, timeout_ms, &ack);
 			if (r != OSP_OK) {
 				return r;
+			}
+			/* Peer reports missing blocks — retransmit from the first unconfirmed block. */
+			if (ack.block_number_ack + 1 < block_number) {
+				block_number = (uint16_t)(ack.block_number_ack + 1);
+				offset = (uint32_t)(block_number - 1) * block_payload_max;
+				if (offset >= apdu_len) {
+					offset = 0;
+					block_number = 1;
+				}
+				blocks_in_window = 0;
+				continue;
 			}
 			blocks_in_window = 0;
 		}
@@ -141,8 +156,30 @@ osp_err_t osp_gbt_transport_recv(osp_transport_t *transport, osp_framing_type_t 
 				return r;
 			}
 		}
-		if (gbt.block_number != expected_block) {
-			return OSP_ERR_INVALID;
+		if (gbt.block_number > expected_block) {
+			/* Gap: request retransmission of missing block(s). */
+			uint16_t gap = (uint16_t)(gbt.block_number - expected_block);
+			uint8_t win = gap > OSP_GBT_WINDOW_MASK ? OSP_GBT_WINDOW_MASK : (uint8_t)gap;
+			if (win == 0) {
+				win = 1;
+			}
+			uint16_t bna = expected_block > 0 ? (uint16_t)(expected_block - 1) : 0;
+			r = gbt_send_ack(transport, framing, win, 1, bna, tx_scratch, tx_scratch_size);
+			if (r != OSP_OK) {
+				return r;
+			}
+			continue;
+		}
+		if (gbt.block_number < expected_block) {
+			/* Duplicate or late block — ack and ignore payload. */
+			uint8_t win = gbt.window > 0 ? gbt.window : peer_window;
+			if (win > 0) {
+				r = gbt_send_ack(transport, framing, win, 1, gbt.block_number, tx_scratch, tx_scratch_size);
+				if (r != OSP_OK) {
+					return r;
+				}
+			}
+			continue;
 		}
 		if (gbt.window > 0) {
 			peer_window = gbt.window;
@@ -159,7 +196,7 @@ osp_err_t osp_gbt_transport_recv(osp_transport_t *transport, osp_framing_type_t 
 		}
 
 		if (peer_window > 0) {
-			r = gbt_send_ack(transport, framing, peer_window, expected_block, tx_scratch, tx_scratch_size);
+			r = gbt_send_ack(transport, framing, peer_window, 1, expected_block, tx_scratch, tx_scratch_size);
 			if (r != OSP_OK) {
 				return r;
 			}

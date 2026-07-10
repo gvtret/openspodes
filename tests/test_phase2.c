@@ -198,6 +198,145 @@ static void test_gbt_transport_mock_loopback(void **state) {
 	assert_memory_equal(out, apdu, 187);
 }
 
+typedef struct {
+	osp_transport_t transport;
+	const uint8_t *const *msgs;
+	const uint32_t *lens;
+	uint32_t count;
+	uint32_t idx;
+	uint8_t rx_buf[512];
+} gbt_scripted_rx_t;
+
+static osp_err_t gbt_scripted_open(void *ctx) {
+	(void)ctx;
+	return OSP_OK;
+}
+
+static void gbt_scripted_close(void *ctx) {
+	(void)ctx;
+}
+
+static bool gbt_scripted_connected(void *ctx) {
+	(void)ctx;
+	return true;
+}
+
+static osp_err_t gbt_scripted_send(void *ctx, const uint8_t *data, uint32_t len) {
+	(void)ctx;
+	(void)data;
+	(void)len;
+	return OSP_OK;
+}
+
+static osp_err_t gbt_scripted_recv(void *ctx, uint8_t *buf, uint32_t size, uint32_t *out_len, uint32_t timeout_ms) {
+	(void)timeout_ms;
+	gbt_scripted_rx_t *s = (gbt_scripted_rx_t *)ctx;
+	if (s->idx >= s->count) {
+		return OSP_ERR_TIMEOUT;
+	}
+	uint32_t n = s->lens[s->idx];
+	if (n > size) {
+		return OSP_ERR_NOMEM;
+	}
+	memcpy(buf, s->msgs[s->idx], n);
+	*out_len = n;
+	s->idx++;
+	return OSP_OK;
+}
+
+static void gbt_scripted_init(gbt_scripted_rx_t *s, const uint8_t *const *msgs, const uint32_t *lens, uint32_t count) {
+	memset(s, 0, sizeof(*s));
+	s->msgs = msgs;
+	s->lens = lens;
+	s->count = count;
+	s->transport.open = gbt_scripted_open;
+	s->transport.close = gbt_scripted_close;
+	s->transport.send = gbt_scripted_send;
+	s->transport.recv = gbt_scripted_recv;
+	s->transport.is_connected = gbt_scripted_connected;
+	s->transport.ctx = s;
+}
+
+static void test_gbt_recv_gap_recovery(void **state) {
+	(void)state;
+	uint8_t payload[120];
+	for (uint32_t i = 0; i < sizeof(payload); i++) {
+		payload[i] = (uint8_t)(i & 0xFF);
+	}
+
+	uint8_t b1[64], b2[64], b3[64], b2r[64];
+	uint32_t b1_len = 0, b2_len = 0, b3_len = 0, b2r_len = 0;
+	osp_general_block_transfer_t gbt = {0};
+	gbt.window = 1;
+	gbt.block_number = 1;
+	gbt.block_data_len = 40;
+	memcpy(gbt.block_data, payload, 40);
+	osp_buf_t w;
+	osp_buf_init(&w, b1, sizeof(b1));
+	assert_int_equal(osp_gbt_encode(&w, &gbt), 0);
+	b1_len = w.wr;
+
+	gbt.block_number = 2;
+	memcpy(gbt.block_data, &payload[40], 40);
+	osp_buf_init(&w, b2, sizeof(b2));
+	assert_int_equal(osp_gbt_encode(&w, &gbt), 0);
+	b2_len = w.wr;
+
+	gbt.block_number = 3;
+	gbt.last_block = true;
+	gbt.block_data_len = 40;
+	memcpy(gbt.block_data, &payload[80], 40);
+	osp_buf_init(&w, b3, sizeof(b3));
+	assert_int_equal(osp_gbt_encode(&w, &gbt), 0);
+	b3_len = w.wr;
+
+	/* Retransmitted block 2 after gap nack */
+	gbt.last_block = false;
+	gbt.block_number = 2;
+	gbt.block_data_len = 40;
+	memcpy(gbt.block_data, &payload[40], 40);
+	osp_buf_init(&w, b2r, sizeof(b2r));
+	assert_int_equal(osp_gbt_encode(&w, &gbt), 0);
+	b2r_len = w.wr;
+
+	const uint8_t *msgs[] = {b3, b2r, b3};
+	const uint32_t lens[] = {b3_len, b2r_len, b3_len};
+	gbt_scripted_rx_t scripted;
+	gbt_scripted_init(&scripted, msgs, lens, 3);
+
+	uint8_t out[256];
+	uint8_t ack_tx[64];
+	uint32_t out_len = 0;
+	assert_int_equal(osp_gbt_transport_recv(&scripted.transport, OSP_FRAMING_NONE, scripted.rx_buf, sizeof(scripted.rx_buf), out,
+	                                          sizeof(out), &out_len, ack_tx, sizeof(ack_tx), 5000, b1, b1_len),
+	                 OSP_OK);
+	assert_int_equal(out_len, sizeof(payload));
+	assert_memory_equal(out, payload, sizeof(payload));
+}
+
+static void test_confirmed_service_error_roundtrip(void **state) {
+	(void)state;
+	uint8_t mem[8];
+	osp_buf_t w;
+	osp_buf_init(&w, mem, sizeof(mem));
+
+	osp_confirmed_service_error_t err = {OSP_CSE_SERVICE_INITIATE_ERROR, OSP_CSE_CATEGORY_INITIATE, 2};
+	assert_int_equal(osp_confirmed_service_error_encode(&w, &err), 0);
+	assert_int_equal(mem[0], OSP_TAG_CONFIRMED_SERVICE_ERROR);
+	assert_int_equal(mem[1], 0x01);
+	assert_int_equal(mem[2], 0x06);
+	assert_int_equal(mem[3], 0x02);
+
+	osp_buf_t r;
+	osp_buf_init(&r, mem, w.wr);
+	r.wr = w.wr;
+	osp_confirmed_service_error_t decoded;
+	assert_int_equal(osp_confirmed_service_error_decode(&r, &decoded), 0);
+	assert_int_equal(decoded.service, err.service);
+	assert_int_equal(decoded.category, err.category);
+	assert_int_equal(decoded.value, err.value);
+}
+
 static void test_gbt_transport_confirmed(void **state) {
 	(void)state;
 	mock_transport_pair_t pair;
@@ -309,6 +448,8 @@ int main(void) {
 	    cmocka_unit_test(test_event_notification_roundtrip),
 	    cmocka_unit_test(test_gbt_roundtrip),
 	    cmocka_unit_test(test_gbt_transport_mock_loopback),
+	    cmocka_unit_test(test_gbt_recv_gap_recovery),
+	    cmocka_unit_test(test_confirmed_service_error_roundtrip),
 	    cmocka_unit_test(test_gbt_transport_confirmed),
 	    cmocka_unit_test(test_action_param_block_golden),
 	    cmocka_unit_test(test_compact_data_capture),
