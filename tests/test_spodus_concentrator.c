@@ -132,6 +132,27 @@ static void test_channel_list_builds_profile(void **state) {
 	assert_memory_equal(profile.buffer.rows[0].cells[1].as.octetstring.data, "RS485_1:9600", 12);
 }
 
+static void test_discovered_meters_build_profile(void **state) {
+	(void)state;
+	osp_spodus_discovered_list_t list;
+	osp_spodus_discovered_list_init(&list);
+	osp_spodus_discovered_meter_t meter = {.meter_id_len = 8, .meter_model_len = 3, .channel_id = 1, .address = 0x10, .first_seen_len = 4,
+	                                       .last_seen_len = 4};
+	memcpy(meter.meter_id, "MTR-0001", 8);
+	memcpy(meter.meter_model, "SiT", 3);
+	memcpy(meter.first_seen, "\x07\xE6\x07\x04", 4);
+	memcpy(meter.last_seen, "\x07\xE6\x07\x05", 4);
+	assert_int_equal(osp_spodus_discovered_list_add(&list, &meter), OSP_OK);
+
+	osp_ic_profile_generic_t profile;
+	assert_int_equal(osp_spodus_discovered_list_build_profile(&list, &profile), OSP_OK);
+	assert_int_equal(profile.buffer.row_count, 1);
+	assert_int_equal(profile.buffer.rows[0].cell_count, 6);
+	assert_memory_equal(profile.buffer.rows[0].cells[0].as.octetstring.data, "MTR-0001", 8);
+	assert_int_equal(profile.buffer.rows[0].cells[2].as.uint8.value, 1);
+	assert_int_equal(profile.buffer.rows[0].cells[3].as.uint16.value, 0x10);
+}
+
 static void test_poll_meter_updates_cache(void **state) {
 	(void)state;
 	mock_crypto_init();
@@ -282,6 +303,7 @@ int main(void) {
 	    cmocka_unit_test(test_registry_meter_list_and_cache),
 	    cmocka_unit_test(test_direct_channel_table),
 	    cmocka_unit_test(test_channel_list_builds_profile),
+	    cmocka_unit_test(test_discovered_meters_build_profile),
 	    cmocka_unit_test(test_poll_meter_updates_cache),
 	    cmocka_unit_test(test_proxy_forward_roundtrip),
 	    cmocka_unit_test(test_concentrator_server_get_objects),

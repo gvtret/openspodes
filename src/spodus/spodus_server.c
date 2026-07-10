@@ -108,6 +108,10 @@ osp_err_t osp_spodus_concentrator_register_server(osp_server_t *server, osp_spod
 	if (r != OSP_OK) {
 		return r;
 	}
+	r = osp_spodus_discovered_list_build_profile(&conc->discovered, &conc->server_objects.discovered_meters);
+	if (r != OSP_OK) {
+		return r;
+	}
 
 	r = osp_server_register(server, osp_ic_spodus_data_class(), &conc->server_objects.meter_list);
 	if (r != OSP_OK) {
@@ -117,5 +121,9 @@ osp_err_t osp_spodus_concentrator_register_server(osp_server_t *server, osp_spod
 	if (r != OSP_OK) {
 		return r;
 	}
-	return osp_server_register(server, osp_ic_profile_generic_class(), &conc->server_objects.channel_list);
+	r = osp_server_register(server, osp_ic_profile_generic_class(), &conc->server_objects.channel_list);
+	if (r != OSP_OK) {
+		return r;
+	}
+	return osp_server_register(server, osp_ic_profile_generic_class(), &conc->server_objects.discovered_meters);
 }
