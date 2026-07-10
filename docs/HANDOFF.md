@@ -100,6 +100,7 @@ TableManager(8200) ProfileDataFilter(8201)
 - `GET_WITH_LIST_BLOCK` enum only (no codec)
 - HLS mechanisms 8–10: GOST CMAC, Streebog, ECDSA (OpenSSL HAL), GOST 34.10-2018-256 (paramSetB)
 - general-glo/ded/ciphering (0xDB/0xDC/0xDD) encode/decode + protect/unprotect
+- general-signing (0xDF) encode/decode + GOST/ECDSA protect/unprotect
 - Selective access stubbed (encode writes 0)
 - Event notification send not implemented
 - Confirmed service error not implemented
@@ -107,12 +108,12 @@ TableManager(8200) ProfileDataFilter(8201)
 
 ### vs spodes-rs
 - OpenSPODES ahead: ACTION blocks, compact-array, push E2E, client block transfer, IC 62
-- spodes-rs ahead: general-signing (0xDF), GOST transport ciphering (Kuznyechik APDU), ded session helper, Concentrator runtime
+- spodes-rs ahead: GOST transport ciphering (Kuznyechik MGM APDU, suite 8/9), ded session helper, Concentrator runtime
 
 ## Next steps (suggested)
-1. general-signing (0xDF) + GOST transport ciphering (suite 8/9 APDU)
-2. GBT streaming / lost-block recovery
-3. ded-ciphering session helper
+1. GOST transport ciphering (Kuznyechik-MGM for suite 8/9 APDU protect/unprotect)
+2. ded-ciphering session helper
+3. GBT streaming / lost-block recovery
 
 ## User Instructions (MUST follow)
 - **Consult doc-rag-remote when implementing features**

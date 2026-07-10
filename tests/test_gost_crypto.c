@@ -1,4 +1,5 @@
 #include "../src/security/gost_crypto.h"
+#include "../src/security/general_ciphering.h"
 #include "../src/security/security.h"
 #include "mock_crypto.h"
 #include <setjmp.h>
@@ -163,6 +164,77 @@ static void test_gost3410_vko_roundtrip(void **state) {
 	assert_int_equal(osp_gost3410_vko(bob_sk, alice_pk, ukm, sizeof(ukm), key_b), 0);
 	assert_memory_equal(key_a, key_b, 32);
 }
+
+static void test_gen_signing_roundtrip(void **state) {
+	(void)state;
+	osp_gen_signing_t apdu;
+	memset(&apdu, 0, sizeof(apdu));
+	const uint8_t tx[8] = {0x01, 0x23, 0x45, 0x67, 0x89, 0x01, 0x23, 0x45};
+	const uint8_t orig[8] = {0x4D, 0x4D, 0x4D, 0x00, 0x00, 0x00, 0x00, 0x01};
+	const uint8_t recip[8] = {0x4D, 0x4D, 0x4D, 0x00, 0x00, 0xBC, 0x61, 0x4E};
+	const uint8_t content[7] = {0xC4, 0x01, 0xC1, 0x00, 0x12, 0x12, 0x34};
+	memcpy(apdu.transaction_id, tx, sizeof(tx));
+	apdu.transaction_id_len = sizeof(tx);
+	memcpy(apdu.originator_st, orig, sizeof(orig));
+	memcpy(apdu.recipient_st, recip, sizeof(recip));
+	apdu.recipient_st_len = sizeof(recip);
+	memcpy(apdu.content, content, sizeof(content));
+	apdu.content_len = sizeof(content);
+	memset(apdu.signature, 0xAB, 64);
+	apdu.signature_len = 64;
+
+	uint8_t encoded[256];
+	uint32_t enc_len = 0;
+	assert_int_equal(osp_gen_signing_encode(&apdu, encoded, &enc_len), 0);
+	assert_int_equal(encoded[0], OSP_GEN_SIGNING);
+
+	osp_gen_signing_t decoded;
+	assert_int_equal(osp_gen_signing_decode(encoded, enc_len, &decoded), 0);
+	assert_int_equal(decoded.transaction_id_len, apdu.transaction_id_len);
+	assert_memory_equal(decoded.transaction_id, apdu.transaction_id, apdu.transaction_id_len);
+	assert_memory_equal(decoded.originator_st, apdu.originator_st, OSP_SEC_SYSTEM_TITLE_SIZE);
+	assert_int_equal(decoded.recipient_st_len, apdu.recipient_st_len);
+	assert_memory_equal(decoded.recipient_st, apdu.recipient_st, apdu.recipient_st_len);
+	assert_int_equal(decoded.content_len, apdu.content_len);
+	assert_memory_equal(decoded.content, apdu.content, apdu.content_len);
+	assert_int_equal(decoded.signature_len, apdu.signature_len);
+	assert_memory_equal(decoded.signature, apdu.signature, apdu.signature_len);
+}
+
+static void test_gen_signing_protect_gost(void **state) {
+	(void)state;
+	static const uint8_t client_sk[32] = {0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47,
+	                                      0xBB, 0xBB, 0xAA, 0xAA, 0x99, 0x99, 0x88, 0x88, 0x44, 0x44, 0x55, 0x55, 0x66, 0x66, 0x77, 0x77};
+	uint8_t client_pk[64];
+	assert_int_equal(osp_gost3410_public_key(client_sk, client_pk), 0);
+
+	const uint8_t client_st[8] = {0x4D, 0x4D, 0x4D, 0x00, 0x00, 0x00, 0x00, 0x01};
+	const uint8_t server_st[8] = {0x4D, 0x4D, 0x4D, 0x00, 0x00, 0xBC, 0x61, 0x4E};
+	const uint8_t tx[8] = {0x01, 0x23, 0x45, 0x67, 0x89, 0x01, 0x23, 0x45};
+	const uint8_t content[7] = {0xC4, 0x01, 0xC1, 0x00, 0x12, 0x12, 0x34};
+
+	osp_sec_context_t tx_ctx, rx_ctx;
+	osp_sec_context_init(&tx_ctx, OSP_SUITE_8, OSP_MECH_HLS_GOST_SIG, client_st);
+	memcpy(tx_ctx.signing_key, client_sk, sizeof(client_sk));
+	tx_ctx.signing_key_len = (uint8_t)sizeof(client_sk);
+	osp_sec_context_init(&rx_ctx, OSP_SUITE_8, OSP_MECH_HLS_GOST_SIG, server_st);
+	memcpy(rx_ctx.peer_public_key, client_pk, sizeof(client_pk));
+	rx_ctx.peer_public_key_len = (uint8_t)sizeof(client_pk);
+
+	uint8_t apdu[512];
+	uint32_t apdu_len = 0;
+	assert_int_equal(osp_gen_signing_protect(&tx_ctx, tx, sizeof(tx), server_st, sizeof(server_st), content, sizeof(content), apdu,
+	                                         &apdu_len),
+	                 0);
+	assert_int_equal(apdu[0], OSP_GEN_SIGNING);
+
+	uint8_t recovered[32];
+	uint32_t recovered_len = sizeof(recovered);
+	assert_int_equal(osp_gen_signing_unprotect(&rx_ctx, apdu, apdu_len, recovered, &recovered_len), 0);
+	assert_int_equal(recovered_len, sizeof(content));
+	assert_memory_equal(recovered, content, sizeof(content));
+	assert_memory_equal(rx_ctx.peer_system_title, client_st, sizeof(client_st));
+}
 #endif
 
 static void test_hls_gost_streebog_handshake(void **state) {
@@ -238,6 +310,8 @@ int main(void) {
 	    cmocka_unit_test(test_gost3410_vko_r1323565),
 	    cmocka_unit_test(test_gost_kdf_tree_r1323565),
 	    cmocka_unit_test(test_gost3410_vko_roundtrip),
+	    cmocka_unit_test(test_gen_signing_roundtrip),
+	    cmocka_unit_test(test_gen_signing_protect_gost),
 #endif
 	    cmocka_unit_test(test_hls_gost_streebog_handshake),
 	    cmocka_unit_test(test_hls_gost_cmac_handshake),
