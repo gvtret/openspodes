@@ -15,6 +15,8 @@
 #include "server/server.h"
 #include "server/dispatcher.h"
 #include "ic/register.h"
+#include "ic/compact_data.h"
+#include "codec/serialize.h"
 
 static void test_get_with_list_golden(void **state) {
 	(void)state;
@@ -192,6 +194,47 @@ static void test_action_param_block_golden(void **state) {
 	assert_memory_equal(mem, golden_next_resp, sizeof(golden_next_resp));
 }
 
+static void test_compact_data_capture(void **state) {
+	(void)state;
+	osp_ic_compact_data_t cd;
+	osp_ic_compact_data_init(&cd, (osp_obis_t){0, 0, 99, 0, 0, 255});
+
+	osp_value_t fields[2] = {osp_val_u8(1), osp_val_u16(0x0102)};
+	osp_value_t row;
+	row.tag = OSP_TAG_STRUCTURE;
+	row.as.structure.elements.items = fields;
+	row.as.structure.elements.count = 2;
+	row.as.structure.elements.capacity = 2;
+	osp_ic_compact_data_set_capture_values(&cd, &row, 1);
+
+	const osp_ic_class_t *cls = osp_ic_compact_data_class();
+	osp_value_t result = osp_val_null();
+	assert_int_equal(cls->invoke(&cd, 2, NULL, &result), OSP_OK);
+
+	osp_value_t buf_val;
+	assert_int_equal(cls->get_attr(&cd, 2, &buf_val), OSP_OK);
+	assert_int_equal(buf_val.tag, OSP_TAG_OCTETSTRING);
+
+	const uint8_t expected[] = {0x13, 0x02, 0x02, 0x11, 0x12, 0x03, 0x01, 0x01, 0x02};
+	assert_int_equal(buf_val.as.octetstring.len, sizeof(expected));
+	assert_memory_equal(buf_val.as.octetstring.data, expected, sizeof(expected));
+
+	osp_buf_t r;
+	osp_buf_init(&r, buf_val.as.octetstring.data, buf_val.as.octetstring.len);
+	r.wr = buf_val.as.octetstring.len;
+	osp_value_t decoded;
+	assert_int_equal(osp_value_read(&r, &decoded), OSP_OK);
+	assert_int_equal(decoded.tag, OSP_TAG_ARRAY);
+	assert_int_equal(decoded.as.array.elements.count, 1);
+	assert_int_equal(decoded.as.array.elements.items[0].tag, OSP_TAG_STRUCTURE);
+	assert_int_equal(decoded.as.array.elements.items[0].as.structure.elements.items[0].as.uint8.value, 1);
+	assert_int_equal(decoded.as.array.elements.items[0].as.structure.elements.items[1].as.uint16.value, 0x0102);
+
+	assert_int_equal(cls->invoke(&cd, 1, NULL, &result), OSP_OK);
+	assert_int_equal(cls->get_attr(&cd, 2, &buf_val), OSP_OK);
+	assert_int_equal(buf_val.as.octetstring.len, 0);
+}
+
 int main(void) {
 	const struct CMUnitTest tests[] = {
 	    cmocka_unit_test(test_get_with_list_golden),
@@ -200,6 +243,7 @@ int main(void) {
 	    cmocka_unit_test(test_event_notification_roundtrip),
 	    cmocka_unit_test(test_gbt_roundtrip),
 	    cmocka_unit_test(test_action_param_block_golden),
+	    cmocka_unit_test(test_compact_data_capture),
 	};
 	return cmocka_run_group_tests(tests, NULL, NULL);
 }
