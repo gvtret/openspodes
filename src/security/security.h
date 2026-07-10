@@ -44,6 +44,12 @@ typedef enum {
 	OSP_SUITE_9 = 9, /* Kuznyechik + VKO + Streebog (GOST) */
 } osp_sec_suite_t;
 
+extern void (*osp_hal_streebog256)(const uint8_t *input, uint32_t len, uint8_t output[32]);
+extern int (*osp_hal_ecdsa_sign)(osp_sec_suite_t suite, const uint8_t *sk, uint32_t sk_len, const uint8_t *msg, uint32_t msg_len,
+                                 uint8_t *sig, uint32_t *sig_len);
+extern int (*osp_hal_ecdsa_verify)(osp_sec_suite_t suite, const uint8_t *pk, uint32_t pk_len, const uint8_t *msg, uint32_t msg_len,
+                                   const uint8_t *sig, uint32_t sig_len);
+
 static inline uint8_t osp_sec_suite_id(osp_sec_suite_t s) {
 	return (uint8_t)s;
 }
@@ -123,10 +129,18 @@ typedef enum {
 	OSP_MECH_HLS_SHA1 = 4,
 	OSP_MECH_HLS_GMAC = 5,
 	OSP_MECH_HLS_SHA256 = 6,
+	OSP_MECH_HLS_ECDSA = 7,
+	OSP_MECH_HLS_GOST_CMAC = 8,
+	OSP_MECH_HLS_GOST_STREEBOG = 9,
+	OSP_MECH_HLS_GOST_SIG = 10,
 } osp_auth_mechanism_t;
 
 static inline bool osp_hls_requires_handshake(osp_auth_mechanism_t mech) {
-	return mech >= OSP_MECH_HLS && mech <= OSP_MECH_HLS_SHA256;
+	return mech >= OSP_MECH_HLS && mech <= OSP_MECH_HLS_GOST_SIG;
+}
+
+static inline bool osp_hls_uses_signature(osp_auth_mechanism_t mech) {
+	return mech == OSP_MECH_HLS_ECDSA || mech == OSP_MECH_HLS_GOST_SIG;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -136,6 +150,12 @@ static inline bool osp_hls_requires_handshake(osp_auth_mechanism_t mech) {
 #define OSP_SEC_KEY_MAX       32
 #define OSP_SEC_CHALLENGE_MAX 64
 #define OSP_SEC_TAG_SIZE      12
+
+#define OSP_SEC_K_EM_SIZE         64
+#define OSP_SEC_SIGN_KEY_MAX      48
+#define OSP_SEC_PUBKEY_MAX        96
+#define OSP_SEC_GOST_CMAC_SIZE    16
+#define OSP_SEC_ECDSA_SIG_MAX     96
 
 typedef struct {
 	osp_sec_suite_t suite;
@@ -151,6 +171,12 @@ typedef struct {
 	uint8_t guek[OSP_SEC_KEY_MAX]; /* Global Unicast Encryption Key */
 	uint8_t gak[OSP_SEC_KEY_MAX];  /* Global Authentication Key */
 	uint8_t gbek[OSP_SEC_KEY_MAX]; /* Global Broadcast Encryption Key */
+	uint8_t k_em[OSP_SEC_K_EM_SIZE]; /* GOST K_EM (512 bits) for mech 8 */
+
+	uint8_t signing_key[OSP_SEC_SIGN_KEY_MAX];
+	uint8_t peer_public_key[OSP_SEC_PUBKEY_MAX];
+	uint8_t signing_key_len;
+	uint8_t peer_public_key_len;
 
 	/* Challenge values */
 	uint8_t ctos[OSP_SEC_CHALLENGE_MAX]; /* Client-to-Server */
@@ -213,6 +239,25 @@ int osp_glo_protect(const osp_sec_context_t *ctx, uint8_t ciphered_tag, const ui
 
 /* Unprotect a glo-ciphered APDU */
 int osp_glo_unprotect(osp_sec_context_t *ctx, const uint8_t *ciphered, uint32_t ciphered_len, uint8_t *plaintext, uint32_t *plain_len);
+
+/* General ciphering APDUs (IEC 62056-5-3 §5.7.2) */
+#define OSP_GEN_GLO_CIPHERING 0xDB
+#define OSP_GEN_DED_CIPHERING 0xDC
+#define OSP_GEN_CIPHERING     0xDD
+#define OSP_GEN_SIGNING       0xDF
+
+bool osp_gen_is_ciphered_tag(uint8_t tag);
+
+int osp_gen_glo_ded_protect(const osp_sec_context_t *ctx, bool dedicated, uint8_t plain_tag, const uint8_t *plaintext,
+                            uint32_t plain_len, uint8_t *out, uint32_t *out_len);
+int osp_gen_glo_ded_unprotect(osp_sec_context_t *ctx, const uint8_t *apdu, uint32_t apdu_len, uint8_t *plaintext,
+                              uint32_t *plain_len, uint8_t *plain_tag);
+
+int osp_gen_ciphering_protect(const osp_sec_context_t *ctx, const uint8_t *transaction_id, uint32_t tx_id_len,
+                              const uint8_t *recipient_st, uint32_t recipient_len, uint8_t plain_tag, const uint8_t *plaintext,
+                              uint32_t plain_len, uint8_t *out, uint32_t *out_len);
+int osp_gen_ciphering_unprotect(osp_sec_context_t *ctx, const uint8_t *apdu, uint32_t apdu_len, uint8_t *plaintext,
+                                uint32_t *plain_len, uint8_t *plain_tag);
 
 #ifdef __cplusplus
 }

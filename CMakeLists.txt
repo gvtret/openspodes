@@ -59,11 +59,17 @@ add_library(openspodes STATIC
     src/service/gbt.c
     src/service/initiate.c
     src/security/security.c
+    src/security/streebog/gost3411-2012-core.c
+    src/security/streebog_wrap.c
+    src/security/kuznyechik.c
+    src/security/gost3410.c
+    src/security/general_ciphering.c
     src/client/client.c
     src/server/server.c
 )
 
 target_include_directories(openspodes PUBLIC src)
+target_include_directories(openspodes PRIVATE src/security/streebog)
 
 option(ENABLE_COVERAGE "Build with gcov coverage instrumentation" OFF)
 if(ENABLE_COVERAGE)
@@ -129,6 +135,11 @@ target_include_directories(openspodes_test_phase2 PRIVATE ${cmocka_SOURCE_DIR}/i
 target_link_libraries(openspodes_test_phase2 PRIVATE openspodes cmocka)
 add_test(NAME openspodes_test_phase2 COMMAND openspodes_test_phase2)
 
+add_executable(openspodes_test_gost tests/test_gost_crypto.c)
+target_include_directories(openspodes_test_gost PRIVATE ${cmocka_SOURCE_DIR}/include tests)
+target_link_libraries(openspodes_test_gost PRIVATE openspodes cmocka)
+add_test(NAME openspodes_test_gost COMMAND openspodes_test_gost)
+
 find_package(OpenSSL QUIET)
 if(OpenSSL_FOUND)
 	add_executable(openspodes_test_security tests/test_security_glo.c tests/mock_crypto.c tests/real_crypto.c)
@@ -140,6 +151,7 @@ if(OpenSSL_FOUND)
 	target_sources(openspodes_test_integration PRIVATE tests/real_crypto.c)
 	target_link_libraries(openspodes_test_integration PRIVATE OpenSSL::Crypto)
 	target_compile_definitions(openspodes_test_integration PRIVATE OSP_HAVE_OPENSSL_GCM=1)
+	# ECDSA HLS (mech 7) uses OpenSSL via mock_crypto_init_real_gost_ecdsa in tests
 endif()
 
 add_executable(openspodes_loopback_cli

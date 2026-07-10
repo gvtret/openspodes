@@ -363,6 +363,13 @@ static void test_hls_sha256_handshake(void **state) {
 	run_hls_hash_handshake(OSP_MECH_HLS_SHA256, client_st, server_st, 603);
 }
 
+static void test_hls_gost_streebog_handshake(void **state) {
+	(void)state;
+	static const uint8_t client_st[8] = {0x43, 0x4C, 0x49, 0x00, 0x00, 0x00, 0x00, 0x04};
+	static const uint8_t server_st[8] = {0x53, 0x52, 0x56, 0x00, 0x00, 0x00, 0x00, 0x04};
+	run_hls_hash_handshake(OSP_MECH_HLS_GOST_STREEBOG, client_st, server_st, 604);
+}
+
 #endif /* OSP_HAVE_OPENSSL_GCM */
 
 /* ── Test: client ACTION (disconnect control) ────────────────────────────── */
@@ -867,6 +874,7 @@ int main(void) {
 	    cmocka_unit_test(test_hls_md5_handshake),
 	    cmocka_unit_test(test_hls_sha1_handshake),
 	    cmocka_unit_test(test_hls_sha256_handshake),
+	    cmocka_unit_test(test_hls_gost_streebog_handshake),
 #endif
 	    cmocka_unit_test(test_client_action),
 	    cmocka_unit_test(test_client_release_disconnect),

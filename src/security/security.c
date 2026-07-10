@@ -15,6 +15,7 @@
  */
 
 #include "security.h"
+#include "gost_crypto.h"
 #include "../codec/codec.h"
 #include <string.h>
 
@@ -30,6 +31,19 @@ int (*osp_hal_gcm_crypt)(osp_gcm_dir_t dir, const uint8_t *key, uint32_t key_len
 void (*osp_hal_md5)(const uint8_t *input, uint32_t len, uint8_t output[16]) = NULL;
 void (*osp_hal_sha1)(const uint8_t *input, uint32_t len, uint8_t output[20]) = NULL;
 void (*osp_hal_sha256)(const uint8_t *input, uint32_t len, uint8_t output[32]) = NULL;
+void (*osp_hal_streebog256)(const uint8_t *input, uint32_t len, uint8_t output[32]) = NULL;
+int (*osp_hal_ecdsa_sign)(osp_sec_suite_t suite, const uint8_t *sk, uint32_t sk_len, const uint8_t *msg, uint32_t msg_len, uint8_t *sig,
+                          uint32_t *sig_len) = NULL;
+int (*osp_hal_ecdsa_verify)(osp_sec_suite_t suite, const uint8_t *pk, uint32_t pk_len, const uint8_t *msg, uint32_t msg_len,
+                            const uint8_t *sig, uint32_t sig_len) = NULL;
+
+static void hls_streebog256(const uint8_t *input, uint32_t len, uint8_t output[32]) {
+	if (osp_hal_streebog256) {
+		osp_hal_streebog256(input, len, output);
+	} else {
+		osp_gost_streebog256(input, len, output);
+	}
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  Security context
@@ -146,7 +160,10 @@ static int hls_hash_legacy(const osp_sec_context_t *ctx, const uint8_t *challeng
 static int hls_hash_with_titles(const osp_sec_context_t *ctx, const uint8_t *st_a, const uint8_t *st_b, const uint8_t *challenge_a,
                                 uint32_t challenge_a_len, const uint8_t *challenge_b, uint32_t challenge_b_len, uint8_t *out,
                                 uint32_t *out_len) {
-	if (!ctx || !st_a || !st_b || !challenge_a || !challenge_b || !out || !out_len || ctx->mechanism != OSP_MECH_HLS_SHA256) {
+	if (!ctx || !st_a || !st_b || !challenge_a || !challenge_b || !out || !out_len) {
+		return -1;
+	}
+	if (ctx->mechanism != OSP_MECH_HLS_SHA256 && ctx->mechanism != OSP_MECH_HLS_GOST_STREEBOG) {
 		return -1;
 	}
 	uint8_t buf[OSP_SEC_KEY_MAX + OSP_SEC_SYSTEM_TITLE_SIZE * 2 + OSP_SEC_CHALLENGE_MAX * 2];
@@ -161,11 +178,186 @@ static int hls_hash_with_titles(const osp_sec_context_t *ctx, const uint8_t *st_
 	pos += challenge_a_len;
 	memcpy(&buf[pos], challenge_b, challenge_b_len);
 	pos += challenge_b_len;
-	if (osp_hls_sha256(buf, pos, out) != 0) {
-		return -1;
+	if (ctx->mechanism == OSP_MECH_HLS_SHA256) {
+		if (osp_hls_sha256(buf, pos, out) != 0) {
+			return -1;
+		}
+	} else {
+		hls_streebog256(buf, pos, out);
 	}
 	*out_len = 32;
 	return 0;
+}
+
+static int hls_build_sig_message(const osp_sec_context_t *ctx, const uint8_t *st_a, const uint8_t *st_b, const uint8_t *challenge_a,
+                                 uint32_t challenge_a_len, const uint8_t *challenge_b, uint32_t challenge_b_len, uint8_t *out,
+                                 uint32_t *out_len) {
+	if (!ctx || !st_a || !st_b || !challenge_a || !challenge_b || !out || !out_len) {
+		return -1;
+	}
+	uint32_t need = OSP_SEC_SYSTEM_TITLE_SIZE * 2 + challenge_a_len + challenge_b_len;
+	if (need > OSP_SEC_CHALLENGE_MAX * 2 + OSP_SEC_SYSTEM_TITLE_SIZE * 2) {
+		return -1;
+	}
+	uint32_t pos = 0;
+	memcpy(&out[pos], st_a, OSP_SEC_SYSTEM_TITLE_SIZE);
+	pos += OSP_SEC_SYSTEM_TITLE_SIZE;
+	memcpy(&out[pos], st_b, OSP_SEC_SYSTEM_TITLE_SIZE);
+	pos += OSP_SEC_SYSTEM_TITLE_SIZE;
+	memcpy(&out[pos], challenge_a, challenge_a_len);
+	pos += challenge_a_len;
+	memcpy(&out[pos], challenge_b, challenge_b_len);
+	pos += challenge_b_len;
+	*out_len = pos;
+	return 0;
+}
+
+static int hls_pass3_gost_cmac_build(const osp_sec_context_t *ctx, uint8_t *out, uint32_t out_size, uint32_t *out_len) {
+	if (!ctx || !out || out_size < 21 || !out_len) {
+		return -1;
+	}
+	uint8_t sc = osp_sec_control_byte(OSP_POLICY_AUTH_ONLY, ctx->suite);
+	uint32_t ic = ctx->invocation_counter;
+	uint8_t iv[12];
+	memcpy(iv, ctx->system_title, 8);
+	iv[8] = (uint8_t)(ic >> 24);
+	iv[9] = (uint8_t)(ic >> 16);
+	iv[10] = (uint8_t)(ic >> 8);
+	iv[11] = (uint8_t)(ic);
+	uint8_t mac[OSP_SEC_GOST_CMAC_SIZE];
+	if (osp_hls_gost_cmac(ctx->k_em, iv, sc, ctx->stoc, ctx->stoc_len, ctx->ctos, ctx->ctos_len, mac) != 0) {
+		return -1;
+	}
+	out[0] = sc;
+	out[1] = (uint8_t)(ic >> 24);
+	out[2] = (uint8_t)(ic >> 16);
+	out[3] = (uint8_t)(ic >> 8);
+	out[4] = (uint8_t)(ic);
+	memcpy(&out[5], mac, OSP_SEC_GOST_CMAC_SIZE);
+	*out_len = 21;
+	return 0;
+}
+
+static int hls_pass4_gost_cmac_build(osp_sec_context_t *ctx, uint8_t *out, uint32_t out_size, uint32_t *out_len) {
+	if (!ctx || !out || out_size < 21 || !out_len) {
+		return -1;
+	}
+	uint8_t sc = osp_sec_control_byte(OSP_POLICY_AUTH_ONLY, ctx->suite);
+	uint32_t ic = ctx->invocation_counter++;
+	uint8_t iv[12];
+	memcpy(iv, ctx->system_title, 8);
+	iv[8] = (uint8_t)(ic >> 24);
+	iv[9] = (uint8_t)(ic >> 16);
+	iv[10] = (uint8_t)(ic >> 8);
+	iv[11] = (uint8_t)(ic);
+	uint8_t mac[OSP_SEC_GOST_CMAC_SIZE];
+	if (osp_hls_gost_cmac(ctx->k_em, iv, sc, ctx->ctos, ctx->ctos_len, ctx->stoc, ctx->stoc_len, mac) != 0) {
+		return -1;
+	}
+	out[0] = sc;
+	out[1] = (uint8_t)(ic >> 24);
+	out[2] = (uint8_t)(ic >> 16);
+	out[3] = (uint8_t)(ic >> 8);
+	out[4] = (uint8_t)(ic);
+	memcpy(&out[5], mac, OSP_SEC_GOST_CMAC_SIZE);
+	*out_len = 21;
+	return 0;
+}
+
+static int hls_pass3_sig_build(const osp_sec_context_t *ctx, uint8_t *out, uint32_t out_size, uint32_t *out_len) {
+	uint8_t msg[OSP_SEC_SYSTEM_TITLE_SIZE * 2 + OSP_SEC_CHALLENGE_MAX * 2];
+	uint32_t msg_len = 0;
+	if (hls_build_sig_message(ctx, ctx->system_title, ctx->peer_system_title, ctx->stoc, ctx->stoc_len, ctx->ctos, ctx->ctos_len, msg,
+	                          &msg_len) != 0) {
+		return -1;
+	}
+	if (ctx->mechanism == OSP_MECH_HLS_ECDSA) {
+		if (!osp_hal_ecdsa_sign || ctx->suite == OSP_SUITE_0 || ctx->signing_key_len == 0) {
+			return -1;
+		}
+		return osp_hal_ecdsa_sign(ctx->suite, ctx->signing_key, ctx->signing_key_len, msg, msg_len, out, out_len);
+	}
+	if (ctx->mechanism == OSP_MECH_HLS_GOST_SIG) {
+		if (out_size < OSP_GOST_SIG_SIZE || ctx->signing_key_len != OSP_GOST_PRIVKEY_SIZE) {
+			return -1;
+		}
+		if (osp_gost3410_sign(ctx->signing_key, msg, msg_len, out) != 0) {
+			return -1;
+		}
+		*out_len = OSP_GOST_SIG_SIZE;
+		return 0;
+	}
+	return -1;
+}
+
+static int hls_pass4_sig_build(osp_sec_context_t *ctx, uint8_t *out, uint32_t out_size, uint32_t *out_len) {
+	uint8_t msg[OSP_SEC_SYSTEM_TITLE_SIZE * 2 + OSP_SEC_CHALLENGE_MAX * 2];
+	uint32_t msg_len = 0;
+	if (hls_build_sig_message(ctx, ctx->system_title, ctx->peer_system_title, ctx->ctos, ctx->ctos_len, ctx->stoc, ctx->stoc_len, msg,
+	                          &msg_len) != 0) {
+		return -1;
+	}
+	if (ctx->mechanism == OSP_MECH_HLS_ECDSA) {
+		if (!osp_hal_ecdsa_sign || ctx->suite == OSP_SUITE_0 || ctx->signing_key_len == 0) {
+			return -1;
+		}
+		return osp_hal_ecdsa_sign(ctx->suite, ctx->signing_key, ctx->signing_key_len, msg, msg_len, out, out_len);
+	}
+	if (ctx->mechanism == OSP_MECH_HLS_GOST_SIG) {
+		if (out_size < OSP_GOST_SIG_SIZE || ctx->signing_key_len != OSP_GOST_PRIVKEY_SIZE) {
+			return -1;
+		}
+		if (osp_gost3410_sign(ctx->signing_key, msg, msg_len, out) != 0) {
+			return -1;
+		}
+		*out_len = OSP_GOST_SIG_SIZE;
+		return 0;
+	}
+	return -1;
+}
+
+static int hls_pass3_sig_verify(osp_sec_context_t *ctx, const uint8_t *f_stoc, uint32_t len) {
+	uint8_t msg[OSP_SEC_SYSTEM_TITLE_SIZE * 2 + OSP_SEC_CHALLENGE_MAX * 2];
+	uint32_t msg_len = 0;
+	if (hls_build_sig_message(ctx, ctx->peer_system_title, ctx->system_title, ctx->stoc, ctx->stoc_len, ctx->ctos, ctx->ctos_len, msg,
+	                          &msg_len) != 0) {
+		return -1;
+	}
+	if (ctx->mechanism == OSP_MECH_HLS_ECDSA) {
+		if (!osp_hal_ecdsa_verify || ctx->peer_public_key_len == 0) {
+			return -1;
+		}
+		return osp_hal_ecdsa_verify(ctx->suite, ctx->peer_public_key, ctx->peer_public_key_len, msg, msg_len, f_stoc, len);
+	}
+	if (ctx->mechanism == OSP_MECH_HLS_GOST_SIG) {
+		if (len != OSP_GOST_SIG_SIZE || ctx->peer_public_key_len != OSP_GOST_PUBKEY_SIZE) {
+			return -1;
+		}
+		return osp_gost3410_verify(ctx->peer_public_key, msg, msg_len, f_stoc);
+	}
+	return -1;
+}
+
+static int hls_pass4_sig_verify(osp_sec_context_t *ctx, const uint8_t *f_ctos, uint32_t len) {
+	uint8_t msg[OSP_SEC_SYSTEM_TITLE_SIZE * 2 + OSP_SEC_CHALLENGE_MAX * 2];
+	uint32_t msg_len = 0;
+	if (hls_build_sig_message(ctx, ctx->peer_system_title, ctx->system_title, ctx->ctos, ctx->ctos_len, ctx->stoc, ctx->stoc_len, msg,
+	                          &msg_len) != 0) {
+		return -1;
+	}
+	if (ctx->mechanism == OSP_MECH_HLS_ECDSA) {
+		if (!osp_hal_ecdsa_verify || ctx->peer_public_key_len == 0) {
+			return -1;
+		}
+		return osp_hal_ecdsa_verify(ctx->suite, ctx->peer_public_key, ctx->peer_public_key_len, msg, msg_len, f_ctos, len);
+	}
+	if (ctx->mechanism == OSP_MECH_HLS_GOST_SIG) {
+		if (len != OSP_GOST_SIG_SIZE || ctx->peer_public_key_len != OSP_GOST_PUBKEY_SIZE) {
+			return -1;
+		}
+		return osp_gost3410_verify(ctx->peer_public_key, msg, msg_len, f_ctos);
+	}
+	return -1;
 }
 
 static int hls_pass3_gmac_build(const osp_sec_context_t *ctx, uint8_t *out, uint32_t out_size, uint32_t *out_len) {
@@ -215,10 +407,16 @@ int osp_hls_pass3_build(const osp_sec_context_t *ctx, uint8_t *out, uint32_t out
 	if (ctx->mechanism == OSP_MECH_HLS_GMAC) {
 		return hls_pass3_gmac_build(ctx, out, out_size, out_len);
 	}
+	if (ctx->mechanism == OSP_MECH_HLS_GOST_CMAC) {
+		return hls_pass3_gost_cmac_build(ctx, out, out_size, out_len);
+	}
+	if (osp_hls_uses_signature(ctx->mechanism)) {
+		return hls_pass3_sig_build(ctx, out, out_size, out_len);
+	}
 	if (ctx->mechanism == OSP_MECH_HLS_MD5 || ctx->mechanism == OSP_MECH_HLS_SHA1) {
 		return hls_hash_legacy(ctx, ctx->stoc, ctx->stoc_len, out, out_len);
 	}
-	if (ctx->mechanism == OSP_MECH_HLS_SHA256) {
+	if (ctx->mechanism == OSP_MECH_HLS_SHA256 || ctx->mechanism == OSP_MECH_HLS_GOST_STREEBOG) {
 		return hls_hash_with_titles(ctx, ctx->system_title, ctx->peer_system_title, ctx->stoc, ctx->stoc_len, ctx->ctos, ctx->ctos_len,
 		                            out, out_len);
 	}
@@ -263,7 +461,46 @@ int osp_hls_pass3_verify(osp_sec_context_t *ctx, const uint8_t *f_stoc, uint32_t
 
 	uint8_t expected[32];
 	uint32_t expected_len = 0;
-	if (ctx->mechanism == OSP_MECH_HLS_SHA256) {
+	if (ctx->mechanism == OSP_MECH_HLS_GOST_CMAC) {
+		if (len < 21) {
+			return -1;
+		}
+		if (ctx->hls_failures >= 5) {
+			return -2;
+		}
+		uint32_t ic = ((uint32_t)f_stoc[1] << 24) | ((uint32_t)f_stoc[2] << 16) | ((uint32_t)f_stoc[3] << 8) | (uint32_t)f_stoc[4];
+		if (ctx->ic_valid && ic <= ctx->last_peer_ic) {
+			ctx->hls_failures++;
+			return -3;
+		}
+		uint8_t iv[12];
+		memcpy(iv, ctx->peer_system_title, 8);
+		iv[8] = (uint8_t)(ic >> 24);
+		iv[9] = (uint8_t)(ic >> 16);
+		iv[10] = (uint8_t)(ic >> 8);
+		iv[11] = (uint8_t)(ic);
+		uint8_t mac[OSP_SEC_GOST_CMAC_SIZE];
+		if (osp_hls_gost_cmac(ctx->k_em, iv, f_stoc[0], ctx->stoc, ctx->stoc_len, ctx->ctos, ctx->ctos_len, mac) != 0) {
+			ctx->hls_failures++;
+			return -4;
+		}
+		uint8_t diff = 0;
+		for (uint32_t i = 0; i < OSP_SEC_GOST_CMAC_SIZE; i++) {
+			diff |= f_stoc[5 + i] ^ mac[i];
+		}
+		if (diff != 0) {
+			ctx->hls_failures++;
+			return -5;
+		}
+		ctx->last_peer_ic = ic;
+		ctx->ic_valid = true;
+		ctx->hls_failures = 0;
+		return 0;
+	}
+	if (osp_hls_uses_signature(ctx->mechanism)) {
+		return hls_pass3_sig_verify(ctx, f_stoc, len);
+	}
+	if (ctx->mechanism == OSP_MECH_HLS_SHA256 || ctx->mechanism == OSP_MECH_HLS_GOST_STREEBOG) {
 		if (hls_hash_with_titles(ctx, ctx->peer_system_title, ctx->system_title, ctx->stoc, ctx->stoc_len, ctx->ctos, ctx->ctos_len,
 		                         expected, &expected_len) != 0) {
 			return -1;
@@ -292,10 +529,16 @@ int osp_hls_pass4_build(osp_sec_context_t *ctx, uint8_t *out, uint32_t out_size,
 	if (ctx->mechanism == OSP_MECH_HLS_GMAC) {
 		return hls_pass4_gmac_build(ctx, out, out_size, out_len);
 	}
+	if (ctx->mechanism == OSP_MECH_HLS_GOST_CMAC) {
+		return hls_pass4_gost_cmac_build(ctx, out, out_size, out_len);
+	}
+	if (osp_hls_uses_signature(ctx->mechanism)) {
+		return hls_pass4_sig_build(ctx, out, out_size, out_len);
+	}
 	if (ctx->mechanism == OSP_MECH_HLS_MD5 || ctx->mechanism == OSP_MECH_HLS_SHA1) {
 		return hls_hash_legacy(ctx, ctx->ctos, ctx->ctos_len, out, out_len);
 	}
-	if (ctx->mechanism == OSP_MECH_HLS_SHA256) {
+	if (ctx->mechanism == OSP_MECH_HLS_SHA256 || ctx->mechanism == OSP_MECH_HLS_GOST_STREEBOG) {
 		return hls_hash_with_titles(ctx, ctx->system_title, ctx->peer_system_title, ctx->ctos, ctx->ctos_len, ctx->stoc, ctx->stoc_len,
 		                            out, out_len);
 	}
@@ -325,7 +568,31 @@ int osp_hls_pass4_verify(osp_sec_context_t *ctx, const uint8_t *f_ctos, uint32_t
 
 	uint8_t expected[32];
 	uint32_t expected_len = 0;
-	if (ctx->mechanism == OSP_MECH_HLS_SHA256) {
+	if (ctx->mechanism == OSP_MECH_HLS_GOST_CMAC) {
+		if (len < 21) {
+			return -1;
+		}
+		uint32_t ic = ((uint32_t)f_ctos[1] << 24) | ((uint32_t)f_ctos[2] << 16) | ((uint32_t)f_ctos[3] << 8) | (uint32_t)f_ctos[4];
+		uint8_t iv[12];
+		memcpy(iv, ctx->peer_system_title, 8);
+		iv[8] = (uint8_t)(ic >> 24);
+		iv[9] = (uint8_t)(ic >> 16);
+		iv[10] = (uint8_t)(ic >> 8);
+		iv[11] = (uint8_t)(ic);
+		uint8_t mac[OSP_SEC_GOST_CMAC_SIZE];
+		if (osp_hls_gost_cmac(ctx->k_em, iv, f_ctos[0], ctx->ctos, ctx->ctos_len, ctx->stoc, ctx->stoc_len, mac) != 0) {
+			return -1;
+		}
+		uint8_t diff = 0;
+		for (uint32_t i = 0; i < OSP_SEC_GOST_CMAC_SIZE; i++) {
+			diff |= f_ctos[5 + i] ^ mac[i];
+		}
+		return (diff == 0) ? 0 : -1;
+	}
+	if (osp_hls_uses_signature(ctx->mechanism)) {
+		return hls_pass4_sig_verify(ctx, f_ctos, len);
+	}
+	if (ctx->mechanism == OSP_MECH_HLS_SHA256 || ctx->mechanism == OSP_MECH_HLS_GOST_STREEBOG) {
 		if (hls_hash_with_titles(ctx, ctx->peer_system_title, ctx->system_title, ctx->ctos, ctx->ctos_len, ctx->stoc, ctx->stoc_len,
 		                         expected, &expected_len) != 0) {
 			return -1;

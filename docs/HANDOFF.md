@@ -98,7 +98,8 @@ TableManager(8200) ProfileDataFilter(8201)
 ### Protocol / implementation
 - GBT streaming / lost-block recovery not implemented
 - `GET_WITH_LIST_BLOCK` enum only (no codec)
-- HLS GOST mechanisms 8–10 not implemented
+- HLS mechanisms 8–9 (GOST CMAC, Streebog) implemented; mech 7 ECDSA via OpenSSL HAL; mech 10 wired (GOST 34.10 EC math WIP)
+- general-glo/ded/ciphering (0xDB/0xDC/0xDD) encode/decode + protect/unprotect
 - Selective access stubbed (encode writes 0)
 - Event notification send not implemented
 - Confirmed service error not implemented
@@ -106,10 +107,10 @@ TableManager(8200) ProfileDataFilter(8201)
 
 ### vs spodes-rs
 - OpenSPODES ahead: ACTION blocks, compact-array, push E2E, client block transfer, IC 62
-- spodes-rs ahead: GOST security, glo-ciphering, general-ciphering, Concentrator runtime, examples
+- spodes-rs ahead: GOST 34.10 EC (bundled impl incomplete), general-signing (0xDF), ded session helper, Concentrator runtime
 
 ## Next steps (suggested)
-1. GOST mechanisms 8–10 (Kuznyechik/Streebog HAL)
+1. Finish GOST 34.10 EC (mech 10) — validate point_mul vs spodes-rs VKO vector
 2. GBT streaming / lost-block recovery
 3. TCP example CTest (optional, port-based smoke)
 
