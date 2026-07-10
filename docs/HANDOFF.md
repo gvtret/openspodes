@@ -5,7 +5,7 @@
 - **Branch**: main
 - **Reference**: spodes-rs (Rust implementation)
 - **Language**: C11, clang-format (LLVM tabs)
-- **Stats**: ~100 files, 40 IC classes, 11 CTest suites, ~215 unit tests
+- **Stats**: ~105 files, 40 IC classes, 11 CTest suites, ~220 unit tests, GitHub CI
 
 ## Project: OpenSPODES — DLMS/COSEM protocol stack in C11
 Portable C11 implementation of IEC 62056 DLMS/COSEM, modeled after spodes-rs.
@@ -21,7 +21,9 @@ src/server/    RequestDispatcher (class_id+OBIS), osp_server_accept/run
 src/client/    connect/get/set/action + with-list + block transfer + recv notification
 src/ic/        40 IC classes, vtable pattern
 tests/         CMocka unit/golden/error/ic/integration/phase0-2 + mock transport/crypto
+.github/       CI: build + ctest + optional coverage
 scripts/       coverage_report.py (gcov summary)
+README.md      Production integration guide
 ```
 
 ## Build & Test
@@ -40,36 +42,33 @@ ctest --test-dir build-linux --output-on-failure
 | `openspodes_test_golden` | `tests/test_codec_golden.c` | ~104 | Golden vectors, BER/ACSE/xDLMS, thirdparty cross-check |
 | `openspodes_test_errors` | `tests/test_errors.c` | 34 | Error paths |
 | `openspodes_test_ic` | `tests/test_ic_smoke.c` | 3 | All IC classes smoke |
-| `openspodes_test_integration` | `tests/test_integration.c` | 21 | Client↔server E2E loopback (+ HLS/GBT) |
+| `openspodes_test_integration` | `tests/test_integration.c` | 23 | Client↔server E2E loopback (+ HLS/GBT/ciphering) |
 | `openspodes_test_phase0` | `tests/test_phase0.c` | 7 | SPODUS helpers |
 | `openspodes_test_phase1` | `tests/test_phase1.c` | 8 | Table manager / profile filter |
-| `openspodes_test_phase2` | `tests/test_phase2.c` | 9 | WithList codec, blocks, GBT confirmed |
+| `openspodes_test_phase2` | `tests/test_phase2.c` | 11 | WithList codec, blocks, GBT confirmed + gap recovery |
 | `openspodes_test_gost` | `tests/test_gost_crypto.c` | 14 | Streebog, Kuznyechik, GOST3410, VKO, glo suite 8 |
-| `openspodes_test_security` | `tests/test_security_glo.c` | 2 | glo-ciphering E.5 + roundtrip (OpenSSL) |
+| `openspodes_test_security` | `tests/test_security_glo.c` | 3 | glo/ded-ciphering E.5 + roundtrip (OpenSSL) |
 | `openspodes_loopback_cli` | `examples/loopback_cli.c` | demo | In-process GET/SET demo (CTest) |
 
-## Recent accomplishments (Phase 2)
+## Production readiness (2026-07)
 
-- Unified BER length codec (`osp_dlms_*`)
-- Client SET/ACTION block transfer; ACTION return param_block reassembly
-- `param_block` rename (was `pblock`)
-- Compact-array encode/decode + IC 62 Compact Data
-- Dispatcher capture() via `osp_ic_compact_data_bind_dispatcher`
-- Push Setup → data-notification E2E (`osp_client_recv_data_notification`)
-- Golden vectors cross-check vs `thirdparty/dlms-codec`
-- **Client with-list API**: `osp_client_get/set/action_with_list`
-- **GBT runtime E2E**: `osp_server_enable_gbt` / `osp_client_enable_gbt`, transport send/recv
-- **glo-ciphering**: `osp_glo_protect/unprotect`, `osp_client_set_ciphering`, E.5 vector test
-- **HLS MD5/SHA1/SHA256**: `osp_hls_pass3/4_*`, client/server handshake, OpenSSL hash HAL
-- **GBT confirmed mode**: `osp_*_set_gbt_window`, ack between windows, loopback E2E
-- **Example CLI**: `openspodes_loopback_cli` — in-process GET/SET demo
-- **TCP examples**: `openspodes_tcp_server` / `openspodes_tcp_client` — wrapper over TCP:4059
+| Criterion | Status |
+|-----------|--------|
+| Core LN client/server E2E | ✅ |
+| Security: HLS + glo/ded + GOST transport | ✅ |
+| GBT confirmed + lost-block recovery | ✅ |
+| Exception-response on server errors | ✅ |
+| Confirmed-service-error codec (SN 0x0E) | ✅ |
+| Event + data notifications | ✅ |
+| CI (build + ctest) | ✅ |
+| README integration guide | ✅ |
+| OpenSSL optional for AES/ECDSA tests | ✅ |
 
 ## Client API
 
 | Function | Status |
 |----------|--------|
-| `osp_client_connect` / `release` / `disconnect` | ✅ HLS GMAC + MD5/SHA1/SHA256 |
+| `osp_client_connect` / `release` / `disconnect` | ✅ HLS GMAC + MD5/SHA1/SHA256 + GOST 8–10 |
 | `osp_client_get` | ✅ + block reassembly |
 | `osp_client_get_with_list` | ✅ |
 | `osp_client_set` | ✅ + auto block transfer |
@@ -77,11 +76,19 @@ ctest --test-dir build-linux --output-on-failure
 | `osp_client_action` | ✅ + param/return blocks |
 | `osp_client_action_with_list` | ✅ |
 | `osp_client_recv_data_notification` | ✅ |
-| GBT runtime (xDLMS only) | ✅ unconfirmed + confirmed (window>0) |
+| `osp_client_recv_event_notification` | ✅ |
+| GBT runtime (xDLMS only) | ✅ unconfirmed + confirmed + gap recovery |
 | glo-ciphering | ✅ AES-GCM (suite 0–2) + KUZN-CTR-CMAC (suite 8/9) |
-| HLS MD5/SHA1/SHA256 | ✅ pass 3/4 + E2E loopback |
-| GBT confirmed (window>0) | ✅ ack + E2E loopback |
-| HLS GOST (8–10) | ✅ CMAC/Streebog HLS + GOST 34.10 sign/verify + VKO/KDF tree |
+| ded-ciphering | ✅ DEK from InitiateRequest + tags 0xD0–0xD7 |
+
+## Server API (highlights)
+
+| Function | Status |
+|----------|--------|
+| `osp_server_accept` / `run` | ✅ |
+| `osp_server_send_event_notification` | ✅ |
+| Exception on unassociated / decipher / IC errors | ✅ |
+| Push via IC 40 | ✅ |
 
 ## IC Classes (40 implemented)
 Data(1) Register(3) ExtRegister(4) DemandRegister(5) RegisterActivation(6)
@@ -94,29 +101,19 @@ CompactData(62) StatusMapping(63 stub) SecuritySetup(64) ParameterMonitor(65 stu
 Arbitrator(68) DisconnectControl(70) Limiter(71) MBusSlaveSetup(76 stub)
 TableManager(8200) ProfileDataFilter(8201)
 
-## Known gaps
+## Known gaps (non-blocking for typical meter/concentrator integration)
 
-### Protocol / implementation
-- GBT streaming / lost-block recovery not implemented
+- GBT **streaming** flag (STR bit) — gap recovery works; full bi-directional streaming not wired
 - `GET_WITH_LIST_BLOCK` enum only (no codec)
-- HLS mechanisms 8–10: ✅ (see above)
-- general-glo/ded/ciphering (0xDB/0xDC/0xDD): ✅ encode/decode + protect via glo (AES/GOST)
-- general-signing (0xDF): ✅ encode/decode + GOST/ECDSA protect/unprotect
-- GOST transport ciphering (suite 8/9): ✅ KUZN-CTR-CMAC in `osp_glo_protect/unprotect`
-- ded-ciphering session helper: ✅ DEK from InitiateRequest + ded tags 0xD0–0xD7
-- Selective access stubbed (encode writes 0)
-- Event notification send not implemented
-- Confirmed service error not implemented
-- СПОДУС Concentrator / MeterProxy not implemented
+- Selective access encode stubbed (decode skips)
+- СПОДУС Concentrator / MeterProxy runtime
+- Golden vectors R 1323565.1 A.1 (full transport AEAD annex)
+- IC stubs: UtilityTables(26), ProfileFilter(31), RegisterTable(61), StatusMapping(63), ParameterMonitor(65), MBusSlaveSetup(76)
 
-### vs spodes-rs
-- OpenSPODES ahead: ACTION blocks, compact-array, push E2E, client block transfer, IC 62
-- spodes-rs ahead: Concentrator runtime, GBT streaming
-
-## Next steps (suggested)
-1. GBT streaming / lost-block recovery
-2. Golden vectors for R 1323565.1 A.1 (KUZN transport AEAD)
-3. СПОДУС Concentrator runtime
+## Next steps (optional)
+1. СПОДУС Concentrator runtime (MeterRegistry, poll, proxy)
+2. GBT streaming + bi-directional block transfer
+3. Selective access encode/decode for ProfileGeneric
 
 ## User Instructions (MUST follow)
 - **Consult doc-rag-remote when implementing features**
@@ -125,6 +122,7 @@ TableManager(8200) ProfileDataFilter(8201)
 - **Commit convention**: no `Co-Authored-By` trailers
 
 ## Reference files
+- `README.md` — production integration guide
 - `docs/golden_vectors.txt` — BER/AXDR golden test vectors
 - `thirdparty/dlms-codec/` — cross-check reference
 - spodes-rs `/home/trgv/spodes-rs` — parity reference
