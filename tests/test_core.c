@@ -588,13 +588,23 @@ static void test_ic_clock(void **state) {
 
 	osp_value_t v;
 	assert_int_equal(cls->get_attr(&clock, 2, &v), OSP_OK);
-	assert_int_equal(v.tag, OSP_TAG_DATETIME);
+	assert_int_equal(v.tag, OSP_TAG_OCTETSTRING);
+	assert_int_equal(v.as.octetstring.len, OSP_COSEM_DATETIME_LEN);
 
 	/* Set time */
-	osp_value_t new_time = osp_val_datetime(2026, 7, 9, 3, 14, 30, 0, 0);
-	assert_int_equal(cls->set_attr(&clock, 2, &new_time), OSP_OK);
+	osp_cosem_datetime_t new_time = {0};
+	new_time.year = 2026;
+	new_time.month = 7;
+	new_time.day = 9;
+	new_time.day_of_week = 3;
+	new_time.hour = 14;
+	new_time.minute = 30;
+	osp_value_t new_val = osp_val_cosem_datetime(&new_time);
+	assert_int_equal(cls->set_attr(&clock, 2, &new_val), OSP_OK);
 	assert_int_equal(cls->get_attr(&clock, 2, &v), OSP_OK);
-	assert_int_equal(v.as.datetime.date.year, 2026);
+	osp_cosem_datetime_t got;
+	assert_int_equal(osp_cosem_datetime_read_value(&v, &got), OSP_OK);
+	assert_int_equal(got.year, 2026);
 
 	/* Methods: adjust_to_quarter, minute, etc. */
 	osp_value_t result;
@@ -623,7 +633,7 @@ static void test_ic_dispatcher_multi(void **state) {
 
 	/* GET Clock time */
 	assert_int_equal(osp_dispatcher_get(&disp, 8, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &v), OSP_OK);
-	assert_int_equal(v.tag, OSP_TAG_DATETIME);
+	assert_int_equal(v.tag, OSP_TAG_OCTETSTRING);
 }
 
 static void test_ic_disconnect_control(void **state) {
@@ -637,7 +647,7 @@ static void test_ic_disconnect_control(void **state) {
 
 	osp_value_t v;
 	assert_int_equal(cls->get_attr(&dc, 2, &v), OSP_OK);
-	assert_int_equal(osp_get_u8(&v), 1);
+	assert_true(osp_get_bool(&v));
 
 	osp_value_t result;
 	assert_int_equal(cls->invoke(&dc, 1, NULL, &result), OSP_OK);

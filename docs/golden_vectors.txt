@@ -69,6 +69,14 @@ array[2]{ unsigned 1, unsigned 2 }
     01 02 11 01 11 02
 structure{ unsigned 1, array[2]{ lu 10, lu 20 } }
     02 02 11 01 01 02 12 00 0A 12 00 14
+structure{ unsigned 1, long-unsigned 0x0102 }
+    02 02 11 01 12 01 02
+
+# A-XDR Data -- compact-array
+compact-array of unsigned { 1, 2, 3 }
+    13 11 03 01 02 03
+compact-array of structure{ u8, u16 } x2
+    13 02 02 11 12 06 01 01 02 02 03 04
 
 # BER TLV (ACSE style; ber_begin emits long-form length)
 [APPLICATION 0]{ octet-string AB }
@@ -99,5 +107,30 @@ action-response-normal (success, no ret)
     C7 01 41 00 00
 data-notification (dt empty, data=unsigned 7)
     0F 00 00 00 01 00 11 07
+get-request-with-list (1 entry, no sel)
+    C0 03 41 01 00 03 01 00 01 08 00 FF 02 00
+get-response-with-list (1 result: data=unsigned 5)
+    C4 03 41 01 00 11 05
+event-notification (no time, data=unsigned 7)
+    C2 00 00 03 01 00 01 08 00 FF 02 11 07
+exception-response (service-unknown, pdu-too-long)
+    D8 02 04
+exception-response (invocation-counter-error=0x2A)
+    D8 01 06 00 00 00 2A
+
+# IC whole-object BER serialize (class attrs + class_id)
+# Normative fixture refs: doc-rag-remote
+#   Blue Book §4.3.2 Register / Table 5 (593 kWh, scaler=3, unit=Wh)
+#   Blue Book §4.5.1 Clock / §4.1.6.1 date-time
+#   СТО 34.01-5.1-006 §date-time 12-octet layout
+# Parity: spodes-rs/tests/integration.rs (tests/fixtures/ic_spodes_fixtures.c)
+# Canonical bytes: tests/fixtures/ic_golden_vectors.h
+# Regenerate: cmake --build build-linux --target gen_ic_golden_vectors
+#             ./build-linux/gen_ic_golden_vectors > tests/fixtures/ic_golden_vectors.h
+# Examples:
+# data (0.0.96.1.0.255, integer 42)
+#     02 03 12 00 01 09 06 00 00 60 01 00 FF 0F 2A
+# register (1.0.1.8.0.255, 1000, scaler=0 unit=27)
+#     02 04 12 00 03 09 06 01 00 01 08 00 FF 05 00 00 03 E8 02 02 0F 00 16 1B
 
 # end

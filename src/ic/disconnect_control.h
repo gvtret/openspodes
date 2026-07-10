@@ -5,6 +5,7 @@
 typedef struct {
 	osp_obis_t logical_name;
 	uint8_t output_state;
+	uint8_t control_state;
 	uint8_t control_model;
 	osp_obis_t control_mode_script;
 	osp_obis_t normal_position_script;

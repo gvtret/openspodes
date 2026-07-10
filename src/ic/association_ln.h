@@ -7,9 +7,14 @@
 typedef struct {
 	osp_obis_t logical_name;
 	osp_object_list_t object_list;
-	osp_xdms_context_t xdms_context;
-	uint8_t association_status; /* 0=idle, 1=associated, 2=pending */
+	osp_associated_partners_t associated_partners;
 	osp_context_name_t app_context_name;
+	osp_xdms_context_t xdms_context;
+	uint8_t authentication_mechanism;
+	uint8_t secret[64];
+	uint8_t secret_len;
+	uint8_t association_status; /* 0=idle, 1=associated, 2=pending */
+	osp_obis_t security_setup_reference;
 	osp_user_list_item_t user_list[16];
 	uint8_t user_count;
 	osp_user_list_item_t current_user;

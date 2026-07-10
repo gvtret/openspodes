@@ -1,10 +1,24 @@
-#include "../service/service.h"
 /**
  * server.c — DLMS/COSEM server request dispatcher
  */
 
 #include "server.h"
+#include "../service/initiate.h"
+#include "../codec/serialize.h"
 #include <string.h>
+
+static osp_err_t server_send(osp_server_t *s, const uint8_t *data, uint32_t len);
+static osp_err_t handle_get_next(osp_server_t *s, uint8_t invoke_id_priority, uint32_t acked_block);
+static osp_err_t send_action_response(osp_server_t *s, const osp_action_response_t *resp);
+static osp_err_t handle_action_resp_next(osp_server_t *s, uint8_t invoke_id_priority, uint32_t acked_block);
+static osp_err_t send_action_invoke_result(osp_server_t *s, uint8_t invoke_id_priority, osp_dar_t dar, const osp_value_t *result);
+static osp_err_t accumulate_action_pblock(osp_server_t *s, uint8_t invoke_id_priority, const osp_data_block_t *block);
+
+void osp_server_set_max_pdu(osp_server_t *s, uint32_t max_pdu) {
+	if (s) {
+		s->max_pdu = max_pdu > 0 ? max_pdu : OSP_SERVER_MAX_PDU;
+	}
+}
 
 osp_err_t osp_server_init(osp_server_t *s, osp_transport_t *transport, osp_framing_type_t framing) {
 	if (!s || !transport) {
@@ -14,6 +28,7 @@ osp_err_t osp_server_init(osp_server_t *s, osp_transport_t *transport, osp_frami
 	s->transport = transport;
 	s->framing = framing;
 	s->associated = false;
+	s->max_pdu = OSP_SERVER_MAX_PDU;
 	osp_dispatcher_init(&s->dispatcher);
 	return OSP_OK;
 }
@@ -28,6 +43,12 @@ osp_err_t osp_server_register(osp_server_t *s, const osp_ic_class_t *cls, void *
 void osp_server_set_security(osp_server_t *s, const osp_sec_context_t *sec) {
 	if (s && sec) {
 		s->security = *sec;
+	}
+}
+
+void osp_server_set_association(osp_server_t *s, osp_ic_association_ln_t *association) {
+	if (s) {
+		osp_dispatcher_set_association(&s->dispatcher, association);
 	}
 }
 
@@ -69,10 +90,14 @@ static osp_err_t handle_aarq(osp_server_t *s, const osp_aarq_t *aarq) {
 	aare.responding_ap_title_len = OSP_SEC_SYSTEM_TITLE_SIZE;
 	memcpy(aare.responding_ap_title, s->security.system_title, OSP_SEC_SYSTEM_TITLE_SIZE);
 
-	/* Build response: AARE + xDLMS InitiateResponse */
-	aare.user_info[0] = 0x01; /* InitiateResponse */
-	aare.user_info[1] = 0x01;
-	aare.user_info_len = 2;
+	osp_initiate_response_t iresp;
+	osp_initiate_response_default(&iresp);
+	osp_buf_t ui;
+	osp_buf_init(&ui, aare.user_info, sizeof(aare.user_info));
+	if (osp_initiate_response_encode(&iresp, &ui) != OSP_OK) {
+		return OSP_ERR_INVALID;
+	}
+	aare.user_info_len = ui.wr;
 
 	osp_buf_t buf;
 	osp_buf_init(&buf, s->tx_buf, sizeof(s->tx_buf));
@@ -85,68 +110,393 @@ static osp_err_t handle_aarq(osp_server_t *s, const osp_aarq_t *aarq) {
 
 /* ── Handle GET ──────────────────────────────────────────────────────────── */
 
-static osp_err_t handle_get(osp_server_t *s, const osp_get_request_t *req) {
-	osp_get_response_t resp;
-	memset(&resp, 0, sizeof(resp));
-	resp.invoke_id_priority = req->invoke_id_priority;
-
+static osp_err_t dispatch_get_attr(osp_server_t *s, const osp_attribute_descriptor_t *attr, osp_get_result_item_t *out) {
 	osp_value_t result;
-	osp_err_t r = osp_dispatcher_get(&s->dispatcher, req->as.normal.attr.class_id, &req->as.normal.attr.instance_id, req->as.normal.attr.attribute_id, &result);
+	osp_err_t r = osp_dispatcher_get(&s->dispatcher, attr->class_id, &attr->instance_id, attr->attribute_id, &result);
 	if (r == OSP_OK) {
-		resp.type = OSP_GET_RESP_DATA;
-		resp.data = result;
-	} else {
-		resp.type = OSP_GET_RESP_DATA_ERROR;
-		resp.data_access_result = OSP_DAR_OBJECT_UNDEFINED;
+		out->is_data = 1;
+		out->data = result;
+		return OSP_OK;
 	}
+	out->is_data = 0;
+	out->access_result = (r == OSP_ERR_SECURITY) ? OSP_DAR_READ_DENIED : OSP_DAR_OBJECT_UNDEFINED;
+	return OSP_OK;
+}
 
+static osp_err_t send_get_response(osp_server_t *s, const osp_get_response_t *resp) {
 	osp_buf_t buf;
 	osp_buf_init(&buf, s->tx_buf, sizeof(s->tx_buf));
-	osp_get_response_encode(&buf, &resp);
+	if (osp_get_response_encode(&buf, resp) != 0) {
+		return OSP_ERR_INVALID;
+	}
 	return server_send(s, buf.buf, buf.wr);
+}
+
+static osp_err_t start_get_blocks(osp_server_t *s, uint8_t invoke_id_priority, const uint8_t *data, uint32_t len) {
+	s->pending_get.active = true;
+	s->pending_get.data_len = len;
+	s->pending_get.next_block = 1;
+	memcpy(s->pending_get.data, data, len);
+	return handle_get_next(s, invoke_id_priority, 0);
+}
+
+static osp_err_t handle_get_next(osp_server_t *s, uint8_t invoke_id_priority, uint32_t acked_block) {
+	if (!s->pending_get.active) {
+		osp_get_response_t resp = {0};
+		resp.invoke_id_priority = invoke_id_priority;
+		resp.type = OSP_GET_RESP_DATA_ERROR;
+		resp.data_access_result = OSP_DAR_NO_LONG_GET_IN_PROGRESS;
+		return send_get_response(s, &resp);
+	}
+	uint32_t block_number = s->pending_get.next_block;
+	if (acked_block != 0 && acked_block + 1 != block_number) {
+		osp_get_response_t resp = {0};
+		resp.invoke_id_priority = invoke_id_priority;
+		resp.type = OSP_GET_RESP_DATA_ERROR;
+		resp.data_access_result = OSP_DAR_LONG_GET_ABORTED;
+		return send_get_response(s, &resp);
+	}
+	uint32_t max_pdu = s->max_pdu > 0 ? s->max_pdu : OSP_SERVER_MAX_PDU;
+	uint32_t start = (block_number - 1) * max_pdu;
+	uint32_t end = start + max_pdu;
+	if (end > s->pending_get.data_len) {
+		end = s->pending_get.data_len;
+	}
+	bool last_block = end >= s->pending_get.data_len;
+	osp_get_response_t resp = {0};
+	resp.invoke_id_priority = invoke_id_priority;
+	resp.type = last_block ? OSP_GET_RESP_BLOCK_LAST : OSP_GET_RESP_BLOCK;
+	resp.data_block.block_number = block_number;
+	resp.data_block.last_block = last_block;
+	resp.data_block.raw_data_len = end - start;
+	memcpy(resp.data_block.raw_data, &s->pending_get.data[start], resp.data_block.raw_data_len);
+	s->pending_get.next_block++;
+	if (last_block) {
+		s->pending_get.active = false;
+	}
+	return send_get_response(s, &resp);
+}
+
+static osp_err_t handle_get(osp_server_t *s, const osp_get_request_t *req) {
+	if (req->type == OSP_GET_WITH_BLOCK) {
+		return handle_get_next(s, req->invoke_id_priority, req->as.next.block_number);
+	}
+	if (req->type == OSP_GET_WITH_LIST) {
+		osp_get_response_t resp = {0};
+		resp.invoke_id_priority = req->invoke_id_priority;
+		resp.type = OSP_GET_RESP_WITH_LIST;
+		resp.with_list.count = req->as.with_list.count;
+		for (uint8_t i = 0; i < req->as.with_list.count; i++) {
+			dispatch_get_attr(s, &req->as.with_list.items[i].attr, &resp.with_list.items[i]);
+		}
+		return send_get_response(s, &resp);
+	}
+
+	osp_get_response_t resp = {0};
+	resp.invoke_id_priority = req->invoke_id_priority;
+	osp_get_result_item_t item;
+	dispatch_get_attr(s, &req->as.normal.attr, &item);
+	if (item.is_data) {
+		uint8_t mem[OSP_SERVER_PENDING_MAX];
+		osp_buf_t w;
+		osp_buf_init(&w, mem, sizeof(mem));
+		if (osp_value_write(&w, &item.data) != OSP_OK) {
+			return OSP_ERR_INVALID;
+		}
+		if (w.wr > s->max_pdu) {
+			return start_get_blocks(s, req->invoke_id_priority, mem, w.wr);
+		}
+		resp.type = OSP_GET_RESP_DATA;
+		resp.data = item.data;
+	} else {
+		resp.type = OSP_GET_RESP_DATA_ERROR;
+		resp.data_access_result = item.access_result;
+	}
+	return send_get_response(s, &resp);
 }
 
 /* ── Handle SET ──────────────────────────────────────────────────────────── */
 
+static osp_err_t send_set_response(osp_server_t *s, const osp_set_response_t *resp) {
+	osp_buf_t buf;
+	osp_buf_init(&buf, s->tx_buf, sizeof(s->tx_buf));
+	if (osp_set_response_encode(&buf, resp) != 0) {
+		return OSP_ERR_INVALID;
+	}
+	return server_send(s, buf.buf, buf.wr);
+}
+
+static osp_err_t accumulate_set_block(osp_server_t *s, uint8_t invoke_id_priority, const osp_data_block_t *block) {
+	if (!s->pending_set.active) {
+		osp_set_response_t resp = {0};
+		resp.invoke_id_priority = invoke_id_priority;
+		resp.type = OSP_SET_RESP_NORMAL;
+		resp.as.normal.result = OSP_DAR_TYPE_MISMATCH;
+		return send_set_response(s, &resp);
+	}
+	if (block->raw_data_len + s->pending_set.set_buffer_len > sizeof(s->pending_set.set_buffer)) {
+		s->pending_set.active = false;
+		s->pending_set.set_buffer_len = 0;
+		osp_set_response_t resp = {0};
+		resp.invoke_id_priority = invoke_id_priority;
+		resp.type = OSP_SET_RESP_NORMAL;
+		resp.as.normal.result = OSP_DAR_LONG_BLOCK_TRANSFER;
+		return send_set_response(s, &resp);
+	}
+	memcpy(&s->pending_set.set_buffer[s->pending_set.set_buffer_len], block->raw_data, block->raw_data_len);
+	s->pending_set.set_buffer_len += block->raw_data_len;
+
+	if (!block->last_block) {
+		osp_set_response_t resp = {0};
+		resp.invoke_id_priority = invoke_id_priority;
+		resp.type = OSP_SET_RESP_DATABLOCK;
+		resp.as.datablock.block_number = block->block_number;
+		return send_set_response(s, &resp);
+	}
+
+	osp_attribute_descriptor_t attr = s->pending_set.set_attr;
+	uint32_t buflen = s->pending_set.set_buffer_len;
+	s->pending_set.active = false;
+	s->pending_set.set_buffer_len = 0;
+
+	osp_buf_t vbuf;
+	osp_buf_init(&vbuf, s->pending_set.set_buffer, buflen);
+	vbuf.wr = buflen;
+	osp_value_t value;
+	osp_set_response_t resp = {0};
+	resp.invoke_id_priority = invoke_id_priority;
+	resp.type = OSP_SET_RESP_LAST_DATABLOCK;
+	resp.as.last_datablock.block_number = block->block_number;
+	if (osp_value_read(&vbuf, &value) != OSP_OK) {
+		resp.as.last_datablock.result = OSP_DAR_TYPE_MISMATCH;
+	} else {
+		osp_err_t wr = osp_dispatcher_set(&s->dispatcher, attr.class_id, &attr.instance_id, attr.attribute_id, &value);
+		resp.as.last_datablock.result =
+		    (wr == OSP_OK) ? OSP_DAR_SUCCESS : ((wr == OSP_ERR_SECURITY) ? OSP_DAR_SCOPE_OF_ACCESS : OSP_DAR_OBJECT_UNDEFINED);
+	}
+	return send_set_response(s, &resp);
+}
+
 static osp_err_t handle_set(osp_server_t *s, const osp_set_request_t *req) {
+	if (req->type == OSP_SET_WITH_FIRST_DATABLOCK) {
+		s->pending_set.active = true;
+		s->pending_set.set_attr = req->as.first_datablock.attr;
+		s->pending_set.set_buffer_len = 0;
+		return accumulate_set_block(s, req->invoke_id_priority, &req->as.first_datablock.datablock);
+	}
+	if (req->type == OSP_SET_WITH_DATABLOCK) {
+		return accumulate_set_block(s, req->invoke_id_priority, &req->as.datablock.datablock);
+	}
+
 	osp_set_response_t resp;
 	memset(&resp, 0, sizeof(resp));
 	resp.invoke_id_priority = req->invoke_id_priority;
-	resp.type = OSP_GET_NORMAL;
 
-	osp_err_t r = osp_dispatcher_set(
-	    &s->dispatcher, req->as.normal.items[0].attr.class_id, &req->as.normal.items[0].attr.instance_id, req->as.normal.items[0].attr.attribute_id,
-	    &req->as.normal.items[0].data
-	);
-	resp.as.normal.result = (r == OSP_OK) ? OSP_DAR_SUCCESS : OSP_DAR_OBJECT_UNDEFINED;
+	if (req->type == OSP_SET_WITH_LIST) {
+		resp.type = OSP_SET_RESP_WITH_LIST;
+		resp.as.with_list.count = req->as.with_list.count;
+		for (uint8_t i = 0; i < req->as.with_list.count; i++) {
+			osp_err_t r = osp_dispatcher_set(&s->dispatcher, req->as.with_list.items[i].attr.class_id,
+			                                 &req->as.with_list.items[i].attr.instance_id,
+			                                 req->as.with_list.items[i].attr.attribute_id,
+			                                 &req->as.with_list.items[i].data);
+			resp.as.with_list.results[i] =
+			    (r == OSP_OK) ? OSP_DAR_SUCCESS : ((r == OSP_ERR_SECURITY) ? OSP_DAR_SCOPE_OF_ACCESS : OSP_DAR_OBJECT_UNDEFINED);
+		}
+	} else {
+		resp.type = OSP_SET_RESP_NORMAL;
+		osp_err_t r = osp_dispatcher_set(
+		    &s->dispatcher, req->as.normal.items[0].attr.class_id, &req->as.normal.items[0].attr.instance_id,
+		    req->as.normal.items[0].attr.attribute_id, &req->as.normal.items[0].data);
+		resp.as.normal.result =
+		    (r == OSP_OK) ? OSP_DAR_SUCCESS : ((r == OSP_ERR_SECURITY) ? OSP_DAR_SCOPE_OF_ACCESS : OSP_DAR_OBJECT_UNDEFINED);
+	}
 
-	osp_buf_t buf;
-	osp_buf_init(&buf, s->tx_buf, sizeof(s->tx_buf));
-	osp_set_response_encode(&buf, &resp);
-	return server_send(s, buf.buf, buf.wr);
+	return send_set_response(s, &resp);
 }
 
 /* ── Handle ACTION ───────────────────────────────────────────────────────── */
 
+static osp_err_t send_action_response(osp_server_t *s, const osp_action_response_t *resp) {
+	osp_buf_t buf;
+	osp_buf_init(&buf, s->tx_buf, sizeof(s->tx_buf));
+	if (osp_action_response_encode(&buf, resp) != 0) {
+		return OSP_ERR_INVALID;
+	}
+	return server_send(s, buf.buf, buf.wr);
+}
+
+static osp_err_t handle_action_resp_next(osp_server_t *s, uint8_t invoke_id_priority, uint32_t acked_block) {
+	if (!s->pending_action_out.active) {
+		osp_action_response_t resp = {0};
+		resp.invoke_id_priority = invoke_id_priority;
+		resp.type = OSP_ACTION_RESP_NORMAL;
+		resp.as.normal.item_count = 1;
+		resp.as.normal.items[0].result = OSP_DAR_TYPE_MISMATCH;
+		return send_action_response(s, &resp);
+	}
+	uint32_t block_number = s->pending_action_out.next_block;
+	if (acked_block != 0 && acked_block + 1 != block_number) {
+		s->pending_action_out.active = false;
+		osp_action_response_t resp = {0};
+		resp.invoke_id_priority = invoke_id_priority;
+		resp.type = OSP_ACTION_RESP_NORMAL;
+		resp.as.normal.item_count = 1;
+		resp.as.normal.items[0].result = OSP_DAR_LONG_BLOCK_TRANSFER;
+		return send_action_response(s, &resp);
+	}
+	uint32_t max_pdu = s->max_pdu > 0 ? s->max_pdu : OSP_SERVER_MAX_PDU;
+	uint32_t start = (block_number - 1) * max_pdu;
+	uint32_t end = start + max_pdu;
+	if (end > s->pending_action_out.data_len) {
+		end = s->pending_action_out.data_len;
+	}
+	bool last_block = end >= s->pending_action_out.data_len;
+	osp_action_response_t resp = {0};
+	resp.invoke_id_priority = invoke_id_priority;
+	resp.type = OSP_ACTION_RESP_WITH_PBLOCK;
+	resp.as.pblock.pblock.block_number = block_number;
+	resp.as.pblock.pblock.last_block = last_block;
+	resp.as.pblock.pblock.raw_data_len = end - start;
+	memcpy(resp.as.pblock.pblock.raw_data, &s->pending_action_out.data[start], resp.as.pblock.pblock.raw_data_len);
+	s->pending_action_out.next_block++;
+	if (last_block) {
+		s->pending_action_out.active = false;
+	}
+	return send_action_response(s, &resp);
+}
+
+static osp_err_t send_action_invoke_result(osp_server_t *s, uint8_t invoke_id_priority, osp_dar_t dar, const osp_value_t *result) {
+	if (dar != OSP_DAR_SUCCESS || !result || result->tag == OSP_TAG_NULL) {
+		osp_action_response_t resp = {0};
+		resp.invoke_id_priority = invoke_id_priority;
+		resp.type = OSP_ACTION_RESP_NORMAL;
+		resp.as.normal.item_count = 1;
+		resp.as.normal.items[0].result = dar;
+		resp.as.normal.items[0].return_data = result ? *result : osp_val_null();
+		return send_action_response(s, &resp);
+	}
+
+	uint8_t mem[OSP_SERVER_PENDING_MAX];
+	osp_buf_t w;
+	osp_buf_init(&w, mem, sizeof(mem));
+	if (osp_value_write(&w, result) != OSP_OK) {
+		return OSP_ERR_INVALID;
+	}
+	if (w.wr > s->max_pdu) {
+		s->pending_action_out.active = true;
+		s->pending_action_out.invoke_id_priority = invoke_id_priority;
+		s->pending_action_out.result = dar;
+		s->pending_action_out.data_len = w.wr;
+		s->pending_action_out.next_block = 1;
+		memcpy(s->pending_action_out.data, mem, w.wr);
+		return handle_action_resp_next(s, invoke_id_priority, 0);
+	}
+
+	osp_action_response_t resp = {0};
+	resp.invoke_id_priority = invoke_id_priority;
+	resp.type = OSP_ACTION_RESP_NORMAL;
+	resp.as.normal.item_count = 1;
+	resp.as.normal.items[0].result = dar;
+	resp.as.normal.items[0].return_data = *result;
+	return send_action_response(s, &resp);
+}
+
+static osp_err_t accumulate_action_pblock(osp_server_t *s, uint8_t invoke_id_priority, const osp_data_block_t *block) {
+	if (!s->pending_action_in.active) {
+		osp_action_response_t resp = {0};
+		resp.invoke_id_priority = invoke_id_priority;
+		resp.type = OSP_ACTION_RESP_NORMAL;
+		resp.as.normal.item_count = 1;
+		resp.as.normal.items[0].result = OSP_DAR_TYPE_MISMATCH;
+		return send_action_response(s, &resp);
+	}
+	if (block->raw_data_len + s->pending_action_in.buffer_len > sizeof(s->pending_action_in.buffer)) {
+		s->pending_action_in.active = false;
+		s->pending_action_in.buffer_len = 0;
+		osp_action_response_t resp = {0};
+		resp.invoke_id_priority = invoke_id_priority;
+		resp.type = OSP_ACTION_RESP_NORMAL;
+		resp.as.normal.item_count = 1;
+		resp.as.normal.items[0].result = OSP_DAR_LONG_BLOCK_TRANSFER;
+		return send_action_response(s, &resp);
+	}
+	memcpy(&s->pending_action_in.buffer[s->pending_action_in.buffer_len], block->raw_data, block->raw_data_len);
+	s->pending_action_in.buffer_len += block->raw_data_len;
+
+	if (!block->last_block) {
+		osp_action_response_t resp = {0};
+		resp.invoke_id_priority = invoke_id_priority;
+		resp.type = OSP_ACTION_RESP_NEXT_PBLOCK;
+		resp.as.next_pblock.block_number = block->block_number;
+		return send_action_response(s, &resp);
+	}
+
+	osp_method_descriptor_t method = s->pending_action_in.method;
+	uint32_t buflen = s->pending_action_in.buffer_len;
+	s->pending_action_in.active = false;
+	s->pending_action_in.buffer_len = 0;
+
+	osp_buf_t vbuf;
+	osp_buf_init(&vbuf, s->pending_action_in.buffer, buflen);
+	vbuf.wr = buflen;
+	osp_value_t param;
+	if (osp_value_read(&vbuf, &param) != OSP_OK) {
+		return send_action_invoke_result(s, invoke_id_priority, OSP_DAR_TYPE_MISMATCH, NULL);
+	}
+
+	osp_value_t result = osp_val_null();
+	osp_err_t r = osp_dispatcher_action(&s->dispatcher, method.class_id, &method.instance_id, method.method_id, &param,
+	                                    &result);
+	osp_dar_t dar =
+	    (r == OSP_OK) ? OSP_DAR_SUCCESS : ((r == OSP_ERR_SECURITY) ? OSP_DAR_SCOPE_OF_ACCESS : OSP_DAR_OBJECT_UNDEFINED);
+	return send_action_invoke_result(s, invoke_id_priority, dar, &result);
+}
+
 static osp_err_t handle_action(osp_server_t *s, const osp_action_request_t *req) {
+	if (req->type == OSP_ACTION_NEXT_PBLOCK) {
+		return handle_action_resp_next(s, req->invoke_id_priority, req->as.next_pblock.block_number);
+	}
+	if (req->type == OSP_ACTION_WITH_FIRST_PBLOCK) {
+		s->pending_action_in.active = true;
+		s->pending_action_in.method = req->as.first_pblock.method;
+		s->pending_action_in.buffer_len = 0;
+		return accumulate_action_pblock(s, req->invoke_id_priority, &req->as.first_pblock.pblock);
+	}
+	if (req->type == OSP_ACTION_WITH_PBLOCK) {
+		return accumulate_action_pblock(s, req->invoke_id_priority, &req->as.pblock.pblock);
+	}
+
 	osp_action_response_t resp;
 	memset(&resp, 0, sizeof(resp));
 	resp.invoke_id_priority = req->invoke_id_priority;
-	resp.type = OSP_GET_NORMAL;
 
-	osp_value_t result;
-	osp_err_t r = osp_dispatcher_action(
-	    &s->dispatcher, req->as.normal.items[0].method.class_id, &req->as.normal.items[0].method.instance_id, req->as.normal.items[0].method.method_id,
-	    &req->as.normal.items[0].data, &result
-	);
-	resp.as.normal.items[0].result = (r == OSP_OK) ? OSP_DAR_SUCCESS : OSP_DAR_OBJECT_UNDEFINED;
-	resp.as.normal.items[0].return_data = result;
-	resp.as.normal.item_count = 1;
+	if (req->type == OSP_ACTION_WITH_LIST) {
+		resp.type = OSP_ACTION_RESP_WITH_LIST;
+		resp.as.with_list.count = req->as.with_list.count;
+		for (uint8_t i = 0; i < req->as.with_list.count; i++) {
+			osp_value_t result;
+			osp_err_t r = osp_dispatcher_action(&s->dispatcher, req->as.with_list.items[i].method.class_id,
+			                                    &req->as.with_list.items[i].method.instance_id,
+			                                    req->as.with_list.items[i].method.method_id,
+			                                    &req->as.with_list.items[i].data, &result);
+			resp.as.with_list.items[i].result =
+			    (r == OSP_OK) ? OSP_DAR_SUCCESS : ((r == OSP_ERR_SECURITY) ? OSP_DAR_SCOPE_OF_ACCESS : OSP_DAR_OBJECT_UNDEFINED);
+			resp.as.with_list.items[i].return_data = result;
+		}
+	} else {
+		resp.type = OSP_ACTION_RESP_NORMAL;
+		osp_value_t result;
+		osp_err_t r = osp_dispatcher_action(
+		    &s->dispatcher, req->as.normal.items[0].method.class_id, &req->as.normal.items[0].method.instance_id,
+		    req->as.normal.items[0].method.method_id, &req->as.normal.items[0].data, &result);
+		resp.as.normal.items[0].result =
+		    (r == OSP_OK) ? OSP_DAR_SUCCESS : ((r == OSP_ERR_SECURITY) ? OSP_DAR_SCOPE_OF_ACCESS : OSP_DAR_OBJECT_UNDEFINED);
+		resp.as.normal.items[0].return_data = result;
+		resp.as.normal.item_count = 1;
+	}
 
-	osp_buf_t buf;
-	osp_buf_init(&buf, s->tx_buf, sizeof(s->tx_buf));
-	osp_action_response_encode(&buf, &resp);
-	return server_send(s, buf.buf, buf.wr);
+	return send_action_response(s, &resp);
 }
 
 /* ── Handle HLS pass 3 (from client) ────────────────────────────────────── */
@@ -159,7 +509,7 @@ static osp_err_t handle_hls_pass3(osp_server_t *s, const osp_action_request_t *r
 			osp_action_response_t resp;
 			memset(&resp, 0, sizeof(resp));
 			resp.invoke_id_priority = req->invoke_id_priority;
-			resp.type = OSP_GET_NORMAL;
+			resp.type = OSP_ACTION_RESP_NORMAL;
 			resp.as.normal.items[0].result = OSP_DAR_AUTHORIZATION_FAILURE;
 			resp.as.normal.item_count = 1;
 
@@ -179,7 +529,7 @@ static osp_err_t handle_hls_pass3(osp_server_t *s, const osp_action_request_t *r
 		osp_action_response_t resp;
 		memset(&resp, 0, sizeof(resp));
 		resp.invoke_id_priority = req->invoke_id_priority;
-		resp.type = OSP_GET_NORMAL;
+		resp.type = OSP_ACTION_RESP_NORMAL;
 		resp.as.normal.items[0].result = OSP_DAR_SUCCESS;
 		resp.as.normal.items[0].return_data.tag = OSP_TAG_OCTETSTRING;
 		memcpy(resp.as.normal.items[0].return_data.as.octetstring.data, f_ctos, 17);
@@ -282,7 +632,8 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 			}
 
 			/* Check if this is HLS pass 3 (ACTION on class 15, method 1) */
-			if (req.as.normal.items[0].method.class_id == 15 && req.as.normal.items[0].method.method_id == 1) {
+			if (req.type == OSP_ACTION_NORMAL && req.as.normal.items[0].method.class_id == 15 &&
+			    req.as.normal.items[0].method.method_id == 1) {
 				return handle_hls_pass3(s, &req);
 			}
 			return handle_action(s, &req);

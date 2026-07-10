@@ -246,6 +246,22 @@ typedef struct {
 	osp_time_t time;
 } osp_datetime_t;
 
+/** COSEM date-time octet-string (СТО 34.01-5.1-006 §7.2.4, Blue Book §4.1.6.1). */
+#define OSP_COSEM_DATETIME_LEN 12
+
+typedef struct {
+	uint16_t year;
+	uint8_t month;
+	uint8_t day;
+	uint8_t day_of_week;
+	uint8_t hour;
+	uint8_t minute;
+	uint8_t second;
+	uint8_t hundredths;
+	int16_t deviation;    /* minutes from UTC; 0x8000 = not specified */
+	uint8_t clock_status; /* 0xFF = not specified */
+} osp_cosem_datetime_t;
+
 /* ── Complex types ───────────────────────────────────────────────────────── */
 
 typedef struct {

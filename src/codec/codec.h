@@ -23,6 +23,10 @@ typedef struct {
 	uint32_t length;
 } osp_ber_tag_t;
 
+/* BER / A-XDR share the same definite length encoding (IEC 62056-6-2). */
+osp_err_t osp_dlms_write_len(osp_buf_t *buf, uint32_t len);
+osp_err_t osp_dlms_read_len(osp_buf_t *buf, uint32_t *len);
+
 osp_err_t osp_ber_read_tag(osp_buf_t *buf, osp_ber_tag_t *tag);
 osp_err_t osp_ber_read_length(osp_buf_t *buf, uint32_t *len);
 osp_err_t osp_ber_read_uint(osp_buf_t *buf, uint32_t *val);
@@ -52,6 +56,19 @@ osp_err_t osp_axdr_write_u16(osp_buf_t *buf, uint16_t val);
 osp_err_t osp_axdr_write_u32(osp_buf_t *buf, uint32_t val);
 osp_err_t osp_axdr_write_bool(osp_buf_t *buf, bool val);
 osp_err_t osp_axdr_write_octet_string(osp_buf_t *buf, const uint8_t *data, uint32_t len);
+
+/* xDLMS list counts, DataBlock-SA raw bytes, notification fields — same length rules */
+int osp_axdr_push_length(osp_buf_t *buf, uint32_t length);
+int osp_axdr_read_length(osp_buf_t *buf, uint32_t *length);
+
+/* Dispatch BER (ACSE) vs A-XDR (xDLMS) by leading APDU tag */
+typedef enum {
+	OSP_DLMS_ENC_BER_ACSE,
+	OSP_DLMS_ENC_AXDR_XDLMS,
+	OSP_DLMS_ENC_UNKNOWN,
+} osp_dlms_encoding_t;
+
+osp_dlms_encoding_t osp_dlms_encoding_for_apdu(uint8_t first_tag);
 
 /* ── AXDR type tags (IEC 62056-6-2 Table 2) ─────────────────────────────── */
 

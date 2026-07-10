@@ -1,9 +1,14 @@
 #include "security_setup.h"
+#include "ic_common.h"
 #include <string.h>
+
+static const uint8_t ss_attrs[] = {1, 2, 3, 4, 5};
 
 static osp_err_t ss_get(const void *inst, uint8_t attr_id, osp_value_t *result) {
 	const osp_ic_security_setup_t *s = (const osp_ic_security_setup_t *)inst;
 	switch (attr_id) {
+		case 1:
+			return osp_ic_get_logical_name(result, &s->logical_name);
 		case 2:
 			*result = osp_val_u8(s->security_policy);
 			return OSP_OK;
@@ -27,12 +32,33 @@ static osp_err_t ss_get(const void *inst, uint8_t attr_id, osp_value_t *result) 
 
 static osp_err_t ss_set(void *inst, uint8_t attr_id, const osp_value_t *value) {
 	osp_ic_security_setup_t *s = (osp_ic_security_setup_t *)inst;
-	if (attr_id == 4 && value && value->tag == OSP_TAG_OCTETSTRING) {
-		s->client_system_title.len = value->as.octetstring.len;
-		memcpy(s->client_system_title.data, value->as.octetstring.data, value->as.octetstring.len);
-		return OSP_OK;
+	if (!value) {
+		return OSP_ERR_INVALID;
 	}
-	return OSP_ERR_NOT_FOUND;
+	switch (attr_id) {
+		case 2:
+			s->security_policy = osp_get_u8(value);
+			return OSP_OK;
+		case 3:
+			s->security_suite = osp_get_u8(value);
+			return OSP_OK;
+		case 4:
+			if (value->tag != OSP_TAG_OCTETSTRING) {
+				return OSP_ERR_INVALID;
+			}
+			s->client_system_title.len = value->as.octetstring.len;
+			memcpy(s->client_system_title.data, value->as.octetstring.data, value->as.octetstring.len);
+			return OSP_OK;
+		case 5:
+			if (value->tag != OSP_TAG_OCTETSTRING) {
+				return OSP_ERR_INVALID;
+			}
+			s->server_system_title.len = value->as.octetstring.len;
+			memcpy(s->server_system_title.data, value->as.octetstring.data, value->as.octetstring.len);
+			return OSP_OK;
+		default:
+			return OSP_ERR_NOT_FOUND;
+	}
 }
 
 static osp_err_t ss_invoke(void *inst, uint8_t method_id, const osp_value_t *param, osp_value_t *result) {
@@ -45,6 +71,14 @@ static osp_err_t ss_invoke(void *inst, uint8_t method_id, const osp_value_t *par
 	return OSP_ERR_UNSUPPORTED;
 }
 
+static osp_err_t ss_serialize(const void *inst, osp_buf_t *buf) {
+	return osp_ic_serialize_attrs(osp_ic_security_setup_class(), inst, buf, ss_attrs, 5);
+}
+
+static osp_err_t ss_deserialize(void *inst, osp_buf_t *buf) {
+	return osp_ic_deserialize_attrs(osp_ic_security_setup_class(), inst, buf, ss_attrs, 5);
+}
+
 static const osp_ic_class_t ic_ss = {
     .name = "Security Setup",
     .class_id = 64,
@@ -52,7 +86,9 @@ static const osp_ic_class_t ic_ss = {
     .get_attr = ss_get,
     .set_attr = ss_set,
     .invoke = ss_invoke,
-    .instance_size = sizeof(osp_ic_security_setup_t)
+    .serialize = ss_serialize,
+    .deserialize = ss_deserialize,
+    .instance_size = sizeof(osp_ic_security_setup_t),
 };
 
 const osp_ic_class_t *osp_ic_security_setup_class(void) {

@@ -8,6 +8,102 @@
 #include "codec.h"
 #include <string.h>
 
+/* ── Shared length codec (BER TLV + A-XDR) ───────────────────────────────── */
+
+static uint8_t dlms_min_octets_u32(uint32_t v) {
+	if (v <= 0xFF) {
+		return 1;
+	}
+	if (v <= 0xFFFF) {
+		return 2;
+	}
+	if (v <= 0xFFFFFF) {
+		return 3;
+	}
+	return 4;
+}
+
+osp_err_t osp_dlms_write_len(osp_buf_t *buf, uint32_t len) {
+	if (!buf) {
+		return OSP_ERR_INVALID;
+	}
+	if (len < 0x80) {
+		if (osp_buf_free(buf) < 1) {
+			return OSP_ERR_NOMEM;
+		}
+		buf->buf[buf->wr++] = (uint8_t)len;
+		return OSP_OK;
+	}
+	uint8_t n = dlms_min_octets_u32(len);
+	if (osp_buf_free(buf) < (uint32_t)(1 + n)) {
+		return OSP_ERR_NOMEM;
+	}
+	buf->buf[buf->wr++] = (uint8_t)(0x80 | n);
+	for (int i = (int)n - 1; i >= 0; i--) {
+		buf->buf[buf->wr++] = (uint8_t)(len >> (8 * i));
+	}
+	return OSP_OK;
+}
+
+osp_err_t osp_dlms_read_len(osp_buf_t *buf, uint32_t *len) {
+	if (!buf || !len || osp_buf_unread(buf) == 0) {
+		return OSP_ERR_INVALID;
+	}
+
+	uint8_t first = buf->buf[buf->rd++];
+	if (first < 0x80) {
+		*len = first;
+		return OSP_OK;
+	}
+	uint8_t n = (uint8_t)(first & 0x7F);
+	if (n == 0) {
+		return OSP_ERR_UNSUPPORTED; /* indefinite — forbidden in A-XDR */
+	}
+	if (n > 4 || osp_buf_unread(buf) < n) {
+		return (n > 4) ? OSP_ERR_UNSUPPORTED : OSP_ERR_INVALID;
+	}
+	uint32_t v = 0;
+	for (uint8_t i = 0; i < n; i++) {
+		v = (v << 8) | buf->buf[buf->rd++];
+	}
+	*len = v;
+	return OSP_OK;
+}
+
+osp_err_t osp_ber_read_length(osp_buf_t *buf, uint32_t *len) {
+	return osp_dlms_read_len(buf, len);
+}
+
+int osp_axdr_push_length(osp_buf_t *buf, uint32_t length) {
+	return osp_dlms_write_len(buf, length) == OSP_OK ? 0 : -1;
+}
+
+int osp_axdr_read_length(osp_buf_t *buf, uint32_t *length) {
+	return osp_dlms_read_len(buf, length) == OSP_OK ? 0 : -1;
+}
+
+osp_dlms_encoding_t osp_dlms_encoding_for_apdu(uint8_t first_tag) {
+	switch (first_tag) {
+		case 0x60:
+		case 0x61:
+		case 0x62:
+		case 0x63:
+			return OSP_DLMS_ENC_BER_ACSE;
+		case 0xC0:
+		case 0xC1:
+		case 0xC2:
+		case 0xC3:
+		case 0xC4:
+		case 0xC5:
+		case 0xC7:
+		case 0x0F:
+		case 0xD8:
+			return OSP_DLMS_ENC_AXDR_XDLMS;
+		default:
+			return OSP_DLMS_ENC_UNKNOWN;
+	}
+}
+
 /* ── BER read ────────────────────────────────────────────────────────────── */
 
 osp_err_t osp_ber_read_tag(osp_buf_t *buf, osp_ber_tag_t *tag) {
@@ -31,32 +127,6 @@ osp_err_t osp_ber_read_tag(osp_buf_t *buf, osp_ber_tag_t *tag) {
 			byte = buf->buf[buf->rd++];
 			tag->tag_number = (tag->tag_number << 7) | (byte & 0x7F);
 		} while (byte & 0x80);
-	}
-
-	return OSP_OK;
-}
-
-osp_err_t osp_ber_read_length(osp_buf_t *buf, uint32_t *len) {
-	if (!buf || !len || osp_buf_unread(buf) == 0) {
-		return OSP_ERR_INVALID;
-	}
-
-	uint8_t first = buf->buf[buf->rd++];
-
-	if (first < 0x80) {
-		*len = first;
-	} else if (first == 0x81) {
-		if (osp_buf_unread(buf) < 1) {
-			return OSP_ERR_INVALID;
-		}
-		*len = buf->buf[buf->rd++];
-	} else if (first == 0x82) {
-		if (osp_buf_unread(buf) < 2) {
-			return OSP_ERR_INVALID;
-		}
-		*len = ((uint32_t)buf->buf[buf->rd++] << 8) | buf->buf[buf->rd++];
-	} else {
-		return OSP_ERR_UNSUPPORTED;
 	}
 
 	return OSP_OK;
@@ -140,32 +210,7 @@ osp_err_t osp_ber_write_tag(osp_buf_t *buf, uint8_t tag_class, bool constructed,
 }
 
 osp_err_t osp_ber_write_length(osp_buf_t *buf, uint32_t len) {
-	if (!buf) {
-		return OSP_ERR_INVALID;
-	}
-
-	if (len < 0x80) {
-		if (osp_buf_free(buf) < 1) {
-			return OSP_ERR_NOMEM;
-		}
-		buf->buf[buf->wr++] = (uint8_t)len;
-	} else if (len <= 0xFF) {
-		if (osp_buf_free(buf) < 2) {
-			return OSP_ERR_NOMEM;
-		}
-		buf->buf[buf->wr++] = 0x81;
-		buf->buf[buf->wr++] = (uint8_t)len;
-	} else if (len <= 0xFFFF) {
-		if (osp_buf_free(buf) < 3) {
-			return OSP_ERR_NOMEM;
-		}
-		buf->buf[buf->wr++] = 0x82;
-		buf->buf[buf->wr++] = (uint8_t)(len >> 8);
-		buf->buf[buf->wr++] = (uint8_t)(len & 0xFF);
-	} else {
-		return OSP_ERR_UNSUPPORTED;
-	}
-	return OSP_OK;
+	return osp_dlms_write_len(buf, len);
 }
 
 osp_err_t osp_ber_write_uint(osp_buf_t *buf, uint32_t val) {
@@ -281,7 +326,7 @@ osp_err_t osp_axdr_read_octet_string(osp_buf_t *buf, uint8_t *out, uint32_t max_
 	}
 
 	uint32_t len;
-	r = osp_axdr_read_u32(buf, &len);
+	r = osp_dlms_read_len(buf, &len);
 	if (r != OSP_OK) {
 		return r;
 	}
@@ -347,7 +392,7 @@ osp_err_t osp_axdr_write_bool(osp_buf_t *buf, bool val) {
 }
 
 osp_err_t osp_axdr_write_octet_string(osp_buf_t *buf, const uint8_t *data, uint32_t len) {
-	osp_err_t r = osp_ber_write_length(buf, len);
+	osp_err_t r = osp_dlms_write_len(buf, len);
 	if (r != OSP_OK) {
 		return r;
 	}

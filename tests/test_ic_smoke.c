@@ -33,8 +33,10 @@
 #include "ic/limiter.h"
 #include "ic/mac_address.h"
 #include "ic/mbus_slave.h"
+#include "ic/mbus_slave_port_setup.h"
 #include "ic/parameter_monitor.h"
 #include "ic/profile_filter.h"
+#include "ic/profile_data_filter.h"
 #include "ic/profile_generic.h"
 #include "ic/push_setup.h"
 #include "ic/register.h"
@@ -152,7 +154,10 @@ static void test_ic_all_smoke(void **state) {
 	SMOKE_IC(osp_ic_register_table_t, osp_ic_register_table_init(&_inst, TEST_OBIS), osp_ic_register_table_class);
 	SMOKE_IC(osp_ic_parameter_monitor_t, osp_ic_parameter_monitor_init(&_inst, TEST_OBIS), osp_ic_parameter_monitor_class);
 	SMOKE_IC(osp_ic_mbus_slave_t, osp_ic_mbus_slave_init(&_inst, TEST_OBIS), osp_ic_mbus_slave_class);
+	SMOKE_IC(osp_ic_mbus_slave_port_setup_t, osp_ic_mbus_slave_port_setup_init(&_inst, TEST_OBIS), osp_ic_mbus_slave_port_setup_class);
+	SMOKE_IC(osp_ic_profile_data_filter_t, osp_ic_profile_data_filter_init(&_inst, TEST_OBIS), osp_ic_profile_data_filter_class);
 	SMOKE_IC(osp_ic_table_manager_t, osp_ic_table_manager_init(&_inst, TEST_OBIS), osp_ic_table_manager_class);
+	SMOKE_IC(osp_ic_profile_filter_t, osp_ic_profile_filter_init(&_inst, TEST_OBIS), osp_ic_profile_filter_class);
 }
 
 static void test_ic_association_ln_smoke(void **state) {

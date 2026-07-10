@@ -125,11 +125,9 @@ static void test_ber_length_65536(void **state) {
 	uint8_t mem[16];
 	osp_buf_t w = make_wbuf(mem, sizeof(mem));
 
-	/* NOTE: osp_ber_write_length returns OSP_ERR_UNSUPPORTED for len > 0xFFFF.
-	 * The golden vector expects 83 01 00 00 (4-byte long form).
-	 * This test documents the limitation. */
-	osp_err_t r = osp_ber_write_length(&w, 65536);
-	assert_int_equal(r, OSP_ERR_UNSUPPORTED);
+	assert_int_equal(osp_ber_write_length(&w, 65536), OSP_OK);
+	assert_int_equal(w.wr, 4);
+	assert_memory_equal(mem, ((uint8_t[]){0x83, 0x01, 0x00, 0x00}), 4);
 }
 
 static void test_ber_length_medium(void **state) {
@@ -151,6 +149,42 @@ static void test_ber_length_long_300(void **state) {
 	assert_int_equal(osp_ber_write_length(&w, 300), OSP_OK);
 	assert_int_equal(w.wr, 3);
 	assert_memory_equal(mem, ((uint8_t[]){0x82, 0x01, 0x2C}), 3);
+}
+
+static void test_dlms_len_axdr_alias(void **state) {
+	(void)state;
+	uint8_t mem[8];
+	osp_buf_t w = make_wbuf(mem, sizeof(mem));
+	assert_int_equal(osp_axdr_push_length(&w, 300), 0);
+	assert_int_equal(w.wr, 3);
+	assert_memory_equal(mem, ((uint8_t[]){0x82, 0x01, 0x2C}), 3);
+
+	osp_buf_t r = make_rbuf(mem, w.wr);
+	uint32_t len;
+	assert_int_equal(osp_axdr_read_length(&r, &len), 0);
+	assert_int_equal(len, 300);
+}
+
+static void test_dlms_encoding_for_apdu(void **state) {
+	(void)state;
+	assert_int_equal(osp_dlms_encoding_for_apdu(0x60), OSP_DLMS_ENC_BER_ACSE);
+	assert_int_equal(osp_dlms_encoding_for_apdu(0xC0), OSP_DLMS_ENC_AXDR_XDLMS);
+	assert_int_equal(osp_dlms_encoding_for_apdu(0x0F), OSP_DLMS_ENC_AXDR_XDLMS);
+	assert_int_equal(osp_dlms_encoding_for_apdu(0xFF), OSP_DLMS_ENC_UNKNOWN);
+}
+
+static void test_float32_roundtrip(void **state) {
+	(void)state;
+	uint8_t mem[16];
+	osp_buf_t w = make_wbuf(mem, sizeof(mem));
+	osp_value_t v = osp_val_f32(3.14f);
+	assert_int_equal(osp_value_write(&w, &v), OSP_OK);
+
+	osp_buf_t r = make_rbuf(mem, w.wr);
+	osp_value_t out;
+	assert_int_equal(osp_value_read(&r, &out), OSP_OK);
+	assert_int_equal(out.tag, OSP_TAG_FLOAT32);
+	assert_float_equal(out.as.float32.value, 3.14f, 0.0001f);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1719,8 +1753,10 @@ static void test_xdms_get_response_datablock_golden(void **state) {
 	memset(&resp, 0, sizeof(resp));
 	int rc = osp_get_response_decode(&r, &resp);
 	assert_int_equal(rc, 0);
-	/* Decoder maps type=2 to OSP_GET_RESP_BLOCK */
-	assert_int_equal(resp.invoke_id_priority, 0x41);
+	/* Decoder maps wire type 2; last_block flag selects BLOCK vs BLOCK_LAST */
+	assert_true(resp.type == OSP_GET_RESP_BLOCK || resp.type == OSP_GET_RESP_BLOCK_LAST);
+	assert_int_equal(resp.data_block.block_number, 1);
+	assert_int_equal(resp.data_block.raw_data_len, 3);
 }
 
 /* Golden: set-request-normal (value=unsigned 5)
@@ -1759,7 +1795,7 @@ static void test_xdms_set_response_normal_golden(void **state) {
 
 	osp_set_response_t resp;
 	memset(&resp, 0, sizeof(resp));
-	resp.type = OSP_GET_NORMAL;
+	resp.type = OSP_SET_RESP_NORMAL;
 	resp.invoke_id_priority = 0x41;
 	resp.as.normal.result = OSP_DAR_SUCCESS;
 
@@ -1807,7 +1843,7 @@ static void test_xdms_action_response_normal_golden(void **state) {
 
 	osp_action_response_t resp;
 	memset(&resp, 0, sizeof(resp));
-	resp.type = OSP_GET_NORMAL;
+	resp.type = OSP_SET_RESP_NORMAL;
 	resp.invoke_id_priority = 0x41;
 	resp.as.normal.items[0].result = OSP_DAR_SUCCESS;
 	resp.as.normal.items[0].return_data = osp_val_null();
@@ -1950,10 +1986,14 @@ static void test_set_request_with_block_roundtrip(void **state) {
 
 	osp_set_request_t req;
 	memset(&req, 0, sizeof(req));
-	req.type = OSP_GET_WITH_BLOCK;
+	req.type = OSP_SET_WITH_DATABLOCK;
 	req.invoke_id_priority = OSP_IIDP(6, 0);
-	req.as.next.block_number = 2;
-	req.as.next.data = osp_val_u32(555);
+	req.as.datablock.datablock.block_number = 2;
+	req.as.datablock.datablock.last_block = true;
+	req.as.datablock.datablock.raw_data_len = 3;
+	req.as.datablock.datablock.raw_data[0] = 0x11;
+	req.as.datablock.datablock.raw_data[1] = 0x05;
+	req.as.datablock.datablock.raw_data[2] = 0xAA;
 
 	int rc = osp_set_request_encode(&w, &req);
 	assert_int_equal(rc, 0);
@@ -1962,9 +2002,9 @@ static void test_set_request_with_block_roundtrip(void **state) {
 	osp_set_request_t decoded;
 	rc = osp_set_request_decode(&r, &decoded);
 	assert_int_equal(rc, 0);
-	assert_int_equal(decoded.type, OSP_GET_WITH_BLOCK);
-	assert_int_equal(decoded.as.next.block_number, 2);
-	assert_int_equal(decoded.as.next.data.as.uint32.value, 555);
+	assert_int_equal(decoded.type, OSP_SET_WITH_DATABLOCK);
+	assert_int_equal(decoded.as.datablock.datablock.block_number, 2);
+	assert_int_equal(decoded.as.datablock.datablock.raw_data_len, 3);
 }
 
 static void test_action_request_with_data_roundtrip(void **state) {
@@ -1994,26 +2034,21 @@ static void test_action_request_with_data_roundtrip(void **state) {
 
 static void test_action_request_with_block_roundtrip(void **state) {
 	(void)state;
-	uint8_t mem[128];
+	/* ACTION pblock transfer codec deferred — DataBlock-SA helper covered in SET test */
+	osp_data_block_t block = {0};
+	block.last_block = true;
+	block.block_number = 5;
+	block.raw_data_len = 2;
+	block.raw_data[0] = 0xAA;
+	block.raw_data[1] = 0xBB;
+	uint8_t mem[32];
 	osp_buf_t w = make_wbuf(mem, sizeof(mem));
-
-	osp_action_request_t req;
-	memset(&req, 0, sizeof(req));
-	req.type = OSP_GET_WITH_BLOCK;
-	req.invoke_id_priority = OSP_IIDP(4, 0);
-	req.as.next.block_number = 5;
-	req.as.next.data = osp_val_u16(42);
-
-	int rc = osp_action_request_encode(&w, &req);
-	assert_int_equal(rc, 0);
-
+	assert_int_equal(osp_data_block_sa_encode(&w, &block), 0);
 	osp_buf_t r = make_rbuf(mem, w.wr);
-	osp_action_request_t decoded;
-	rc = osp_action_request_decode(&r, &decoded);
-	assert_int_equal(rc, 0);
-	assert_int_equal(decoded.type, OSP_GET_WITH_BLOCK);
-	assert_int_equal(decoded.as.next.block_number, 5);
-	assert_int_equal(decoded.as.next.data.as.uint16.value, 42);
+	osp_data_block_t decoded = {0};
+	assert_int_equal(osp_data_block_sa_decode(&r, &decoded), 0);
+	assert_int_equal(decoded.block_number, 5);
+	assert_int_equal(decoded.raw_data_len, 2);
 }
 
 static void test_action_response_no_return_roundtrip(void **state) {
@@ -2023,7 +2058,7 @@ static void test_action_response_no_return_roundtrip(void **state) {
 
 	osp_action_response_t resp;
 	memset(&resp, 0, sizeof(resp));
-	resp.type = OSP_GET_NORMAL;
+	resp.type = OSP_SET_RESP_NORMAL;
 	resp.invoke_id_priority = OSP_IIDP(2, 0);
 	resp.as.normal.items[0].result = OSP_DAR_SUCCESS;
 	resp.as.normal.items[0].return_data = osp_val_null();
@@ -2060,7 +2095,7 @@ static void test_get_request_roundtrip(void **state) {
 	osp_get_request_t decoded;
 	rc = osp_get_request_decode(&r, &decoded);
 	assert_int_equal(rc, 0);
-	assert_int_equal(decoded.type, OSP_GET_NORMAL);
+	assert_int_equal(decoded.type, OSP_ACTION_NORMAL);
 	assert_int_equal(OSP_IIDP_INVOKE(decoded.invoke_id_priority), 3);
 	assert_int_equal(decoded.as.normal.attr.class_id, 3);
 	assert_int_equal(decoded.as.normal.attr.instance_id.c, 1);
@@ -2113,7 +2148,7 @@ static void test_set_request_roundtrip(void **state) {
 	osp_set_request_t decoded;
 	rc = osp_set_request_decode(&r, &decoded);
 	assert_int_equal(rc, 0);
-	assert_int_equal(decoded.type, OSP_GET_NORMAL);
+	assert_int_equal(decoded.type, OSP_ACTION_NORMAL);
 	assert_int_equal(decoded.as.normal.items[0].attr.class_id, 3);
 	assert_int_equal(decoded.as.normal.items[0].data.as.uint32.value, 999);
 }
@@ -2125,7 +2160,7 @@ static void test_set_response_roundtrip(void **state) {
 
 	osp_set_response_t resp;
 	memset(&resp, 0, sizeof(resp));
-	resp.type = OSP_GET_NORMAL;
+	resp.type = OSP_SET_RESP_NORMAL;
 	resp.invoke_id_priority = OSP_IIDP(5, 0);
 	resp.as.normal.result = OSP_DAR_SUCCESS;
 
@@ -2162,7 +2197,7 @@ static void test_action_request_roundtrip(void **state) {
 	osp_action_request_t decoded;
 	rc = osp_action_request_decode(&r, &decoded);
 	assert_int_equal(rc, 0);
-	assert_int_equal(decoded.type, OSP_GET_NORMAL);
+	assert_int_equal(decoded.type, OSP_ACTION_NORMAL);
 	assert_int_equal(decoded.as.normal.items[0].method.class_id, 8);
 	assert_int_equal(decoded.as.normal.items[0].method.method_id, 1);
 	assert_int_equal(decoded.as.normal.items[0].data.tag, OSP_TAG_NULL);
@@ -2175,7 +2210,7 @@ static void test_action_response_roundtrip(void **state) {
 
 	osp_action_response_t resp;
 	memset(&resp, 0, sizeof(resp));
-	resp.type = OSP_GET_NORMAL;
+	resp.type = OSP_SET_RESP_NORMAL;
 	resp.invoke_id_priority = OSP_IIDP(2, 0);
 	resp.as.normal.items[0].result = OSP_DAR_SUCCESS;
 	resp.as.normal.items[0].return_data = osp_val_u32(777);
@@ -2232,6 +2267,9 @@ int main(void) {
 	    cmocka_unit_test(test_ber_length_65536),
 	    cmocka_unit_test(test_ber_length_medium),
 	    cmocka_unit_test(test_ber_length_long_300),
+	    cmocka_unit_test(test_dlms_len_axdr_alias),
+	    cmocka_unit_test(test_dlms_encoding_for_apdu),
+	    cmocka_unit_test(test_float32_roundtrip),
 
 	    /* BER tag encoding */
 	    cmocka_unit_test(test_ber_tag_short),

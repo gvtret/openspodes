@@ -17,6 +17,7 @@
 #include "../src/ic/data.h"
 #include "../src/ic/disconnect_control.h"
 #include "../src/security/security.h"
+#include "../src/codec/serialize.h"
 #include "mock_transport.h"
 #include "mock_crypto.h"
 
@@ -301,6 +302,134 @@ static void test_client_release_disconnect(void **state) {
 	assert_int_equal(osp_client_disconnect(NULL), OSP_ERR_INVALID);
 }
 
+/* ── Test: large GET via block transfer ──────────────────────────────────── */
+
+static osp_value_t make_octets(uint8_t fill, uint32_t len) {
+	osp_value_t v;
+	v.tag = OSP_TAG_OCTETSTRING;
+	v.as.octetstring.len = len;
+	memset(v.as.octetstring.data, fill, len);
+	return v;
+}
+
+static osp_err_t loopback_exchange(mock_transport_pair_t *pair, osp_server_t *server, const uint8_t *tx, uint32_t tx_len,
+                                  uint8_t *rx, uint32_t rx_size, uint32_t *rx_len) {
+	osp_err_t r = mock_loopback_send(pair, server, tx, tx_len);
+	if (r != OSP_OK) {
+		return r;
+	}
+	return mock_recv_from_peer(&pair->client_rx, rx, rx_size, rx_len, 0);
+}
+
+static void test_get_block_transfer(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
+	osp_server_set_max_pdu(&server, 32);
+
+	osp_obis_t obis = {0, 0, 0x80, 0, 0, 255};
+	osp_ic_data_t data_obj;
+	osp_ic_data_init(&data_obj, obis);
+	data_obj.value = make_octets(0xAB, 200);
+	osp_server_register(&server, osp_ic_data_class(), &data_obj);
+
+	osp_client_t client;
+	make_pair(&pair, &server, &client);
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+
+	osp_value_t result;
+	assert_int_equal(osp_client_get(&client, 1, &obis, 1, &result), OSP_OK);
+	assert_int_equal(result.tag, OSP_TAG_OCTETSTRING);
+	assert_int_equal(result.as.octetstring.len, 200);
+	for (uint32_t i = 0; i < 200; i++) {
+		assert_int_equal(result.as.octetstring.data[i], 0xAB);
+	}
+}
+
+/* ── Test: SET reassembled from datablocks ───────────────────────────────── */
+
+static void test_set_block_transfer(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
+
+	osp_obis_t obis = {1, 0, 1, 8, 0, 255};
+	osp_ic_data_t data_obj;
+	osp_ic_data_init(&data_obj, obis);
+	data_obj.value = osp_val_u32(0);
+	osp_server_register(&server, osp_ic_data_class(), &data_obj);
+
+	osp_client_t client;
+	make_pair(&pair, &server, &client);
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+
+	osp_value_t to_write = make_octets(0x5A, 40);
+	uint8_t value_bytes[64];
+	osp_buf_t w;
+	osp_buf_init(&w, value_bytes, sizeof(value_bytes));
+	assert_int_equal(osp_value_write(&w, &to_write), OSP_OK);
+	const uint32_t value_len = w.wr;
+
+	osp_set_request_t req1;
+	memset(&req1, 0, sizeof(req1));
+	req1.type = OSP_SET_WITH_FIRST_DATABLOCK;
+	req1.invoke_id_priority = OSP_IIDP(1, 0);
+	req1.as.first_datablock.attr.class_id = 1;
+	req1.as.first_datablock.attr.instance_id = obis;
+	req1.as.first_datablock.attr.attribute_id = 1;
+	req1.as.first_datablock.datablock.last_block = false;
+	req1.as.first_datablock.datablock.block_number = 1;
+	req1.as.first_datablock.datablock.raw_data_len = 20;
+	memcpy(req1.as.first_datablock.datablock.raw_data, value_bytes, 20);
+
+	uint8_t tx[128];
+	uint8_t rx[128];
+	uint32_t rx_len;
+	osp_buf_init(&w, tx, sizeof(tx));
+	assert_int_equal(osp_set_request_encode(&w, &req1), 0);
+	assert_int_equal(loopback_exchange(&pair, &server, tx, w.wr, rx, sizeof(rx), &rx_len), OSP_OK);
+
+	osp_set_response_t resp;
+	osp_buf_t rbuf;
+	osp_buf_init(&rbuf, rx, rx_len);
+	rbuf.wr = rx_len;
+	assert_int_equal(osp_set_response_decode(&rbuf, &resp), 0);
+	assert_int_equal(resp.type, OSP_SET_RESP_DATABLOCK);
+	assert_int_equal(resp.as.datablock.block_number, 1);
+
+	osp_set_request_t req2;
+	memset(&req2, 0, sizeof(req2));
+	req2.type = OSP_SET_WITH_DATABLOCK;
+	req2.invoke_id_priority = OSP_IIDP(1, 0);
+	req2.as.datablock.datablock.last_block = true;
+	req2.as.datablock.datablock.block_number = 2;
+	req2.as.datablock.datablock.raw_data_len = value_len - 20;
+	memcpy(req2.as.datablock.datablock.raw_data, &value_bytes[20], value_len - 20);
+
+	osp_buf_init(&w, tx, sizeof(tx));
+	assert_int_equal(osp_set_request_encode(&w, &req2), 0);
+	assert_int_equal(loopback_exchange(&pair, &server, tx, w.wr, rx, sizeof(rx), &rx_len), OSP_OK);
+
+	osp_buf_init(&rbuf, rx, rx_len);
+	rbuf.wr = rx_len;
+	assert_int_equal(osp_set_response_decode(&rbuf, &resp), 0);
+	assert_int_equal(resp.type, OSP_SET_RESP_LAST_DATABLOCK);
+	assert_int_equal(resp.as.last_datablock.result, OSP_DAR_SUCCESS);
+	assert_int_equal(resp.as.last_datablock.block_number, 2);
+
+	osp_value_t got;
+	assert_int_equal(osp_client_get(&client, 1, &obis, 1, &got), OSP_OK);
+	assert_int_equal(got.tag, OSP_TAG_OCTETSTRING);
+	assert_int_equal(got.as.octetstring.len, 40);
+	for (uint32_t i = 0; i < 40; i++) {
+		assert_int_equal(got.as.octetstring.data[i], 0x5A);
+	}
+}
+
 /* ── Runner ──────────────────────────────────────────────────────────────── */
 
 int main(void) {
@@ -309,6 +438,8 @@ int main(void) {
 	    cmocka_unit_test(test_set_get),      	    cmocka_unit_test(test_hls_handshake),
 	    cmocka_unit_test(test_client_action),
 	    cmocka_unit_test(test_client_release_disconnect),
+	    cmocka_unit_test(test_get_block_transfer),
+	    cmocka_unit_test(test_set_block_transfer),
 	};
 	return cmocka_run_group_tests(tests, NULL, NULL);
 }

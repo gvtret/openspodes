@@ -8,6 +8,13 @@
 #include "serialize.h"
 #include <string.h>
 
+/* Bump pool for nested structure/array elements during osp_value_read (no malloc). */
+static osp_value_t value_read_pool[OSP_MAX_ARRAY_LEN * OSP_MAX_STRUCT_LEN];
+static uint16_t value_read_pool_used;
+static uint8_t value_read_depth;
+
+static osp_err_t osp_value_read_impl(osp_buf_t *buf, osp_value_t *val);
+
 /* ═══════════════════════════════════════════════════════════════════════════
  *  PRIMITIVE HELPERS
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -247,6 +254,58 @@ osp_err_t osp_datetime_write(osp_buf_t *buf, const osp_datetime_t *dt) {
 	return OSP_OK;
 }
 
+void osp_cosem_datetime_from_bytes(osp_cosem_datetime_t *out, const uint8_t bytes[OSP_COSEM_DATETIME_LEN]) {
+	if (!out || !bytes) {
+		return;
+	}
+	out->year = ((uint16_t)bytes[0] << 8) | bytes[1];
+	out->month = bytes[2];
+	out->day = bytes[3];
+	out->day_of_week = bytes[4];
+	out->hour = bytes[5];
+	out->minute = bytes[6];
+	out->second = bytes[7];
+	out->hundredths = bytes[8];
+	out->deviation = (int16_t)(((uint16_t)bytes[9] << 8) | bytes[10]);
+	out->clock_status = bytes[11];
+}
+
+void osp_cosem_datetime_to_bytes(const osp_cosem_datetime_t *dt, uint8_t bytes[OSP_COSEM_DATETIME_LEN]) {
+	if (!dt || !bytes) {
+		return;
+	}
+	bytes[0] = (uint8_t)(dt->year >> 8);
+	bytes[1] = (uint8_t)(dt->year & 0xFF);
+	bytes[2] = dt->month;
+	bytes[3] = dt->day;
+	bytes[4] = dt->day_of_week;
+	bytes[5] = dt->hour;
+	bytes[6] = dt->minute;
+	bytes[7] = dt->second;
+	bytes[8] = dt->hundredths;
+	bytes[9] = (uint8_t)((uint16_t)dt->deviation >> 8);
+	bytes[10] = (uint8_t)((uint16_t)dt->deviation & 0xFF);
+	bytes[11] = dt->clock_status;
+}
+
+osp_err_t osp_cosem_datetime_read_value(const osp_value_t *val, osp_cosem_datetime_t *dt) {
+	if (!val || !dt || val->tag != OSP_TAG_OCTETSTRING || val->as.octetstring.len != OSP_COSEM_DATETIME_LEN) {
+		return OSP_ERR_INVALID;
+	}
+	osp_cosem_datetime_from_bytes(dt, val->as.octetstring.data);
+	return OSP_OK;
+}
+
+osp_value_t osp_val_cosem_datetime(const osp_cosem_datetime_t *dt) {
+	osp_value_t v = {0};
+	v.tag = OSP_TAG_OCTETSTRING;
+	v.as.octetstring.len = OSP_COSEM_DATETIME_LEN;
+	if (dt) {
+		osp_cosem_datetime_to_bytes(dt, v.as.octetstring.data);
+	}
+	return v;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  *  STRUCTURE / ARRAY
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -256,7 +315,7 @@ osp_err_t osp_struct_begin(osp_buf_t *buf, uint8_t num_fields) {
 	if (r != OSP_OK) {
 		return r;
 	}
-	return osp_axdr_write_u8(buf, num_fields);
+	return osp_ber_write_length(buf, num_fields);
 }
 
 osp_err_t osp_struct_begin_read(osp_buf_t *buf, uint8_t *num_fields) {
@@ -268,7 +327,13 @@ osp_err_t osp_struct_begin_read(osp_buf_t *buf, uint8_t *num_fields) {
 	if (tag != OSP_AXDR_STRUCTURE) {
 		return OSP_ERR_INVALID;
 	}
-	return osp_axdr_read_u8(buf, num_fields);
+	uint32_t count;
+	r = osp_ber_read_length(buf, &count);
+	if (r != OSP_OK || count > UINT8_MAX) {
+		return OSP_ERR_INVALID;
+	}
+	*num_fields = (uint8_t)count;
+	return OSP_OK;
 }
 
 osp_err_t osp_array_begin(osp_buf_t *buf, uint8_t count) {
@@ -276,7 +341,7 @@ osp_err_t osp_array_begin(osp_buf_t *buf, uint8_t count) {
 	if (r != OSP_OK) {
 		return r;
 	}
-	return osp_axdr_write_u8(buf, count);
+	return osp_ber_write_length(buf, count);
 }
 
 osp_err_t osp_array_begin_read(osp_buf_t *buf, uint8_t *count) {
@@ -288,7 +353,13 @@ osp_err_t osp_array_begin_read(osp_buf_t *buf, uint8_t *count) {
 	if (tag != OSP_AXDR_ARRAY) {
 		return OSP_ERR_INVALID;
 	}
-	return osp_axdr_read_u8(buf, count);
+	uint32_t n;
+	r = osp_ber_read_length(buf, &n);
+	if (r != OSP_OK || n > UINT8_MAX) {
+		return OSP_ERR_INVALID;
+	}
+	*count = (uint8_t)n;
+	return OSP_OK;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -372,6 +443,51 @@ osp_err_t osp_value_read(osp_buf_t *buf, osp_value_t *val) {
 	if (!buf || !val) {
 		return OSP_ERR_INVALID;
 	}
+	if (value_read_depth == 0) {
+		value_read_pool_used = 0;
+	}
+	value_read_depth++;
+	osp_err_t r = osp_value_read_impl(buf, val);
+	value_read_depth--;
+	return r;
+}
+
+static osp_err_t axdr_read_f32(osp_buf_t *buf, float *f) {
+	uint32_t u;
+	osp_err_t r = osp_axdr_read_u32(buf, &u);
+	if (r != OSP_OK) {
+		return r;
+	}
+	memcpy(f, &u, sizeof(*f));
+	return OSP_OK;
+}
+
+static osp_err_t axdr_write_f32(osp_buf_t *buf, float f) {
+	uint32_t u;
+	memcpy(&u, &f, sizeof(u));
+	return osp_axdr_write_u32(buf, u);
+}
+
+static osp_err_t axdr_read_f64(osp_buf_t *buf, double *f) {
+	uint64_t u;
+	osp_err_t r = osp_axdr_read_u64(buf, &u);
+	if (r != OSP_OK) {
+		return r;
+	}
+	memcpy(f, &u, sizeof(*f));
+	return OSP_OK;
+}
+
+static osp_err_t axdr_write_f64(osp_buf_t *buf, double f) {
+	uint64_t u;
+	memcpy(&u, &f, sizeof(u));
+	return osp_axdr_write_u64(buf, u);
+}
+
+static osp_err_t osp_value_read_impl(osp_buf_t *buf, osp_value_t *val) {
+	if (!buf || !val) {
+		return OSP_ERR_INVALID;
+	}
 
 	uint8_t tag;
 	osp_err_t r = osp_axdr_read_tag(buf, &tag);
@@ -415,6 +531,12 @@ osp_err_t osp_value_read(osp_buf_t *buf, osp_value_t *val) {
 
 		case OSP_TAG_ENUM:
 			return osp_axdr_read_u8(buf, &val->as.enum_val.value);
+
+		case OSP_TAG_FLOAT32:
+			return axdr_read_f32(buf, &val->as.float32.value);
+
+		case OSP_TAG_FLOAT64:
+			return axdr_read_f64(buf, &val->as.float64.value);
 
 		case OSP_TAG_OCTETSTRING: {
 			uint32_t slen;
@@ -463,9 +585,36 @@ osp_err_t osp_value_read(osp_buf_t *buf, osp_value_t *val) {
 			return osp_datetime_read(buf, &val->as.datetime);
 
 		case OSP_TAG_ARRAY:
-		case OSP_TAG_STRUCTURE:
+		case OSP_TAG_STRUCTURE: {
+			uint32_t count;
+			r = osp_ber_read_length(buf, &count);
+			if (r != OSP_OK) {
+				return r;
+			}
+			uint8_t max = (tag == OSP_TAG_ARRAY) ? OSP_MAX_ARRAY_LEN : OSP_MAX_STRUCT_LEN;
+			if (count > max) {
+				return OSP_ERR_NOMEM;
+			}
+			if (value_read_pool_used + count > (uint16_t)(sizeof(value_read_pool) / sizeof(value_read_pool[0]))) {
+				return OSP_ERR_NOMEM;
+			}
+			osp_value_t *items = &value_read_pool[value_read_pool_used];
+			value_read_pool_used += count;
+			for (uint32_t i = 0; i < count; i++) {
+				r = osp_value_read_impl(buf, &items[i]);
+				if (r != OSP_OK) {
+					return r;
+				}
+			}
+			osp_value_list_t *list = (tag == OSP_TAG_ARRAY) ? &val->as.array.elements : &val->as.structure.elements;
+			list->items = items;
+			list->count = count;
+			list->capacity = count;
+			return OSP_OK;
+		}
+
 		case OSP_TAG_COMPACT_ARRAY:
-			return OSP_OK; /* Caller handles complex types */
+			return OSP_ERR_UNSUPPORTED;
 
 		default:
 			return OSP_ERR_UNSUPPORTED;
@@ -516,11 +665,28 @@ osp_err_t osp_value_write(osp_buf_t *buf, const osp_value_t *val) {
 		case OSP_TAG_ENUM:
 			return osp_axdr_write_u8(buf, val->as.enum_val.value);
 
+		case OSP_TAG_FLOAT32:
+			return axdr_write_f32(buf, val->as.float32.value);
+
+		case OSP_TAG_FLOAT64:
+			return axdr_write_f64(buf, val->as.float64.value);
+
 		case OSP_TAG_OCTETSTRING:
 			return osp_axdr_write_octet_string(buf, val->as.octetstring.data, val->as.octetstring.len);
 
-		case OSP_TAG_VISIBLESTRING:
-			return osp_axdr_write_visible_string(buf, val->as.visiblestring.data, val->as.visiblestring.len);
+		case OSP_TAG_VISIBLESTRING: {
+			uint32_t slen = val->as.visiblestring.len;
+			r = osp_ber_write_length(buf, slen);
+			if (r != OSP_OK) {
+				return r;
+			}
+			if (osp_buf_free(buf) < slen) {
+				return OSP_ERR_NOMEM;
+			}
+			memcpy(&buf->buf[buf->wr], val->as.visiblestring.data, slen);
+			buf->wr += slen;
+			return OSP_OK;
+		}
 
 		case OSP_TAG_DATE:
 			return osp_date_write(buf, &val->as.date);
@@ -530,6 +696,22 @@ osp_err_t osp_value_write(osp_buf_t *buf, const osp_value_t *val) {
 
 		case OSP_TAG_DATETIME:
 			return osp_datetime_write(buf, &val->as.datetime);
+
+		case OSP_TAG_ARRAY:
+		case OSP_TAG_STRUCTURE: {
+			const osp_value_list_t *list = (val->tag == OSP_TAG_ARRAY) ? &val->as.array.elements : &val->as.structure.elements;
+			r = osp_ber_write_length(buf, list->count);
+			if (r != OSP_OK) {
+				return r;
+			}
+			for (uint8_t i = 0; i < list->count; i++) {
+				r = osp_value_write(buf, &list->items[i]);
+				if (r != OSP_OK) {
+					return r;
+				}
+			}
+			return OSP_OK;
+		}
 
 		default:
 			return OSP_ERR_UNSUPPORTED;

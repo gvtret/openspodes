@@ -179,11 +179,11 @@ static void test_ber_length_and_octet_string(void **state) {
 	assert_int_equal(osp_ber_read_length(&buf, &len), OSP_OK);
 	assert_int_equal(len, 300);
 
-	/* Unsupported length form */
+	/* Truncated long form (0x83 needs 3 content bytes) */
 	mem[0] = 0x83;
 	osp_buf_init(&buf, mem, 1);
 	buf.wr = 1;
-	assert_int_equal(osp_ber_read_length(&buf, &len), OSP_ERR_UNSUPPORTED);
+	assert_int_equal(osp_ber_read_length(&buf, &len), OSP_ERR_INVALID);
 
 	/* Truncated long tag number */
 	mem[0] = 0x1F;
@@ -220,18 +220,15 @@ static void test_axdr_octet_string_roundtrip(void **state) {
 	const uint8_t payload[] = {0x01, 0x02, 0x03};
 
 	mem[0] = OSP_AXDR_OCTETSTRING;
-	mem[1] = 0x00;
-	mem[2] = 0x00;
-	mem[3] = 0x00;
-	mem[4] = sizeof(payload);
-	memcpy(&mem[5], payload, sizeof(payload));
+	mem[1] = (uint8_t)sizeof(payload);
+	memcpy(&mem[2], payload, sizeof(payload));
 
 	osp_buf_init(&buf, mem, sizeof(mem));
-	buf.wr = 5 + sizeof(payload);
+	buf.wr = 2 + sizeof(payload);
 	assert_int_equal(osp_axdr_read_octet_string(&buf, out, sizeof(out), NULL), OSP_OK);
 
 	osp_buf_init(&buf, mem, buf.wr);
-	buf.wr = 5 + sizeof(payload);
+	buf.wr = 2 + sizeof(payload);
 	uint32_t out_len;
 	assert_int_equal(osp_axdr_read_octet_string(&buf, out, sizeof(out), &out_len), OSP_OK);
 	assert_int_equal(out_len, sizeof(payload));

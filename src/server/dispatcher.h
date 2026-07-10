@@ -9,6 +9,7 @@
 #define OSP_DISPATCHER_H
 
 #include "../openspodes.h"
+#include "../ic/association_ln.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -24,9 +25,12 @@ typedef struct {
 typedef struct {
 	osp_object_entry_t objects[OSP_MAX_OBJECTS];
 	uint8_t count;
+	osp_ic_association_ln_t *association;
 } osp_dispatcher_t;
 
 void osp_dispatcher_init(osp_dispatcher_t *disp);
+
+void osp_dispatcher_set_association(osp_dispatcher_t *disp, osp_ic_association_ln_t *association);
 
 osp_err_t osp_dispatcher_register(osp_dispatcher_t *disp, const osp_ic_class_t *class_def, void *instance);
 

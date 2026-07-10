@@ -137,6 +137,8 @@ int osp_rlre_decode(osp_buf_t *buf, osp_rlrq_t *rlre);
  *  GET (IEC 62056-5-3 Table 105)
  * ═══════════════════════════════════════════════════════════════════════════ */
 
+#define OSP_XDLMS_MAX_LIST 8
+
 typedef enum {
 	OSP_GET_NORMAL = 1,
 	OSP_GET_WITH_BLOCK = 2,
@@ -145,10 +147,18 @@ typedef enum {
 } osp_get_request_type;
 
 typedef struct {
-	osp_get_request_type type;
-	uint8_t invoke_id_priority;
 	osp_attribute_descriptor_t attr;
-	osp_selective_access_t access_selection; /* optional */
+	uint8_t has_access_selection;
+} osp_get_list_item_t;
+
+typedef struct {
+	osp_get_list_item_t items[OSP_XDLMS_MAX_LIST];
+	uint8_t count;
+} osp_get_request_with_list_t;
+
+typedef struct {
+	osp_attribute_descriptor_t attr;
+	osp_selective_access_t access_selection;
 } osp_get_request_normal_t;
 
 typedef struct {
@@ -163,6 +173,7 @@ typedef struct {
 	union {
 		osp_get_request_normal_t normal;
 		osp_get_request_next_t next;
+		osp_get_request_with_list_t with_list;
 	} as;
 } osp_get_request_t;
 
@@ -175,7 +186,19 @@ typedef enum {
 	OSP_GET_RESP_DATA_ERROR = 2,
 	OSP_GET_RESP_BLOCK = 3,
 	OSP_GET_RESP_BLOCK_LAST = 4,
+	OSP_GET_RESP_WITH_LIST = 5,
 } osp_get_response_type;
+
+typedef struct {
+	uint8_t is_data;
+	osp_value_t data;
+	osp_dar_t access_result;
+} osp_get_result_item_t;
+
+typedef struct {
+	osp_get_result_item_t items[OSP_XDLMS_MAX_LIST];
+	uint8_t count;
+} osp_get_response_with_list_t;
 
 typedef struct {
 	osp_get_response_type type;
@@ -183,6 +206,7 @@ typedef struct {
 	osp_value_t data;
 	osp_dar_t data_access_result;
 	osp_data_block_t data_block;
+	osp_get_response_with_list_t with_list;
 } osp_get_response_t;
 
 int osp_get_response_encode(osp_buf_t *buf, const osp_get_response_t *resp);
@@ -191,6 +215,20 @@ int osp_get_response_decode(osp_buf_t *buf, osp_get_response_t *resp);
 /* ═══════════════════════════════════════════════════════════════════════════
  *  SET (IEC 62056-5-3 Table 107)
  * ═══════════════════════════════════════════════════════════════════════════ */
+
+typedef enum {
+	OSP_SET_NORMAL = 1,
+	OSP_SET_WITH_FIRST_DATABLOCK = 2,
+	OSP_SET_WITH_DATABLOCK = 3,
+	OSP_SET_WITH_LIST = 4,
+} osp_set_request_type;
+
+typedef enum {
+	OSP_SET_RESP_NORMAL = 1,
+	OSP_SET_RESP_DATABLOCK = 2,
+	OSP_SET_RESP_LAST_DATABLOCK = 3,
+	OSP_SET_RESP_WITH_LIST = 5,
+} osp_set_response_type;
 
 typedef struct {
 	osp_attribute_descriptor_t attr;
@@ -206,24 +244,30 @@ typedef struct {
 
 typedef struct {
 	uint8_t invoke_id_priority;
-	uint32_t block_number;
-	osp_value_t data;
-} osp_set_request_next_t;
+	osp_attribute_descriptor_t attr;
+	osp_selective_access_t access_selection;
+	osp_data_block_t datablock;
+} osp_set_request_first_datablock_t;
 
 typedef struct {
 	uint8_t invoke_id_priority;
-	osp_set_request_item_t items[8];
-	uint8_t item_count;
-} osp_set_request_first_block_t;
+	osp_data_block_t datablock;
+} osp_set_request_datablock_t;
 
 typedef struct {
-	osp_get_request_type type;
+	osp_set_request_item_t items[OSP_XDLMS_MAX_LIST];
+	uint8_t count;
+} osp_set_request_with_list_t;
+
+typedef struct {
+	osp_set_request_type type;
 	uint8_t invoke_id_priority;
 
 	union {
 		osp_set_request_normal_t normal;
-		osp_set_request_next_t next;
-		osp_set_request_first_block_t first_block;
+		osp_set_request_first_datablock_t first_datablock;
+		osp_set_request_datablock_t datablock;
+		osp_set_request_with_list_t with_list;
 	} as;
 } osp_set_request_t;
 
@@ -237,17 +281,24 @@ typedef struct {
 } osp_set_response_normal_t;
 
 typedef struct {
-	uint8_t invoke_id_priority;
-	uint32_t block_number;
-} osp_set_response_next_t;
+	osp_dar_t results[OSP_XDLMS_MAX_LIST];
+	uint8_t count;
+} osp_set_response_with_list_t;
 
 typedef struct {
-	osp_get_request_type type;
+	osp_dar_t result;
+	uint32_t block_number;
+} osp_set_response_last_datablock_t;
+
+typedef struct {
+	osp_set_response_type type;
 	uint8_t invoke_id_priority;
 
 	union {
 		osp_set_response_normal_t normal;
-		osp_set_response_next_t next;
+		osp_data_block_t datablock;
+		osp_set_response_last_datablock_t last_datablock;
+		osp_set_response_with_list_t with_list;
 	} as;
 } osp_set_response_t;
 
@@ -264,36 +315,78 @@ typedef struct {
 } osp_action_request_item_t;
 
 typedef struct {
+	osp_method_descriptor_t method;
+	osp_dar_t result;
+	osp_value_t return_data;
+} osp_action_response_item_t;
+
+typedef struct {
 	uint8_t invoke_id_priority;
 	osp_action_request_item_t items[8];
 	uint8_t item_count;
 } osp_action_request_normal_t;
 
-typedef struct {
-	uint8_t invoke_id_priority;
-	uint32_t block_number;
-	osp_value_t data;
-} osp_action_request_next_t;
+typedef enum {
+	OSP_ACTION_NORMAL = 1,
+	OSP_ACTION_NEXT_PBLOCK = 2,
+	OSP_ACTION_WITH_LIST = 3,
+	OSP_ACTION_WITH_FIRST_PBLOCK = 4,
+	OSP_ACTION_WITH_PBLOCK = 6,
+} osp_action_request_type;
+
+typedef enum {
+	OSP_ACTION_RESP_NORMAL = 1,
+	OSP_ACTION_RESP_WITH_PBLOCK = 2,
+	OSP_ACTION_RESP_WITH_LIST = 3,
+	OSP_ACTION_RESP_NEXT_PBLOCK = 4,
+} osp_action_response_type;
 
 typedef struct {
-	osp_get_request_type type;
+	osp_method_descriptor_t method;
+	osp_data_block_t pblock;
+} osp_action_request_first_pblock_t;
+
+typedef struct {
+	osp_data_block_t pblock;
+} osp_action_request_pblock_t;
+
+typedef struct {
+	uint32_t block_number;
+} osp_action_request_next_pblock_t;
+
+typedef struct {
+	osp_data_block_t pblock;
+} osp_action_response_pblock_t;
+
+typedef struct {
+	uint32_t block_number;
+} osp_action_response_next_pblock_t;
+
+typedef struct {
+	osp_action_request_item_t items[OSP_XDLMS_MAX_LIST];
+	uint8_t count;
+} osp_action_request_with_list_t;
+
+typedef struct {
+	osp_action_response_item_t items[OSP_XDLMS_MAX_LIST];
+	uint8_t count;
+} osp_action_response_with_list_t;
+
+typedef struct {
+	osp_action_request_type type;
 	uint8_t invoke_id_priority;
 
 	union {
 		osp_action_request_normal_t normal;
-		osp_action_request_next_t next;
+		osp_action_request_with_list_t with_list;
+		osp_action_request_first_pblock_t first_pblock;
+		osp_action_request_pblock_t pblock;
+		osp_action_request_next_pblock_t next_pblock;
 	} as;
 } osp_action_request_t;
 
 int osp_action_request_encode(osp_buf_t *buf, const osp_action_request_t *req);
 int osp_action_request_decode(osp_buf_t *buf, osp_action_request_t *req);
-
-/* ACTION response */
-typedef struct {
-	osp_method_descriptor_t method;
-	osp_dar_t result;
-	osp_value_t return_data;
-} osp_action_response_item_t;
 
 typedef struct {
 	osp_action_response_item_t items[8];
@@ -302,22 +395,23 @@ typedef struct {
 } osp_action_response_normal_t;
 
 typedef struct {
-	osp_action_response_normal_t normal;
-	osp_data_block_t data_block;
-} osp_action_response_block_t;
-
-typedef struct {
-	osp_get_request_type type;
+	osp_action_response_type type;
 	uint8_t invoke_id_priority;
 
 	union {
 		osp_action_response_normal_t normal;
-		osp_action_response_block_t block;
+		osp_action_response_with_list_t with_list;
+		osp_action_response_pblock_t pblock;
+		osp_action_response_next_pblock_t next_pblock;
 	} as;
 } osp_action_response_t;
 
 int osp_action_response_encode(osp_buf_t *buf, const osp_action_response_t *resp);
 int osp_action_response_decode(osp_buf_t *buf, osp_action_response_t *resp);
+
+/* DataBlock-SA helper (SET/ACTION block transfer) */
+int osp_data_block_sa_encode(osp_buf_t *buf, const osp_data_block_t *block);
+int osp_data_block_sa_decode(osp_buf_t *buf, osp_data_block_t *block);
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  EXCEPTION RESPONSE (IEC 62056-5-3 Table 67)

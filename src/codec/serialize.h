@@ -59,6 +59,11 @@ osp_err_t osp_time_write(osp_buf_t *buf, const osp_time_t *time);
 osp_err_t osp_datetime_read(osp_buf_t *buf, osp_datetime_t *dt);
 osp_err_t osp_datetime_write(osp_buf_t *buf, const osp_datetime_t *dt);
 
+void osp_cosem_datetime_from_bytes(osp_cosem_datetime_t *out, const uint8_t bytes[OSP_COSEM_DATETIME_LEN]);
+void osp_cosem_datetime_to_bytes(const osp_cosem_datetime_t *dt, uint8_t bytes[OSP_COSEM_DATETIME_LEN]);
+osp_err_t osp_cosem_datetime_read_value(const osp_value_t *val, osp_cosem_datetime_t *dt);
+osp_value_t osp_val_cosem_datetime(const osp_cosem_datetime_t *dt);
+
 /* ═══════════════════════════════════════════════════════════════════════════
  *  STRUCTURE SERIALIZATION
  * ═══════════════════════════════════════════════════════════════════════════ */

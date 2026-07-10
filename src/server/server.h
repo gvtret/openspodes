@@ -19,6 +19,33 @@ extern "C" {
 #endif
 
 #define OSP_SERVER_MAX_PDU 1024
+#define OSP_SERVER_PENDING_MAX (OSP_SERVER_MAX_PDU * 4)
+
+typedef struct {
+	bool active;
+	uint8_t data[OSP_SERVER_PENDING_MAX];
+	uint32_t data_len;
+	uint32_t next_block;
+	osp_attribute_descriptor_t set_attr;
+	uint8_t set_buffer[OSP_SERVER_PENDING_MAX];
+	uint32_t set_buffer_len;
+} osp_server_pending_t;
+
+typedef struct {
+	bool active;
+	osp_method_descriptor_t method;
+	uint8_t buffer[OSP_SERVER_PENDING_MAX];
+	uint32_t buffer_len;
+} osp_server_pending_action_in_t;
+
+typedef struct {
+	bool active;
+	uint8_t invoke_id_priority;
+	osp_dar_t result;
+	uint8_t data[OSP_SERVER_PENDING_MAX];
+	uint32_t data_len;
+	uint32_t next_block;
+} osp_server_pending_action_out_t;
 
 typedef struct {
 	osp_transport_t *transport;
@@ -27,11 +54,20 @@ typedef struct {
 	osp_dispatcher_t dispatcher;
 	bool associated;
 	uint8_t invoke_id;
+	uint32_t max_pdu;
+
+	osp_server_pending_t pending_get;
+	osp_server_pending_t pending_set;
+	osp_server_pending_action_in_t pending_action_in;
+	osp_server_pending_action_out_t pending_action_out;
 
 	/* Buffers */
 	uint8_t rx_buf[OSP_SERVER_MAX_PDU];
 	uint8_t tx_buf[OSP_SERVER_MAX_PDU];
 } osp_server_t;
+
+/* Set max PDU size for block transfer segmentation (default: full buffer) */
+void osp_server_set_max_pdu(osp_server_t *s, uint32_t max_pdu);
 
 /* Initialize server */
 osp_err_t osp_server_init(osp_server_t *s, osp_transport_t *transport, osp_framing_type_t framing);
@@ -41,6 +77,9 @@ osp_err_t osp_server_register(osp_server_t *s, const osp_ic_class_t *cls, void *
 
 /* Set security context (optional, before accept) */
 void osp_server_set_security(osp_server_t *s, const osp_sec_context_t *sec);
+
+/* Bind Association LN for ACL enforcement on GET/SET/ACTION */
+void osp_server_set_association(osp_server_t *s, osp_ic_association_ln_t *association);
 
 /* Accept one incoming request (blocking). Returns:
  *   OSP_OK — request was handled (response sent)

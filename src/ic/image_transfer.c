@@ -1,9 +1,14 @@
 #include "image_transfer.h"
+#include "ic_common.h"
 #include <string.h>
+
+static const uint8_t img_attrs[] = {1, 2, 5, 6};
 
 static osp_err_t img_get(const void *inst, uint8_t attr_id, osp_value_t *result) {
 	const osp_ic_image_transfer_t *i = (const osp_ic_image_transfer_t *)inst;
 	switch (attr_id) {
+		case 1:
+			return osp_ic_get_logical_name(result, &i->logical_name);
 		case 2:
 			*result = osp_val_u32(i->image_block_size);
 			return OSP_OK;
@@ -12,6 +17,26 @@ static osp_err_t img_get(const void *inst, uint8_t attr_id, osp_value_t *result)
 			return OSP_OK;
 		case 6:
 			*result = osp_val_u8((uint8_t)i->image_transfer_status);
+			return OSP_OK;
+		default:
+			return OSP_ERR_NOT_FOUND;
+	}
+}
+
+static osp_err_t img_set(void *inst, uint8_t attr_id, const osp_value_t *value) {
+	osp_ic_image_transfer_t *i = (osp_ic_image_transfer_t *)inst;
+	if (!value) {
+		return OSP_ERR_INVALID;
+	}
+	switch (attr_id) {
+		case 2:
+			i->image_block_size = osp_get_u32(value);
+			return OSP_OK;
+		case 5:
+			i->image_transfer_enabled = osp_get_bool(value);
+			return OSP_OK;
+		case 6:
+			i->image_transfer_status = (osp_image_transfer_status_t)osp_get_u8(value);
 			return OSP_OK;
 		default:
 			return OSP_ERR_NOT_FOUND;
@@ -40,14 +65,24 @@ static osp_err_t img_invoke(void *inst, uint8_t method_id, const osp_value_t *pa
 	}
 }
 
+static osp_err_t img_serialize(const void *inst, osp_buf_t *buf) {
+	return osp_ic_serialize_attrs(osp_ic_image_transfer_class(), inst, buf, img_attrs, 4);
+}
+
+static osp_err_t img_deserialize(void *inst, osp_buf_t *buf) {
+	return osp_ic_deserialize_attrs(osp_ic_image_transfer_class(), inst, buf, img_attrs, 4);
+}
+
 static const osp_ic_class_t ic_img = {
     .name = "Image Transfer",
     .class_id = 18,
     .version = 0,
     .get_attr = img_get,
-    .set_attr = NULL,
+    .set_attr = img_set,
     .invoke = img_invoke,
-    .instance_size = sizeof(osp_ic_image_transfer_t)
+    .serialize = img_serialize,
+    .deserialize = img_deserialize,
+    .instance_size = sizeof(osp_ic_image_transfer_t),
 };
 
 const osp_ic_class_t *osp_ic_image_transfer_class(void) {

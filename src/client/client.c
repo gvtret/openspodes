@@ -5,6 +5,8 @@
  */
 
 #include "client.h"
+#include "../service/initiate.h"
+#include "../codec/serialize.h"
 #include <string.h>
 
 osp_err_t osp_client_init(osp_client_t *c, osp_transport_t *transport, osp_framing_type_t framing) {
@@ -73,10 +75,14 @@ osp_err_t osp_client_connect(osp_client_t *c, uint32_t timeout_ms) {
 	memcpy(c->security.ctos, aarq.calling_auth_value, 8);
 	c->security.ctos_len = 8;
 
-	/* Build xDLMS InitiateRequest (minimal: conformance + PDU size) */
-	aarq.user_info[0] = 0x00; /* InitiateRequest tag */
-	aarq.user_info[1] = 0x01; /* type: normal */
-	aarq.user_info_len = 2;
+	osp_initiate_request_t ireq;
+	osp_initiate_request_default(&ireq);
+	osp_buf_t ui;
+	osp_buf_init(&ui, aarq.user_info, sizeof(aarq.user_info));
+	if (osp_initiate_request_encode(&ireq, &ui) != OSP_OK) {
+		return OSP_ERR_INVALID;
+	}
+	aarq.user_info_len = ui.wr;
 
 	/* Encode AARQ */
 	osp_buf_t buf;
@@ -121,7 +127,7 @@ osp_err_t osp_client_connect(osp_client_t *c, uint32_t timeout_ms) {
 		/* Send pass 3 via ACTION on Association LN (class 15, method 1) */
 		osp_action_request_t act_req;
 		memset(&act_req, 0, sizeof(act_req));
-		act_req.type = OSP_GET_NORMAL;
+		act_req.type = OSP_ACTION_NORMAL;
 		act_req.invoke_id_priority = OSP_IIDP(++c->invoke_id, 0);
 		act_req.as.normal.items[0].method.class_id = 15;
 		osp_obis_t asso_ln = {0, 0, 40, 0, 0, 255};
@@ -167,6 +173,21 @@ osp_err_t osp_client_connect(osp_client_t *c, uint32_t timeout_ms) {
 
 /* ── GET ─────────────────────────────────────────────────────────────────── */
 
+static osp_err_t client_recv_get_response(osp_client_t *c, osp_get_response_t *resp) {
+	uint32_t rx_len;
+	osp_err_t r = osp_transport_recv_apdu(c->transport, c->framing, c->rx_buf, sizeof(c->rx_buf), &rx_len, 5000);
+	if (r != OSP_OK) {
+		return r;
+	}
+	osp_buf_t rbuf;
+	osp_buf_init(&rbuf, c->rx_buf, rx_len);
+	rbuf.wr = rx_len;
+	if (osp_get_response_decode(&rbuf, resp) != 0) {
+		return OSP_ERR_INVALID;
+	}
+	return OSP_OK;
+}
+
 osp_err_t osp_client_get(osp_client_t *c, uint16_t class_id, const osp_obis_t *obis, uint8_t attr_id, osp_value_t *result) {
 	if (!c || !c->associated || !obis || !result) {
 		return OSP_ERR_INVALID;
@@ -186,25 +207,65 @@ osp_err_t osp_client_get(osp_client_t *c, uint16_t class_id, const osp_obis_t *o
 		return OSP_ERR_INVALID;
 	}
 
-	uint32_t rx_len;
-	osp_err_t r = client_send_recv(c, buf.buf, buf.wr, c->rx_buf, sizeof(c->rx_buf), &rx_len);
+	osp_err_t r = osp_transport_send_apdu(c->transport, c->framing, buf.buf, buf.wr);
 	if (r != OSP_OK) {
 		return r;
 	}
 
 	osp_get_response_t resp;
-	osp_buf_t rbuf;
-	osp_buf_init(&rbuf, c->rx_buf, rx_len);
-	rbuf.wr = rx_len; /* data already received */
-	if (osp_get_response_decode(&rbuf, &resp) != 0) {
-		return OSP_ERR_INVALID;
+	r = client_recv_get_response(c, &resp);
+	if (r != OSP_OK) {
+		return r;
 	}
 
 	if (resp.type == OSP_GET_RESP_DATA) {
 		*result = resp.data;
 		return OSP_OK;
 	}
-	return OSP_ERR_NOT_FOUND;
+	if (resp.type == OSP_GET_RESP_DATA_ERROR) {
+		return OSP_ERR_NOT_FOUND;
+	}
+
+	uint8_t acc[OSP_CLIENT_REASSEMBLE_MAX];
+	uint32_t acc_len = 0;
+	while (resp.type == OSP_GET_RESP_BLOCK || resp.type == OSP_GET_RESP_BLOCK_LAST) {
+		if (acc_len + resp.data_block.raw_data_len > sizeof(acc)) {
+			return OSP_ERR_NOMEM;
+		}
+		memcpy(&acc[acc_len], resp.data_block.raw_data, resp.data_block.raw_data_len);
+		acc_len += resp.data_block.raw_data_len;
+		if (resp.data_block.last_block) {
+			break;
+		}
+
+		osp_get_request_t next;
+		memset(&next, 0, sizeof(next));
+		next.type = OSP_GET_WITH_BLOCK;
+		next.invoke_id_priority = req.invoke_id_priority;
+		next.as.next.block_number = resp.data_block.block_number;
+
+		osp_buf_init(&buf, c->tx_buf, sizeof(c->tx_buf));
+		if (osp_get_request_encode(&buf, &next) != 0) {
+			return OSP_ERR_INVALID;
+		}
+		r = osp_transport_send_apdu(c->transport, c->framing, buf.buf, buf.wr);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = client_recv_get_response(c, &resp);
+		if (r != OSP_OK) {
+			return r;
+		}
+	}
+
+	if (resp.type != OSP_GET_RESP_BLOCK_LAST) {
+		return OSP_ERR_INVALID;
+	}
+
+	osp_buf_t vbuf;
+	osp_buf_init(&vbuf, acc, acc_len);
+	vbuf.wr = acc_len;
+	return osp_value_read(&vbuf, result) == OSP_OK ? OSP_OK : OSP_ERR_INVALID;
 }
 
 /* ── SET ─────────────────────────────────────────────────────────────────── */
@@ -216,7 +277,7 @@ osp_err_t osp_client_set(osp_client_t *c, uint16_t class_id, const osp_obis_t *o
 
 	osp_set_request_t req;
 	memset(&req, 0, sizeof(req));
-	req.type = OSP_GET_NORMAL;
+	req.type = OSP_SET_NORMAL;
 	req.invoke_id_priority = OSP_IIDP(++c->invoke_id, 0);
 	req.as.normal.items[0].attr.class_id = class_id;
 	req.as.normal.items[0].attr.instance_id = *obis;
@@ -244,7 +305,7 @@ osp_err_t osp_client_set(osp_client_t *c, uint16_t class_id, const osp_obis_t *o
 		return OSP_ERR_INVALID;
 	}
 
-	return (resp.as.normal.result == OSP_DAR_SUCCESS) ? OSP_OK : OSP_ERR_NOT_FOUND;
+	return (resp.type == OSP_SET_RESP_NORMAL && resp.as.normal.result == OSP_DAR_SUCCESS) ? OSP_OK : OSP_ERR_NOT_FOUND;
 }
 
 /* ── ACTION ──────────────────────────────────────────────────────────────── */
@@ -256,7 +317,7 @@ osp_err_t osp_client_action(osp_client_t *c, uint16_t class_id, const osp_obis_t
 
 	osp_action_request_t req;
 	memset(&req, 0, sizeof(req));
-	req.type = OSP_GET_NORMAL;
+	req.type = OSP_ACTION_NORMAL;
 	req.invoke_id_priority = OSP_IIDP(++c->invoke_id, 0);
 	req.as.normal.items[0].method.class_id = class_id;
 	req.as.normal.items[0].method.instance_id = *obis;

@@ -5,6 +5,11 @@
 
 typedef struct {
 	osp_obis_t logical_name;
+	char calendar_name_active[OSP_MAX_NAME_LEN];
+	uint8_t calendar_name_active_len;
+	char calendar_name_passive[OSP_MAX_NAME_LEN];
+	uint8_t calendar_name_passive_len;
+	osp_datetime_t activate_passive_calendar_time;
 	osp_season_t season_profile_active[OSP_MAX_SEASON_PROFILE];
 	uint8_t season_count_active;
 	osp_week_profile_t week_profile_table_active[OSP_MAX_WEEK_PROFILE];

@@ -8,6 +8,8 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 add_library(openspodes STATIC
     src/codec/codec.c
     src/codec/serialize.c
+    src/codec/ic_serialize.c
+    src/ic/ic_common.c
     src/server/dispatcher.c
     src/ic/data.c
     src/ic/register.c
@@ -46,9 +48,16 @@ add_library(openspodes STATIC
     src/ic/register_table.c
     src/ic/parameter_monitor.c
     src/ic/mbus_slave.c
+    src/ic/mbus_slave_port_setup.c
+    src/ic/spodus_helpers.c
+    src/ic/profile_data_filter.c
     src/ic/table_manager.c
     src/transport/transport.c
     src/service/service.c
+    src/service/xdms.c
+    src/service/notification.c
+    src/service/gbt.c
+    src/service/initiate.c
     src/security/security.c
     src/client/client.c
     src/server/server.c
@@ -101,13 +110,32 @@ target_include_directories(openspodes_test_integration PRIVATE ${cmocka_SOURCE_D
 target_link_libraries(openspodes_test_integration PRIVATE openspodes cmocka)
 add_test(NAME openspodes_test_integration COMMAND openspodes_test_integration)
 
+add_executable(openspodes_test_phase0 tests/test_phase0.c)
+target_include_directories(openspodes_test_phase0 PRIVATE ${cmocka_SOURCE_DIR}/include)
+target_link_libraries(openspodes_test_phase0 PRIVATE openspodes cmocka)
+add_test(NAME openspodes_test_phase0 COMMAND openspodes_test_phase0)
+
+add_executable(gen_ic_golden_vectors tools/gen_ic_golden_vectors.c tests/fixtures/ic_spodes_fixtures.c)
+target_include_directories(gen_ic_golden_vectors PRIVATE tests tests/fixtures)
+target_link_libraries(gen_ic_golden_vectors PRIVATE openspodes)
+
+add_executable(openspodes_test_phase1 tests/test_phase1.c tests/fixtures/ic_spodes_fixtures.c)
+target_include_directories(openspodes_test_phase1 PRIVATE tests tests/fixtures ${cmocka_SOURCE_DIR}/include)
+target_link_libraries(openspodes_test_phase1 PRIVATE openspodes cmocka)
+add_test(NAME openspodes_test_phase1 COMMAND openspodes_test_phase1)
+
+add_executable(openspodes_test_phase2 tests/test_phase2.c)
+target_include_directories(openspodes_test_phase2 PRIVATE ${cmocka_SOURCE_DIR}/include)
+target_link_libraries(openspodes_test_phase2 PRIVATE openspodes cmocka)
+add_test(NAME openspodes_test_phase2 COMMAND openspodes_test_phase2)
+
 if(ENABLE_COVERAGE)
 	find_package(Python3 COMPONENTS Interpreter REQUIRED)
 	add_custom_target(coverage
 		COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
 		COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/coverage_report.py
 		WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-		DEPENDS openspodes_test openspodes_test_golden openspodes_test_ic openspodes_test_errors openspodes_test_integration
+		DEPENDS openspodes_test openspodes_test_golden openspodes_test_ic openspodes_test_errors openspodes_test_integration openspodes_test_phase0 openspodes_test_phase1
 		COMMENT "Run tests and print gcov coverage report"
 	)
 endif()

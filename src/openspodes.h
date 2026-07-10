@@ -99,6 +99,8 @@ struct osp_ic_class {
 	osp_err_t (*get_attr)(const void *inst, uint8_t attr_id, osp_value_t *result);
 	osp_err_t (*set_attr)(void *inst, uint8_t attr_id, const osp_value_t *value);
 	osp_err_t (*invoke)(void *inst, uint8_t method_id, const osp_value_t *param, osp_value_t *result);
+	osp_err_t (*serialize)(const void *inst, osp_buf_t *buf);
+	osp_err_t (*deserialize)(void *inst, osp_buf_t *buf);
 
 	size_t instance_size;
 };
