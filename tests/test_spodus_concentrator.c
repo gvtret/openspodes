@@ -114,6 +114,24 @@ static void test_direct_channel_table(void **state) {
 	assert_int_equal(val.as.array.elements.items[0].as.structure.elements.items[0].as.uint16.value, 200);
 }
 
+static void test_channel_list_builds_profile(void **state) {
+	(void)state;
+	osp_spodus_channel_list_t list;
+	osp_spodus_channel_list_init(&list);
+	osp_spodus_channel_t channel = {.channel_id = 1, .interface_len = 12};
+	memcpy(channel.interface, "RS485_1:9600", channel.interface_len);
+	assert_int_equal(osp_spodus_channel_list_add(&list, &channel), OSP_OK);
+
+	osp_ic_profile_generic_t profile;
+	assert_int_equal(osp_spodus_channel_list_build_profile(&list, &profile), OSP_OK);
+	osp_obis_t channels_obis = osp_spodus_obis_channel_list();
+	assert_true(osp_obis_eq(&profile.logical_name, &channels_obis));
+	assert_int_equal(profile.buffer.row_count, 1);
+	assert_int_equal(profile.buffer.rows[0].cells[0].as.uint8.value, 1);
+	assert_int_equal(profile.buffer.rows[0].cells[1].as.octetstring.len, 12);
+	assert_memory_equal(profile.buffer.rows[0].cells[1].as.octetstring.data, "RS485_1:9600", 12);
+}
+
 static void test_poll_meter_updates_cache(void **state) {
 	(void)state;
 	mock_crypto_init();
@@ -213,6 +231,9 @@ static void test_concentrator_server_get_objects(void **state) {
 	osp_spodus_direct_channel_t row = {.direct_id = 200, .meter_id_len = desc.meter_id_len, .channel_id = 1};
 	memcpy(row.meter_id, mid, desc.meter_id_len);
 	assert_int_equal(osp_spodus_direct_table_add(&conc.direct, &row), OSP_OK);
+	osp_spodus_channel_t channel = {.channel_id = 1, .interface_len = 12};
+	memcpy(channel.interface, "RS485_1:9600", channel.interface_len);
+	assert_int_equal(osp_spodus_channel_list_add(&conc.channels, &channel), OSP_OK);
 
 	osp_server_t server;
 	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
@@ -247,12 +268,20 @@ static void test_concentrator_server_get_objects(void **state) {
 	assert_int_equal(direct_table.tag, OSP_TAG_ARRAY);
 	assert_int_equal(direct_table.as.array.elements.count, 1);
 	assert_int_equal(direct_table.as.array.elements.items[0].as.structure.elements.items[0].as.uint16.value, 200);
+
+	osp_obis_t channels_obis = osp_spodus_obis_channel_list();
+	osp_value_t channels;
+	assert_int_equal(osp_client_get(&client, 7, &channels_obis, 2, &channels), OSP_OK);
+	assert_int_equal(channels.tag, OSP_TAG_ARRAY);
+	assert_int_equal(channels.as.array.elements.count, 1);
+	assert_int_equal(channels.as.array.elements.items[0].as.structure.elements.items[0].as.uint8.value, 1);
 }
 
 int main(void) {
 	const struct CMUnitTest tests[] = {
 	    cmocka_unit_test(test_registry_meter_list_and_cache),
 	    cmocka_unit_test(test_direct_channel_table),
+	    cmocka_unit_test(test_channel_list_builds_profile),
 	    cmocka_unit_test(test_poll_meter_updates_cache),
 	    cmocka_unit_test(test_proxy_forward_roundtrip),
 	    cmocka_unit_test(test_concentrator_server_get_objects),

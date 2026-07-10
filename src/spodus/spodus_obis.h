@@ -19,6 +19,10 @@ static inline osp_obis_t osp_spodus_obis_direct_channel_table(void) {
 	return (osp_obis_t){0, 0, 94, 7, 129, 255};
 }
 
+static inline osp_obis_t osp_spodus_obis_channel_list(void) {
+	return (osp_obis_t){0, 0, 94, 7, 130, 255};
+}
+
 static inline osp_obis_t osp_spodus_obis_ivke_logical_name(void) {
 	return (osp_obis_t){0, 0, 42, 0, 0, 255};
 }

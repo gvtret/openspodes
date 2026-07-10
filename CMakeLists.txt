@@ -68,6 +68,7 @@ add_library(openspodes STATIC
     src/server/server.c
     src/spodus/meter_registry.c
     src/spodus/direct_channel.c
+    src/spodus/channel_list.c
     src/spodus/concentrator.c
     src/spodus/spodus_server.c
 )

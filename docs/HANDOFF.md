@@ -46,7 +46,7 @@ ctest --test-dir build-linux --output-on-failure
 | `openspodes_test_phase0` | `tests/test_phase0.c` | 7 | SPODUS helpers |
 | `openspodes_test_phase1` | `tests/test_phase1.c` | 8 | Table manager / profile filter |
 | `openspodes_test_phase2` | `tests/test_phase2.c` | 11 | WithList codec, blocks, GBT confirmed + gap recovery |
-| `openspodes_test_spodus` | `tests/test_spodus_concentrator.c` | 5 | СПОДУС registry, direct table, poll, proxy, server GET |
+| `openspodes_test_spodus` | `tests/test_spodus_concentrator.c` | 6 | СПОДУС registry, channel/direct tables, poll, proxy, server GET |
 | `openspodes_test_gost` | `tests/test_gost_crypto.c` | 14 | Streebog, Kuznyechik, GOST3410, VKO, glo suite 8 |
 | `openspodes_test_security` | `tests/test_security_glo.c` | 3 | glo/ded-ciphering E.5 + roundtrip (OpenSSL) |
 | `openspodes_loopback_cli` | `examples/loopback_cli.c` | demo | In-process GET/SET demo (CTest) |
@@ -101,7 +101,8 @@ ctest --test-dir build-linux --output-on-failure
 | `osp_spodus_concentrator_*` | ✅ downstream links + connect |
 | `osp_spodus_poll_meter` | ✅ GET + cache |
 | `osp_spodus_proxy_forward` | ✅ transparent APDU pass-through |
-| `osp_spodus_concentrator_register_server` | ✅ IC Data 0.0.94.7.128/129.255 on dispatcher |
+| `osp_spodus_channel_list_*` | ✅ channel list ProfileGeneric (§10.4) |
+| `osp_spodus_concentrator_register_server` | ✅ meter/direct Data + channel-list ProfileGeneric on dispatcher |
 
 ## IC Classes (40 implemented)
 Data(1) Register(3) ExtRegister(4) DemandRegister(5) RegisterActivation(6)
@@ -125,7 +126,7 @@ TableManager(8200) ProfileDataFilter(8201)
 ## Next steps (optional)
 1. Bi-directional GBT streaming session
 2. Selective access encode/decode for ProfileGeneric
-3. СПОДУС channel list / discovered meters / access policies (§10.4+)
+3. СПОДУС discovered meters / access policies (§10.5–10.6)
 
 ## User Instructions (MUST follow)
 - **Consult doc-rag-remote when implementing features**

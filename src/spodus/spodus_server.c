@@ -104,10 +104,18 @@ osp_err_t osp_spodus_concentrator_register_server(osp_server_t *server, osp_spod
 	}
 	osp_ic_spodus_data_init(&conc->server_objects.meter_list, osp_spodus_obis_meter_list(), conc, OSP_SPODUS_DATA_METER_LIST);
 	osp_ic_spodus_data_init(&conc->server_objects.direct_table, osp_spodus_obis_direct_channel_table(), conc, OSP_SPODUS_DATA_DIRECT_TABLE);
-
-	osp_err_t r = osp_server_register(server, osp_ic_spodus_data_class(), &conc->server_objects.meter_list);
+	osp_err_t r = osp_spodus_channel_list_build_profile(&conc->channels, &conc->server_objects.channel_list);
 	if (r != OSP_OK) {
 		return r;
 	}
-	return osp_server_register(server, osp_ic_spodus_data_class(), &conc->server_objects.direct_table);
+
+	r = osp_server_register(server, osp_ic_spodus_data_class(), &conc->server_objects.meter_list);
+	if (r != OSP_OK) {
+		return r;
+	}
+	r = osp_server_register(server, osp_ic_spodus_data_class(), &conc->server_objects.direct_table);
+	if (r != OSP_OK) {
+		return r;
+	}
+	return osp_server_register(server, osp_ic_profile_generic_class(), &conc->server_objects.channel_list);
 }

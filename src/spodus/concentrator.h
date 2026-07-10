@@ -6,6 +6,7 @@
 #define OSP_SPODUS_CONCENTRATOR_H
 
 #include "direct_channel.h"
+#include "channel_list.h"
 #include "../client/client.h"
 
 #ifdef __cplusplus
@@ -28,6 +29,7 @@ typedef struct {
 typedef struct {
 	osp_ic_spodus_data_t meter_list;
 	osp_ic_spodus_data_t direct_table;
+	osp_ic_profile_generic_t channel_list;
 } osp_spodus_server_objects_t;
 
 typedef struct {
@@ -42,6 +44,7 @@ typedef struct {
 struct osp_spodus_concentrator {
 	osp_spodus_meter_registry_t registry;
 	osp_spodus_direct_channel_table_t direct;
+	osp_spodus_channel_list_t channels;
 	osp_spodus_downstream_t downstream[OSP_SPODUS_MAX_METERS];
 	uint8_t downstream_count;
 	osp_spodus_server_objects_t server_objects;
