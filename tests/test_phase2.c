@@ -163,6 +163,35 @@ static void test_gbt_roundtrip(void **state) {
 	assert_int_equal(out.block_data_len, 5);
 }
 
+static void test_action_pblock_golden(void **state) {
+	(void)state;
+	const uint8_t golden_next_req[] = {0xC3, 0x02, 0xC1, 0x00, 0x00, 0x00, 0x02};
+	const uint8_t golden_next_resp[] = {0xC7, 0x04, 0xC1, 0x00, 0x00, 0x00, 0x01};
+
+	osp_action_request_t req;
+	memset(&req, 0, sizeof(req));
+	req.type = OSP_ACTION_NEXT_PBLOCK;
+	req.invoke_id_priority = 0xC1;
+	req.as.next_pblock.block_number = 2;
+
+	uint8_t mem[32];
+	osp_buf_t w;
+	osp_buf_init(&w, mem, sizeof(mem));
+	assert_int_equal(osp_action_request_encode(&w, &req), 0);
+	assert_int_equal(w.wr, sizeof(golden_next_req));
+	assert_memory_equal(mem, golden_next_req, sizeof(golden_next_req));
+
+	osp_action_response_t resp;
+	memset(&resp, 0, sizeof(resp));
+	resp.type = OSP_ACTION_RESP_NEXT_PBLOCK;
+	resp.invoke_id_priority = 0xC1;
+	resp.as.next_pblock.block_number = 1;
+	osp_buf_init(&w, mem, sizeof(mem));
+	assert_int_equal(osp_action_response_encode(&w, &resp), 0);
+	assert_int_equal(w.wr, sizeof(golden_next_resp));
+	assert_memory_equal(mem, golden_next_resp, sizeof(golden_next_resp));
+}
+
 int main(void) {
 	const struct CMUnitTest tests[] = {
 	    cmocka_unit_test(test_get_with_list_golden),
@@ -170,6 +199,7 @@ int main(void) {
 	    cmocka_unit_test(test_data_notification_roundtrip),
 	    cmocka_unit_test(test_event_notification_roundtrip),
 	    cmocka_unit_test(test_gbt_roundtrip),
+	    cmocka_unit_test(test_action_pblock_golden),
 	};
 	return cmocka_run_group_tests(tests, NULL, NULL);
 }

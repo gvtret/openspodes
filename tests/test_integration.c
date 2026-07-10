@@ -16,6 +16,7 @@
 #include "../src/server/server.h"
 #include "../src/ic/data.h"
 #include "../src/ic/disconnect_control.h"
+#include "../src/ic/image_transfer.h"
 #include "../src/security/security.h"
 #include "../src/codec/serialize.h"
 #include "mock_transport.h"
@@ -430,6 +431,55 @@ static void test_set_block_transfer(void **state) {
 	}
 }
 
+static void test_client_set_via_blocks(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
+
+	osp_obis_t obis = {1, 0, 2, 0, 0, 255};
+	osp_ic_data_t data_obj;
+	osp_ic_data_init(&data_obj, obis);
+	data_obj.value = osp_val_u32(0);
+	osp_server_register(&server, osp_ic_data_class(), &data_obj);
+
+	osp_client_t client;
+	make_pair(&pair, &server, &client);
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+
+	osp_value_t to_write = make_octets(0x5A, 40);
+	assert_int_equal(osp_client_set(&client, 1, &obis, 1, &to_write), OSP_OK);
+
+	osp_value_t got;
+	assert_int_equal(osp_client_get(&client, 1, &obis, 1, &got), OSP_OK);
+	assert_int_equal(got.tag, OSP_TAG_OCTETSTRING);
+	assert_int_equal(got.as.octetstring.len, 40);
+}
+
+static void test_action_pblock_invoke(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
+
+	osp_obis_t obis = {0, 0, 44, 0, 0, 255};
+	osp_ic_image_transfer_t img;
+	osp_ic_image_transfer_init(&img, obis);
+	img.image_transfer_status = OSP_IMAGE_IDLE;
+	osp_server_register(&server, osp_ic_image_transfer_class(), &img);
+
+	osp_client_t client;
+	make_pair(&pair, &server, &client);
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+
+	osp_value_t big_param = make_octets(0xAB, 80);
+	osp_value_t result;
+	assert_int_equal(osp_client_action(&client, 18, &obis, 2, &big_param, &result), OSP_OK);
+	assert_int_equal(img.image_transfer_status, OSP_IMAGE_TRANSFER_RUNNING);
+}
+
 /* ── Runner ──────────────────────────────────────────────────────────────── */
 
 int main(void) {
@@ -440,6 +490,8 @@ int main(void) {
 	    cmocka_unit_test(test_client_release_disconnect),
 	    cmocka_unit_test(test_get_block_transfer),
 	    cmocka_unit_test(test_set_block_transfer),
+	    cmocka_unit_test(test_client_set_via_blocks),
+	    cmocka_unit_test(test_action_pblock_invoke),
 	};
 	return cmocka_run_group_tests(tests, NULL, NULL);
 }

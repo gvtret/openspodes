@@ -270,15 +270,103 @@ osp_err_t osp_client_get(osp_client_t *c, uint16_t class_id, const osp_obis_t *o
 
 /* ── SET ─────────────────────────────────────────────────────────────────── */
 
+static osp_err_t client_recv_set_response(osp_client_t *c, osp_set_response_t *resp) {
+	uint32_t rx_len;
+	osp_err_t r = osp_transport_recv_apdu(c->transport, c->framing, c->rx_buf, sizeof(c->rx_buf), &rx_len, 5000);
+	if (r != OSP_OK) {
+		return r;
+	}
+	osp_buf_t rbuf;
+	osp_buf_init(&rbuf, c->rx_buf, rx_len);
+	rbuf.wr = rx_len;
+	if (osp_set_response_decode(&rbuf, resp) != 0) {
+		return OSP_ERR_INVALID;
+	}
+	return OSP_OK;
+}
+
+static osp_err_t client_set_blocks(osp_client_t *c, uint8_t invoke_id_priority, uint16_t class_id, const osp_obis_t *obis,
+                                  uint8_t attr_id, const uint8_t *value_bytes, uint32_t value_len) {
+	uint32_t offset = 0;
+	uint32_t block_number = 1;
+	osp_buf_t buf;
+
+	while (offset < value_len) {
+		uint32_t chunk = value_len - offset;
+		if (chunk > OSP_CLIENT_BLOCK_SIZE) {
+			chunk = OSP_CLIENT_BLOCK_SIZE;
+		}
+		bool last = (offset + chunk >= value_len);
+
+		osp_set_request_t req;
+		memset(&req, 0, sizeof(req));
+		req.invoke_id_priority = invoke_id_priority;
+		if (offset == 0) {
+			req.type = OSP_SET_WITH_FIRST_DATABLOCK;
+			req.as.first_datablock.attr.class_id = class_id;
+			req.as.first_datablock.attr.instance_id = *obis;
+			req.as.first_datablock.attr.attribute_id = attr_id;
+			req.as.first_datablock.datablock.last_block = last;
+			req.as.first_datablock.datablock.block_number = block_number;
+			req.as.first_datablock.datablock.raw_data_len = chunk;
+			memcpy(req.as.first_datablock.datablock.raw_data, &value_bytes[offset], chunk);
+		} else {
+			req.type = OSP_SET_WITH_DATABLOCK;
+			req.as.datablock.datablock.last_block = last;
+			req.as.datablock.datablock.block_number = block_number;
+			req.as.datablock.datablock.raw_data_len = chunk;
+			memcpy(req.as.datablock.datablock.raw_data, &value_bytes[offset], chunk);
+		}
+
+		osp_buf_init(&buf, c->tx_buf, sizeof(c->tx_buf));
+		if (osp_set_request_encode(&buf, &req) != 0) {
+			return OSP_ERR_INVALID;
+		}
+		osp_err_t r = osp_transport_send_apdu(c->transport, c->framing, buf.buf, buf.wr);
+		if (r != OSP_OK) {
+			return r;
+		}
+
+		osp_set_response_t resp;
+		r = client_recv_set_response(c, &resp);
+		if (r != OSP_OK) {
+			return r;
+		}
+		if (last) {
+			if (resp.type != OSP_SET_RESP_LAST_DATABLOCK || resp.as.last_datablock.result != OSP_DAR_SUCCESS) {
+				return OSP_ERR_NOT_FOUND;
+			}
+		} else if (resp.type != OSP_SET_RESP_DATABLOCK) {
+			return OSP_ERR_NOT_FOUND;
+		}
+
+		offset += chunk;
+		block_number++;
+	}
+	return OSP_OK;
+}
+
 osp_err_t osp_client_set(osp_client_t *c, uint16_t class_id, const osp_obis_t *obis, uint8_t attr_id, const osp_value_t *value) {
 	if (!c || !c->associated || !obis || !value) {
 		return OSP_ERR_INVALID;
 	}
 
+	uint8_t value_bytes[OSP_CLIENT_REASSEMBLE_MAX];
+	osp_buf_t w;
+	osp_buf_init(&w, value_bytes, sizeof(value_bytes));
+	if (osp_value_write(&w, value) != OSP_OK) {
+		return OSP_ERR_INVALID;
+	}
+
+	uint8_t iidp = OSP_IIDP(++c->invoke_id, 0);
+	if (w.wr > OSP_CLIENT_BLOCK_SIZE) {
+		return client_set_blocks(c, iidp, class_id, obis, attr_id, value_bytes, w.wr);
+	}
+
 	osp_set_request_t req;
 	memset(&req, 0, sizeof(req));
 	req.type = OSP_SET_NORMAL;
-	req.invoke_id_priority = OSP_IIDP(++c->invoke_id, 0);
+	req.invoke_id_priority = iidp;
 	req.as.normal.items[0].attr.class_id = class_id;
 	req.as.normal.items[0].attr.instance_id = *obis;
 	req.as.normal.items[0].attr.attribute_id = attr_id;
@@ -291,18 +379,15 @@ osp_err_t osp_client_set(osp_client_t *c, uint16_t class_id, const osp_obis_t *o
 		return OSP_ERR_INVALID;
 	}
 
-	uint32_t rx_len;
-	osp_err_t r = client_send_recv(c, buf.buf, buf.wr, c->rx_buf, sizeof(c->rx_buf), &rx_len);
+	osp_err_t r = osp_transport_send_apdu(c->transport, c->framing, buf.buf, buf.wr);
 	if (r != OSP_OK) {
 		return r;
 	}
 
 	osp_set_response_t resp;
-	osp_buf_t rbuf;
-	osp_buf_init(&rbuf, c->rx_buf, rx_len);
-	rbuf.wr = rx_len; /* data already received */
-	if (osp_set_response_decode(&rbuf, &resp) != 0) {
-		return OSP_ERR_INVALID;
+	r = client_recv_set_response(c, &resp);
+	if (r != OSP_OK) {
+		return r;
 	}
 
 	return (resp.type == OSP_SET_RESP_NORMAL && resp.as.normal.result == OSP_DAR_SUCCESS) ? OSP_OK : OSP_ERR_NOT_FOUND;
@@ -310,15 +395,166 @@ osp_err_t osp_client_set(osp_client_t *c, uint16_t class_id, const osp_obis_t *o
 
 /* ── ACTION ──────────────────────────────────────────────────────────────── */
 
+static osp_err_t client_recv_action_response(osp_client_t *c, osp_action_response_t *resp) {
+	uint32_t rx_len;
+	osp_err_t r = osp_transport_recv_apdu(c->transport, c->framing, c->rx_buf, sizeof(c->rx_buf), &rx_len, 5000);
+	if (r != OSP_OK) {
+		return r;
+	}
+	osp_buf_t rbuf;
+	osp_buf_init(&rbuf, c->rx_buf, rx_len);
+	rbuf.wr = rx_len;
+	if (osp_action_response_decode(&rbuf, resp) != 0) {
+		return OSP_ERR_INVALID;
+	}
+	return OSP_OK;
+}
+
+static osp_err_t client_action_pblocks(osp_client_t *c, uint8_t invoke_id_priority, uint16_t class_id, const osp_obis_t *obis,
+                                      uint8_t method_id, const uint8_t *param_bytes, uint32_t param_len,
+                                      osp_action_response_t *out_resp) {
+	uint32_t offset = 0;
+	uint32_t block_number = 1;
+	osp_buf_t buf;
+
+	while (offset < param_len) {
+		uint32_t chunk = param_len - offset;
+		if (chunk > OSP_CLIENT_BLOCK_SIZE) {
+			chunk = OSP_CLIENT_BLOCK_SIZE;
+		}
+		bool last = (offset + chunk >= param_len);
+
+		osp_action_request_t req;
+		memset(&req, 0, sizeof(req));
+		req.invoke_id_priority = invoke_id_priority;
+		if (offset == 0) {
+			req.type = OSP_ACTION_WITH_FIRST_PBLOCK;
+			req.as.first_pblock.method.class_id = class_id;
+			req.as.first_pblock.method.instance_id = *obis;
+			req.as.first_pblock.method.method_id = method_id;
+			req.as.first_pblock.pblock.last_block = last;
+			req.as.first_pblock.pblock.block_number = block_number;
+			req.as.first_pblock.pblock.raw_data_len = chunk;
+			memcpy(req.as.first_pblock.pblock.raw_data, &param_bytes[offset], chunk);
+		} else {
+			req.type = OSP_ACTION_WITH_PBLOCK;
+			req.as.pblock.pblock.last_block = last;
+			req.as.pblock.pblock.block_number = block_number;
+			req.as.pblock.pblock.raw_data_len = chunk;
+			memcpy(req.as.pblock.pblock.raw_data, &param_bytes[offset], chunk);
+		}
+
+		osp_buf_init(&buf, c->tx_buf, sizeof(c->tx_buf));
+		if (osp_action_request_encode(&buf, &req) != 0) {
+			return OSP_ERR_INVALID;
+		}
+		osp_err_t r = osp_transport_send_apdu(c->transport, c->framing, buf.buf, buf.wr);
+		if (r != OSP_OK) {
+			return r;
+		}
+
+		r = client_recv_action_response(c, out_resp);
+		if (r != OSP_OK) {
+			return r;
+		}
+		if (last) {
+			return OSP_OK;
+		}
+		if (out_resp->type != OSP_ACTION_RESP_NEXT_PBLOCK) {
+			return OSP_ERR_NOT_FOUND;
+		}
+
+		offset += chunk;
+		block_number++;
+	}
+	return OSP_ERR_INVALID;
+}
+
+static osp_err_t client_action_finish_response(osp_client_t *c, uint8_t invoke_id_priority, osp_action_response_t *resp,
+                                              osp_value_t *result) {
+	if (resp->type == OSP_ACTION_RESP_NORMAL) {
+		if (resp->as.normal.items[0].return_data.tag != OSP_TAG_NULL) {
+			*result = resp->as.normal.items[0].return_data;
+		} else {
+			*result = osp_val_null();
+		}
+		return (resp->as.normal.items[0].result == OSP_DAR_SUCCESS) ? OSP_OK : OSP_ERR_NOT_FOUND;
+	}
+
+	uint8_t acc[OSP_CLIENT_REASSEMBLE_MAX];
+	uint32_t acc_len = 0;
+	while (resp->type == OSP_ACTION_RESP_WITH_PBLOCK) {
+		if (acc_len + resp->as.pblock.pblock.raw_data_len > sizeof(acc)) {
+			return OSP_ERR_NOMEM;
+		}
+		memcpy(&acc[acc_len], resp->as.pblock.pblock.raw_data, resp->as.pblock.pblock.raw_data_len);
+		acc_len += resp->as.pblock.pblock.raw_data_len;
+		if (resp->as.pblock.pblock.last_block) {
+			break;
+		}
+
+		osp_action_request_t next;
+		memset(&next, 0, sizeof(next));
+		next.type = OSP_ACTION_NEXT_PBLOCK;
+		next.invoke_id_priority = invoke_id_priority;
+		next.as.next_pblock.block_number = resp->as.pblock.pblock.block_number;
+
+		osp_buf_t buf;
+		osp_buf_init(&buf, c->tx_buf, sizeof(c->tx_buf));
+		if (osp_action_request_encode(&buf, &next) != 0) {
+			return OSP_ERR_INVALID;
+		}
+		osp_err_t r = osp_transport_send_apdu(c->transport, c->framing, buf.buf, buf.wr);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = client_recv_action_response(c, resp);
+		if (r != OSP_OK) {
+			return r;
+		}
+	}
+
+	osp_buf_t vbuf;
+	osp_buf_init(&vbuf, acc, acc_len);
+	vbuf.wr = acc_len;
+	if (osp_value_read(&vbuf, result) != OSP_OK) {
+		return OSP_ERR_INVALID;
+	}
+	return OSP_OK;
+}
+
 osp_err_t osp_client_action(osp_client_t *c, uint16_t class_id, const osp_obis_t *obis, uint8_t method_id, const osp_value_t *param, osp_value_t *result) {
 	if (!c || !c->associated || !obis || !result) {
 		return OSP_ERR_INVALID;
 	}
 
+	uint8_t param_bytes[OSP_CLIENT_REASSEMBLE_MAX];
+	uint32_t param_len = 0;
+	if (param && param->tag != OSP_TAG_NULL) {
+		osp_buf_t w;
+		osp_buf_init(&w, param_bytes, sizeof(param_bytes));
+		if (osp_value_write(&w, param) != OSP_OK) {
+			return OSP_ERR_INVALID;
+		}
+		param_len = w.wr;
+	}
+
+	uint8_t iidp = OSP_IIDP(++c->invoke_id, 0);
+	osp_action_response_t resp;
+	osp_err_t r;
+
+	if (param_len > OSP_CLIENT_BLOCK_SIZE) {
+		r = client_action_pblocks(c, iidp, class_id, obis, method_id, param_bytes, param_len, &resp);
+		if (r != OSP_OK) {
+			return r;
+		}
+		return client_action_finish_response(c, iidp, &resp, result);
+	}
+
 	osp_action_request_t req;
 	memset(&req, 0, sizeof(req));
 	req.type = OSP_ACTION_NORMAL;
-	req.invoke_id_priority = OSP_IIDP(++c->invoke_id, 0);
+	req.invoke_id_priority = iidp;
 	req.as.normal.items[0].method.class_id = class_id;
 	req.as.normal.items[0].method.instance_id = *obis;
 	req.as.normal.items[0].method.method_id = method_id;
@@ -330,26 +566,16 @@ osp_err_t osp_client_action(osp_client_t *c, uint16_t class_id, const osp_obis_t
 		return OSP_ERR_INVALID;
 	}
 
-	uint32_t rx_len;
-	osp_err_t r = client_send_recv(c, buf.buf, buf.wr, c->rx_buf, sizeof(c->rx_buf), &rx_len);
+	r = osp_transport_send_apdu(c->transport, c->framing, buf.buf, buf.wr);
 	if (r != OSP_OK) {
 		return r;
 	}
 
-	osp_action_response_t resp;
-	osp_buf_t rbuf;
-	osp_buf_init(&rbuf, c->rx_buf, rx_len);
-	rbuf.wr = rx_len; /* data already received */
-	if (osp_action_response_decode(&rbuf, &resp) != 0) {
-		return OSP_ERR_INVALID;
+	r = client_recv_action_response(c, &resp);
+	if (r != OSP_OK) {
+		return r;
 	}
-
-	if (resp.as.normal.items[0].return_data.tag != OSP_TAG_NULL) {
-		*result = resp.as.normal.items[0].return_data;
-	} else {
-		*result = osp_val_null();
-	}
-	return (resp.as.normal.items[0].result == OSP_DAR_SUCCESS) ? OSP_OK : OSP_ERR_NOT_FOUND;
+	return client_action_finish_response(c, iidp, &resp, result);
 }
 
 /* ── Release ─────────────────────────────────────────────────────────────── */
