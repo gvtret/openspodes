@@ -599,6 +599,90 @@ static void test_security_hls_errors(void **state) {
 	osp_sec_context_init(NULL, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
 }
 
+static void setup_connected_lowest_client(osp_client_t *client, mock_transport_pair_t *pair, osp_server_t *server) {
+	mock_crypto_init();
+	mock_transport_pair_init(pair);
+
+	osp_server_init(server, &pair->server_transport, OSP_FRAMING_NONE);
+	osp_ic_data_t data_obj;
+	osp_ic_data_init(&data_obj, (osp_obis_t){0, 0, 1, 0, 0, 255});
+	data_obj.value = osp_val_u32(1);
+	osp_server_register(server, osp_ic_data_class(), &data_obj);
+
+	osp_sec_context_t sec;
+	osp_sec_context_init(&sec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
+	osp_server_set_security(server, &sec);
+
+	pair->client_transport.send = loopback_send;
+	pair->client_transport.recv = loopback_recv;
+	pair->client_transport.ctx = pair;
+	g_server = server;
+
+	osp_client_init(client, &pair->client_transport, OSP_FRAMING_NONE);
+	osp_client_set_security(client, &sec);
+	assert_int_equal(osp_client_connect(client, 5000), OSP_OK);
+}
+
+static bool g_corrupt_next_recv;
+
+static osp_err_t corrupt_next_recv(void *ctx, uint8_t *buf, uint32_t size, uint32_t *out_len, uint32_t timeout) {
+	mock_transport_pair_t *p = (mock_transport_pair_t *)ctx;
+	if (g_corrupt_next_recv) {
+		g_corrupt_next_recv = false;
+		(void)timeout;
+		buf[0] = 0x00;
+		*out_len = 1;
+		return OSP_OK;
+	}
+	return mock_recv_from_peer(&p->client_rx, buf, size, out_len, timeout);
+}
+
+static void test_client_get_decode_error(void **state) {
+	(void)state;
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_client_t client;
+
+	setup_connected_lowest_client(&client, &pair, &server);
+	g_corrupt_next_recv = true;
+	pair.client_transport.recv = corrupt_next_recv;
+
+	osp_value_t result;
+	osp_obis_t obis = {0, 0, 1, 0, 0, 255};
+	assert_int_equal(osp_client_get(&client, 1, &obis, 2, &result), OSP_ERR_INVALID);
+	g_server = NULL;
+	g_corrupt_next_recv = false;
+}
+
+static void test_client_set_not_found(void **state) {
+	(void)state;
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_client_t client;
+
+	setup_connected_lowest_client(&client, &pair, &server);
+
+	osp_value_t val = osp_val_u32(9);
+	osp_obis_t missing = {9, 9, 9, 9, 9, 9};
+	assert_int_equal(osp_client_set(&client, 1, &missing, 2, &val), OSP_ERR_NOT_FOUND);
+	g_server = NULL;
+}
+
+static void test_client_get_send_failure(void **state) {
+	(void)state;
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_client_t client;
+
+	setup_connected_lowest_client(&client, &pair, &server);
+	pair.client_transport.send = fail_send;
+
+	osp_value_t result;
+	osp_obis_t obis = {0, 0, 1, 0, 0, 255};
+	assert_int_equal(osp_client_get(&client, 1, &obis, 2, &result), OSP_ERR_NOMEM);
+	g_server = NULL;
+}
+
 static void test_server_invalid_and_unsupported(void **state) {
 	(void)state;
 	mock_transport_pair_t pair;
@@ -665,6 +749,9 @@ int main(void) {
 	    cmocka_unit_test(test_client_aare_rejected),
 	    cmocka_unit_test(test_client_bad_aare_response),
 	    cmocka_unit_test(test_security_hls_errors),
+	    cmocka_unit_test(test_client_get_decode_error),
+	    cmocka_unit_test(test_client_set_not_found),
+	    cmocka_unit_test(test_client_get_send_failure),
 	    cmocka_unit_test(test_server_invalid_and_unsupported),
 	    cmocka_unit_test(test_server_init_errors),
 	};
