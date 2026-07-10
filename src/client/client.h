@@ -108,6 +108,9 @@ osp_err_t osp_client_disconnect(osp_client_t *c);
 /* Receive unsolicited data-notification APDU */
 osp_err_t osp_client_recv_data_notification(osp_client_t *c, osp_data_notification_t *dn, uint32_t timeout_ms);
 
+/* Receive unsolicited event-notification APDU (0xC2) */
+osp_err_t osp_client_recv_event_notification(osp_client_t *c, osp_event_notification_t *ev, uint32_t timeout_ms);
+
 #ifdef __cplusplus
 }
 #endif

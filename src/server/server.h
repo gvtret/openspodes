@@ -91,6 +91,9 @@ void osp_server_set_gbt_window(osp_server_t *s, uint8_t window);
 /* Enable glo-ciphering (rx unprotects requests, tx protects responses) */
 void osp_server_set_ciphering(osp_server_t *s, const osp_sec_context_t *tx, const osp_sec_context_t *rx);
 
+/* Send unsolicited event-notification (0xC2) to the associated client */
+osp_err_t osp_server_send_event_notification(osp_server_t *s, const osp_event_notification_t *ev);
+
 /* Initialize server */
 osp_err_t osp_server_init(osp_server_t *s, osp_transport_t *transport, osp_framing_type_t framing);
 

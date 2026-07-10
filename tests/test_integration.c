@@ -852,6 +852,37 @@ static void test_push_compact_notification(void **state) {
 	assert_int_equal(decoded.as.array.elements.items[0].as.structure.elements.items[1].as.uint16.value, 0x0A0B);
 }
 
+static void test_server_event_notification(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
+
+	osp_obis_t obis = {0, 0, 0x60, 0, 0, 255};
+	osp_ic_data_t data_obj;
+	osp_ic_data_init(&data_obj, obis);
+	data_obj.value = osp_val_u32(77);
+	osp_server_register(&server, osp_ic_data_class(), &data_obj);
+
+	osp_client_t client;
+	make_pair(&pair, &server, &client);
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+
+	osp_event_notification_t ev = {0};
+	ev.attribute.class_id = 1;
+	ev.attribute.instance_id = obis;
+	ev.attribute.attribute_id = 1;
+	ev.value = osp_val_u32(77);
+
+	assert_int_equal(osp_server_send_event_notification(&server, &ev), OSP_OK);
+
+	osp_event_notification_t recv_ev;
+	assert_int_equal(osp_client_recv_event_notification(&client, &recv_ev, 5000), OSP_OK);
+	assert_int_equal(recv_ev.attribute.class_id, 1);
+	assert_int_equal(recv_ev.value.as.uint32.value, 77);
+}
+
 #ifdef OSP_HAVE_OPENSSL_GCM
 
 static void setup_glo_cipher_contexts(osp_sec_context_t *client_tx, osp_sec_context_t *client_rx, osp_sec_context_t *server_tx,
@@ -980,6 +1011,7 @@ int main(void) {
 	    cmocka_unit_test(test_action_return_param_blocks),
 	    cmocka_unit_test(test_compact_data_capture_via_dispatcher),
 	    cmocka_unit_test(test_push_compact_notification),
+	    cmocka_unit_test(test_server_event_notification),
 #ifdef OSP_HAVE_OPENSSL_GCM
 	    cmocka_unit_test(test_glo_get_ciphered),
 	    cmocka_unit_test(test_ded_get_ciphered),

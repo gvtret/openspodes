@@ -32,7 +32,7 @@ extern "C" {
 #define OSP_TAG_SET_RESPONSE            0xC5
 #define OSP_TAG_ACTION_RESPONSE         0xC7
 #define OSP_TAG_EXCEPTION_RESPONSE      0xD8
-#define OSP_TAG_CONFIRMED_SERVICE_ERROR 0xDC
+#define OSP_TAG_CONFIRMED_SERVICE_ERROR 0x0E
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  COMMON TYPES
@@ -419,12 +419,35 @@ int osp_data_block_sa_decode(osp_buf_t *buf, osp_data_block_t *block);
 
 typedef struct {
 	uint8_t invoke_id_priority;
-	uint8_t error_code;    /* service error code */
-	uint8_t service_error; /* confirmed-service-error code */
+	uint8_t error_code;    /* state-error (LN exception-response) */
+	uint8_t service_error; /* service-error */
 } osp_exception_response_t;
+
+/* Green Book Table 67 state-error / service-error codes */
+#define OSP_EXC_STATE_SERVICE_NOT_ALLOWED 1
+#define OSP_EXC_STATE_SERVICE_UNKNOWN     2
+#define OSP_EXC_SVC_OPERATION_NOT_POSSIBLE 1
+#define OSP_EXC_SVC_SERVICE_NOT_SUPPORTED  2
+#define OSP_EXC_SVC_OTHER_REASON             3
+#define OSP_EXC_SVC_PDU_TOO_LONG             4
+#define OSP_EXC_SVC_DECIPHERING_ERROR        5
+#define OSP_EXC_SVC_IC_ERROR                 6
 
 int osp_exception_response_encode(osp_buf_t *buf, const osp_exception_response_t *resp);
 int osp_exception_response_decode(osp_buf_t *buf, osp_exception_response_t *resp);
+int osp_exception_response_encode_simple(osp_buf_t *buf, uint8_t state_error, uint8_t service_error);
+
+typedef struct {
+	uint8_t service;
+	uint8_t category;
+	uint8_t value;
+} osp_confirmed_service_error_t;
+
+#define OSP_CSE_SERVICE_INITIATE_ERROR 1
+#define OSP_CSE_CATEGORY_INITIATE      6
+
+int osp_confirmed_service_error_encode(osp_buf_t *buf, const osp_confirmed_service_error_t *err);
+int osp_confirmed_service_error_decode(osp_buf_t *buf, osp_confirmed_service_error_t *err);
 
 #ifdef __cplusplus
 }

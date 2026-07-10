@@ -531,3 +531,38 @@ int osp_exception_response_decode(osp_buf_t *buf, osp_exception_response_t *resp
 	osp_axdr_read_u8(buf, &resp->service_error);
 	return 0;
 }
+
+int osp_exception_response_encode_simple(osp_buf_t *buf, uint8_t state_error, uint8_t service_error) {
+	osp_exception_response_t resp = {0};
+	resp.error_code = state_error;
+	resp.service_error = service_error;
+	return osp_exception_response_encode(buf, &resp);
+}
+
+int osp_confirmed_service_error_encode(osp_buf_t *buf, const osp_confirmed_service_error_t *err) {
+	if (!buf || !err) {
+		return -1;
+	}
+	osp_axdr_write_u8(buf, OSP_TAG_CONFIRMED_SERVICE_ERROR);
+	osp_axdr_write_u8(buf, err->service);
+	osp_axdr_write_u8(buf, err->category);
+	osp_axdr_write_u8(buf, err->value);
+	return 0;
+}
+
+int osp_confirmed_service_error_decode(osp_buf_t *buf, osp_confirmed_service_error_t *err) {
+	if (!buf || !err) {
+		return -1;
+	}
+	uint8_t tag;
+	if (osp_axdr_read_u8(buf, &tag) != OSP_OK || tag != OSP_TAG_CONFIRMED_SERVICE_ERROR) {
+		return -1;
+	}
+	if (osp_axdr_read_u8(buf, &err->service) != OSP_OK) {
+		return -1;
+	}
+	if (osp_axdr_read_u8(buf, &err->category) != OSP_OK) {
+		return -1;
+	}
+	return osp_axdr_read_u8(buf, &err->value) == OSP_OK ? 0 : -1;
+}

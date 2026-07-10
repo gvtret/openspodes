@@ -929,7 +929,13 @@ static void test_server_invalid_and_unsupported(void **state) {
 	req.as.normal.attr.attribute_id = 2;
 	osp_get_request_encode(&buf, &req);
 	mock_send_to_peer(&pair.server_rx, mem, buf.wr);
-	assert_int_equal(osp_server_accept(&server, 5000), OSP_ERR_INVALID);
+	assert_int_equal(osp_server_accept(&server, 5000), OSP_OK);
+	assert_int_equal(pair.client_rx.msg_count, 1);
+	uint8_t exc[8];
+	uint32_t exc_len = 0;
+	assert_int_equal(mock_recv_from_peer(&pair.client_rx, exc, sizeof(exc), &exc_len, 0), OSP_OK);
+	assert_int_equal(exc[0], OSP_TAG_EXCEPTION_RESPONSE);
+	assert_int_equal(exc[2], OSP_EXC_SVC_OPERATION_NOT_POSSIBLE);
 
 	/* Associate first */
 	server.associated = true;

@@ -13,6 +13,7 @@
 #include <string.h>
 
 static osp_err_t server_send(osp_server_t *s, const uint8_t *data, uint32_t len);
+static osp_err_t server_send_exception(osp_server_t *s, uint8_t state_error, uint8_t service_error);
 static osp_err_t handle_get_next(osp_server_t *s, uint8_t invoke_id_priority, uint32_t acked_block);
 static osp_err_t send_action_response(osp_server_t *s, const osp_action_response_t *resp);
 static osp_err_t handle_action_resp_next(osp_server_t *s, uint8_t invoke_id_priority, uint32_t acked_block);
@@ -119,6 +120,27 @@ static osp_err_t server_send(osp_server_t *s, const uint8_t *data, uint32_t len)
 		                              sizeof(s->tx_buf), s->rx_buf, sizeof(s->rx_buf), 5000);
 	}
 	return osp_transport_send_apdu(s->transport, s->framing, send_data, send_len);
+}
+
+static osp_err_t server_send_exception(osp_server_t *s, uint8_t state_error, uint8_t service_error) {
+	osp_buf_t buf;
+	osp_buf_init(&buf, s->tx_buf, sizeof(s->tx_buf));
+	if (osp_exception_response_encode_simple(&buf, state_error, service_error) != 0) {
+		return OSP_ERR_INVALID;
+	}
+	return server_send(s, buf.buf, buf.wr);
+}
+
+osp_err_t osp_server_send_event_notification(osp_server_t *s, const osp_event_notification_t *ev) {
+	if (!s || !s->associated || !ev) {
+		return OSP_ERR_INVALID;
+	}
+	osp_buf_t buf;
+	osp_buf_init(&buf, s->tx_buf, sizeof(s->tx_buf));
+	if (osp_event_notification_encode(&buf, ev) != 0) {
+		return OSP_ERR_INVALID;
+	}
+	return server_send(s, buf.buf, buf.wr);
 }
 
 static osp_err_t server_flush_pending_push(osp_server_t *s) {
@@ -712,7 +734,7 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 	}
 
 	if (!s->associated) {
-		return OSP_ERR_INVALID;
+		return server_send_exception(s, OSP_EXC_STATE_SERVICE_NOT_ALLOWED, OSP_EXC_SVC_OPERATION_NOT_POSSIBLE);
 	}
 
 	/* General block transfer wrapper */
@@ -738,8 +760,12 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 	if (s->ciphering_enabled && osp_svc_is_ciphered_tag(tag)) {
 		uint8_t plain[OSP_GBT_MAX_APDU];
 		uint32_t plain_len = 0;
-		if (osp_glo_unprotect(&s->cipher_rx, s->rx_buf, rx_len, plain, &plain_len) != 0) {
-			return OSP_ERR_SECURITY;
+		int ur = osp_glo_unprotect(&s->cipher_rx, s->rx_buf, rx_len, plain, &plain_len);
+		if (ur == -2) {
+			return server_send_exception(s, OSP_EXC_STATE_SERVICE_NOT_ALLOWED, OSP_EXC_SVC_IC_ERROR);
+		}
+		if (ur != 0) {
+			return server_send_exception(s, OSP_EXC_STATE_SERVICE_NOT_ALLOWED, OSP_EXC_SVC_DECIPHERING_ERROR);
 		}
 		if (plain_len > sizeof(s->rx_buf)) {
 			return OSP_ERR_NOMEM;

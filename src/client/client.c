@@ -849,6 +849,30 @@ osp_err_t osp_client_recv_data_notification(osp_client_t *c, osp_data_notificati
 	return OSP_OK;
 }
 
+osp_err_t osp_client_recv_event_notification(osp_client_t *c, osp_event_notification_t *ev, uint32_t timeout_ms) {
+	if (!c || !c->transport || !ev) {
+		return OSP_ERR_INVALID;
+	}
+
+	uint8_t apdu[OSP_CLIENT_REASSEMBLE_MAX];
+	uint32_t apdu_len = 0;
+	osp_err_t r = client_recv_apdu(c, apdu, sizeof(apdu), &apdu_len, timeout_ms);
+	if (r != OSP_OK) {
+		return r;
+	}
+	if (apdu_len == 0 || apdu[0] != OSP_TAG_EVENT_NOTIFICATION_REQ) {
+		return OSP_ERR_INVALID;
+	}
+
+	osp_buf_t buf;
+	osp_buf_init(&buf, apdu, apdu_len);
+	buf.wr = apdu_len;
+	if (osp_event_notification_decode(&buf, ev) != 0) {
+		return OSP_ERR_INVALID;
+	}
+	return OSP_OK;
+}
+
 /* ── Release ─────────────────────────────────────────────────────────────── */
 
 osp_err_t osp_client_release(osp_client_t *c) {
