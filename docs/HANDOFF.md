@@ -5,7 +5,7 @@
 - **Branch**: main
 - **Reference**: spodes-rs (Rust implementation)
 - **Language**: C11, clang-format (LLVM tabs)
-- **Stats**: ~105 files, 40 IC classes, 11 CTest suites, ~220 unit tests, GitHub CI
+- **Stats**: ~112 files, 40 IC classes, 12 CTest suites, ~224 unit tests, GitHub CI
 
 ## Project: OpenSPODES — DLMS/COSEM protocol stack in C11
 Portable C11 implementation of IEC 62056 DLMS/COSEM, modeled after spodes-rs.
@@ -19,7 +19,7 @@ src/service/   ACSE + xDLMS + notifications + GBT codec
 src/security/  HLS + glo-ciphering (AES-GCM + KUZN-CTR-CMAC suite 8/9) + general ciphering/signing
 src/server/    RequestDispatcher (class_id+OBIS), osp_server_accept/run
 src/client/    connect/get/set/action + with-list + block transfer + recv notification
-src/ic/        40 IC classes, vtable pattern
+src/spodus/    СПОДУС concentrator: MeterRegistry, direct-channel table, poll, proxy
 tests/         CMocka unit/golden/error/ic/integration/phase0-2 + mock transport/crypto
 .github/       CI: build + ctest + optional coverage
 scripts/       coverage_report.py (gcov summary)
@@ -34,7 +34,7 @@ cmake --build build-linux
 ctest --test-dir build-linux --output-on-failure
 ```
 
-### Test suites — all PASS (11/11)
+### Test suites — all PASS (12/12)
 
 | Target | File | Tests | Purpose |
 |--------|------|-------|---------|
@@ -46,6 +46,7 @@ ctest --test-dir build-linux --output-on-failure
 | `openspodes_test_phase0` | `tests/test_phase0.c` | 7 | SPODUS helpers |
 | `openspodes_test_phase1` | `tests/test_phase1.c` | 8 | Table manager / profile filter |
 | `openspodes_test_phase2` | `tests/test_phase2.c` | 11 | WithList codec, blocks, GBT confirmed + gap recovery |
+| `openspodes_test_spodus` | `tests/test_spodus_concentrator.c` | 4 | СПОДУС registry, direct table, poll, proxy |
 | `openspodes_test_gost` | `tests/test_gost_crypto.c` | 14 | Streebog, Kuznyechik, GOST3410, VKO, glo suite 8 |
 | `openspodes_test_security` | `tests/test_security_glo.c` | 3 | glo/ded-ciphering E.5 + roundtrip (OpenSSL) |
 | `openspodes_loopback_cli` | `examples/loopback_cli.c` | demo | In-process GET/SET demo (CTest) |
@@ -60,6 +61,7 @@ ctest --test-dir build-linux --output-on-failure
 | Exception-response on server errors | ✅ |
 | Confirmed-service-error codec (SN 0x0E) | ✅ |
 | Event + data notifications | ✅ |
+| СПОДУС Concentrator runtime (registry, poll, proxy) | ✅ |
 | CI (build + ctest) | ✅ |
 | README integration guide | ✅ |
 | OpenSSL optional for AES/ECDSA tests | ✅ |
@@ -90,6 +92,16 @@ ctest --test-dir build-linux --output-on-failure
 | Exception on unassociated / decipher / IC errors | ✅ |
 | Push via IC 40 | ✅ |
 
+## СПОДУС Concentrator API
+
+| Function | Status |
+|----------|--------|
+| `osp_spodus_registry_*` | ✅ meter list + aggregation cache |
+| `osp_spodus_direct_table_*` | ✅ direct-channel table (§10.3) |
+| `osp_spodus_concentrator_*` | ✅ downstream links + connect |
+| `osp_spodus_poll_meter` | ✅ GET + cache |
+| `osp_spodus_proxy_forward` | ✅ transparent APDU pass-through |
+
 ## IC Classes (40 implemented)
 Data(1) Register(3) ExtRegister(4) DemandRegister(5) RegisterActivation(6)
 ProfileGeneric(7) Clock(8) ScriptTable(9) Schedule(10) SpecialDays(11)
@@ -106,14 +118,14 @@ TableManager(8200) ProfileDataFilter(8201)
 - GBT **streaming** flag (STR bit) — gap recovery works; full bi-directional streaming not wired
 - `GET_WITH_LIST_BLOCK` enum only (no codec)
 - Selective access encode stubbed (decode skips)
-- СПОДУС Concentrator / MeterProxy runtime
+- Wire Concentrator Data objects (0.0.94.7.128/129.255) into server dispatcher as IC 1
 - Golden vectors R 1323565.1 A.1 (full transport AEAD annex)
 - IC stubs: UtilityTables(26), ProfileFilter(31), RegisterTable(61), StatusMapping(63), ParameterMonitor(65), MBusSlaveSetup(76)
 
 ## Next steps (optional)
-1. СПОДУС Concentrator runtime (MeterRegistry, poll, proxy)
-2. GBT streaming + bi-directional block transfer
-3. Selective access encode/decode for ProfileGeneric
+1. GBT streaming + bi-directional block transfer
+2. Selective access encode/decode for ProfileGeneric
+3. Concentrator OBIS objects in server dispatcher (meter list / direct table)
 
 ## User Instructions (MUST follow)
 - **Consult doc-rag-remote when implementing features**

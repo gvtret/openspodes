@@ -1,0 +1,186 @@
+/**
+ * test_spodus_concentrator.c — СПОДУС concentrator runtime (registry, proxy, poll)
+ */
+
+#include <stdarg.h>
+#include <stddef.h>
+#include <setjmp.h>
+#include <string.h>
+#include <cmocka.h>
+
+#include "openspodes.h"
+#include "spodus/concentrator.h"
+#include "spodus/spodus_obis.h"
+#include "server/server.h"
+#include "client/client.h"
+#include "ic/data.h"
+#include "service/service.h"
+#include "mock_transport.h"
+#include "mock_crypto.h"
+
+typedef struct {
+	mock_transport_pair_t *pair;
+	osp_server_t *meter;
+} downstream_ctx_t;
+
+static osp_err_t downstream_send(void *ctx, const uint8_t *data, uint32_t len) {
+	downstream_ctx_t *dc = (downstream_ctx_t *)ctx;
+	return mock_loopback_send(dc->pair, dc->meter, data, len);
+}
+
+static osp_err_t downstream_recv(void *ctx, uint8_t *buf, uint32_t size, uint32_t *out_len, uint32_t timeout_ms) {
+	downstream_ctx_t *dc = (downstream_ctx_t *)ctx;
+	return mock_recv_from_peer(&dc->pair->client_rx, buf, size, out_len, timeout_ms);
+}
+
+static void setup_meter_server(osp_server_t *meter, mock_transport_pair_t *pair, downstream_ctx_t *dc, osp_obis_t obis, uint32_t energy) {
+	mock_transport_pair_init(pair);
+	osp_server_init(meter, &pair->server_transport, OSP_FRAMING_NONE);
+	osp_ic_data_t data_obj;
+	osp_ic_data_init(&data_obj, obis);
+	data_obj.value = osp_val_u32(energy);
+	osp_server_register(meter, osp_ic_data_class(), &data_obj);
+
+	dc->pair = pair;
+	dc->meter = meter;
+	pair->client_transport.ctx = dc;
+	pair->client_transport.send = downstream_send;
+	pair->client_transport.recv = downstream_recv;
+}
+
+static void test_registry_meter_list_and_cache(void **state) {
+	(void)state;
+	osp_spodus_meter_registry_t reg;
+	osp_spodus_registry_init(&reg);
+
+	static const uint8_t mid[] = "SIT12260004";
+	osp_spodus_meter_descriptor_t desc = {0};
+	desc.meter_id_len = (uint8_t)strlen((const char *)mid);
+	memcpy(desc.meter_id, mid, desc.meter_id_len);
+	desc.meter_model_len = 3;
+	memcpy(desc.meter_model, "ABC", 3);
+	desc.channel_count = 1;
+	desc.channels[0].id = 1;
+	desc.channels[0].address_len = 1;
+	desc.channels[0].address[0] = 0x11;
+
+	assert_int_equal(osp_spodus_registry_add(&reg, &desc), OSP_OK);
+	assert_non_null(osp_spodus_registry_find(&reg, mid, desc.meter_id_len));
+
+	osp_obis_t energy = {1, 0, 1, 8, 0, 255};
+	osp_value_t val = osp_val_u32(123456);
+	assert_int_equal(osp_spodus_registry_store(&reg, mid, desc.meter_id_len, energy, 2, &val), OSP_OK);
+	const osp_value_t *cached = osp_spodus_registry_cached(&reg, mid, desc.meter_id_len, &energy, 2);
+	assert_non_null(cached);
+	assert_int_equal(cached->as.uint32.value, 123456);
+
+	osp_value_t list;
+	assert_int_equal(osp_spodus_registry_build_meter_list(&reg, &list), OSP_OK);
+	assert_int_equal(list.tag, OSP_TAG_ARRAY);
+	assert_int_equal(list.as.array.elements.count, 1);
+
+	osp_spodus_registry_remove(&reg, mid, desc.meter_id_len);
+	assert_null(osp_spodus_registry_find(&reg, mid, desc.meter_id_len));
+	assert_null(osp_spodus_registry_cached(&reg, mid, desc.meter_id_len, &energy, 2));
+}
+
+static void test_direct_channel_table(void **state) {
+	(void)state;
+	osp_spodus_direct_channel_table_t table;
+	osp_spodus_direct_table_init(&table);
+
+	static const uint8_t mid[] = "MTR001";
+	osp_spodus_direct_channel_t row = {.direct_id = 200, .meter_id_len = 6, .channel_id = 1};
+	memcpy(row.meter_id, mid, 6);
+	assert_int_equal(osp_spodus_direct_table_add(&table, &row), OSP_OK);
+	assert_non_null(osp_spodus_direct_table_find(&table, 200));
+
+	osp_value_t val;
+	assert_int_equal(osp_spodus_direct_table_build_value(&table, &val), OSP_OK);
+	assert_int_equal(val.as.array.elements.count, 1);
+	assert_int_equal(val.as.array.elements.items[0].as.structure.elements.items[0].as.uint16.value, 200);
+}
+
+static void test_poll_meter_updates_cache(void **state) {
+	(void)state;
+	mock_crypto_init();
+
+	mock_transport_pair_t meter_pair;
+	downstream_ctx_t meter_ctx;
+	osp_server_t meter_server;
+	osp_obis_t energy = {1, 0, 1, 8, 0, 255};
+	setup_meter_server(&meter_server, &meter_pair, &meter_ctx, energy, 123456);
+
+	osp_spodus_concentrator_t conc;
+	osp_spodus_concentrator_init(&conc);
+
+	static const uint8_t mid[] = "SIT12260004";
+	osp_spodus_meter_descriptor_t desc = {0};
+	desc.meter_id_len = (uint8_t)strlen((const char *)mid);
+	memcpy(desc.meter_id, mid, desc.meter_id_len);
+	assert_int_equal(osp_spodus_registry_add(&conc.registry, &desc), OSP_OK);
+
+	assert_int_equal(osp_spodus_concentrator_attach_downstream(&conc, mid, desc.meter_id_len, &meter_pair.client_transport, OSP_FRAMING_NONE),
+	                 OSP_OK);
+	assert_int_equal(osp_spodus_concentrator_connect_downstream(&conc, mid, desc.meter_id_len, 5000), OSP_OK);
+
+	osp_spodus_downstream_t *link = osp_spodus_concentrator_downstream(&conc, mid, desc.meter_id_len);
+	assert_non_null(link);
+
+	osp_spodus_attr_ref_t attrs[] = {{1, energy, 1}};
+	uint32_t n = osp_spodus_poll_meter(&link->client, &conc.registry, mid, desc.meter_id_len, attrs, 1);
+	assert_int_equal(n, 1);
+	const osp_value_t *cached = osp_spodus_registry_cached(&conc.registry, mid, desc.meter_id_len, &energy, 1);
+	assert_non_null(cached);
+	assert_int_equal(cached->as.uint32.value, 123456);
+}
+
+static void test_proxy_forward_roundtrip(void **state) {
+	(void)state;
+	mock_crypto_init();
+
+	mock_transport_pair_t meter_pair;
+	downstream_ctx_t meter_ctx;
+	osp_server_t meter_server;
+	osp_obis_t obis = {0, 0, 0x90, 0, 0, 255};
+	setup_meter_server(&meter_server, &meter_pair, &meter_ctx, obis, 4242);
+
+	osp_spodus_concentrator_t conc;
+	osp_spodus_concentrator_init(&conc);
+
+	static const uint8_t mid[] = "MTR001";
+	osp_spodus_direct_channel_t row = {.direct_id = 200, .meter_id_len = 6, .channel_id = 1};
+	memcpy(row.meter_id, mid, 6);
+	assert_int_equal(osp_spodus_direct_table_add(&conc.direct, &row), OSP_OK);
+	assert_int_equal(osp_spodus_concentrator_attach_downstream(&conc, mid, 6, &meter_pair.client_transport, OSP_FRAMING_NONE), OSP_OK);
+	assert_int_equal(osp_spodus_concentrator_connect_downstream(&conc, mid, 6, 5000), OSP_OK);
+
+	osp_get_request_t req;
+	memset(&req, 0, sizeof(req));
+	req.type = OSP_GET_NORMAL;
+	req.invoke_id_priority = 0x01;
+	req.as.normal.attr.class_id = 1;
+	req.as.normal.attr.instance_id = obis;
+	req.as.normal.attr.attribute_id = 1;
+
+	uint8_t apdu[64];
+	osp_buf_t buf;
+	osp_buf_init(&buf, apdu, sizeof(apdu));
+	assert_int_equal(osp_get_request_encode(&buf, &req), 0);
+
+	uint8_t resp[256];
+	uint32_t resp_len = 0;
+	assert_int_equal(osp_spodus_proxy_forward(&conc, 200, apdu, buf.wr, resp, sizeof(resp), &resp_len, 5000), OSP_OK);
+	assert_true(resp_len > 0);
+	assert_int_equal(resp[0], OSP_TAG_GET_RESPONSE);
+}
+
+int main(void) {
+	const struct CMUnitTest tests[] = {
+	    cmocka_unit_test(test_registry_meter_list_and_cache),
+	    cmocka_unit_test(test_direct_channel_table),
+	    cmocka_unit_test(test_poll_meter_updates_cache),
+	    cmocka_unit_test(test_proxy_forward_roundtrip),
+	};
+	return cmocka_run_group_tests(tests, NULL, NULL);
+}

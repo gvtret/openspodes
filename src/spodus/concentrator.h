@@ -1,0 +1,57 @@
+/**
+ * concentrator.h — СПОДУС ИВКЭ runtime: registry, direct proxy, downstream poll
+ */
+
+#ifndef OSP_SPODUS_CONCENTRATOR_H
+#define OSP_SPODUS_CONCENTRATOR_H
+
+#include "direct_channel.h"
+#include "../client/client.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef struct {
+	uint8_t meter_id_len;
+	uint8_t meter_id[OSP_SPODUS_MAX_METER_ID_LEN];
+	osp_transport_t *transport;
+	osp_framing_type_t framing;
+	osp_client_t client;
+	bool connected;
+} osp_spodus_downstream_t;
+
+typedef struct {
+	osp_spodus_meter_registry_t registry;
+	osp_spodus_direct_channel_table_t direct;
+	osp_spodus_downstream_t downstream[OSP_SPODUS_MAX_METERS];
+	uint8_t downstream_count;
+} osp_spodus_concentrator_t;
+
+typedef struct {
+	uint16_t class_id;
+	osp_obis_t obis;
+	uint8_t attribute_id;
+} osp_spodus_attr_ref_t;
+
+void osp_spodus_concentrator_init(osp_spodus_concentrator_t *c);
+
+osp_err_t osp_spodus_concentrator_attach_downstream(osp_spodus_concentrator_t *c, const uint8_t *meter_id, uint8_t meter_id_len,
+                                                    osp_transport_t *transport, osp_framing_type_t framing);
+
+osp_spodus_downstream_t *osp_spodus_concentrator_downstream(osp_spodus_concentrator_t *c, const uint8_t *meter_id, uint8_t meter_id_len);
+
+osp_err_t osp_spodus_concentrator_connect_downstream(osp_spodus_concentrator_t *c, const uint8_t *meter_id, uint8_t meter_id_len,
+                                                     uint32_t timeout_ms);
+
+uint32_t osp_spodus_poll_meter(osp_client_t *client, osp_spodus_meter_registry_t *registry, const uint8_t *meter_id, uint8_t meter_id_len,
+                               const osp_spodus_attr_ref_t *attributes, uint8_t count);
+
+osp_err_t osp_spodus_proxy_forward(osp_spodus_concentrator_t *c, uint16_t direct_id, const uint8_t *request, uint32_t request_len,
+                                   uint8_t *response, uint32_t response_size, uint32_t *response_len, uint32_t timeout_ms);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* OSP_SPODUS_CONCENTRATOR_H */

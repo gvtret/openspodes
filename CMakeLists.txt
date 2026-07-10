@@ -66,6 +66,9 @@ add_library(openspodes STATIC
     src/security/general_ciphering.c
     src/client/client.c
     src/server/server.c
+    src/spodus/meter_registry.c
+    src/spodus/direct_channel.c
+    src/spodus/concentrator.c
 )
 
 target_include_directories(openspodes PUBLIC src)
@@ -135,6 +138,11 @@ target_include_directories(openspodes_test_phase2 PRIVATE ${cmocka_SOURCE_DIR}/i
 target_link_libraries(openspodes_test_phase2 PRIVATE openspodes cmocka)
 add_test(NAME openspodes_test_phase2 COMMAND openspodes_test_phase2)
 
+add_executable(openspodes_test_spodus tests/test_spodus_concentrator.c tests/mock_transport.c tests/mock_crypto.c)
+target_include_directories(openspodes_test_spodus PRIVATE ${cmocka_SOURCE_DIR}/include tests)
+target_link_libraries(openspodes_test_spodus PRIVATE openspodes cmocka)
+add_test(NAME openspodes_test_spodus COMMAND openspodes_test_spodus)
+
 add_executable(openspodes_test_gost tests/test_gost_crypto.c)
 target_include_directories(openspodes_test_gost PRIVATE ${cmocka_SOURCE_DIR}/include tests)
 target_link_libraries(openspodes_test_gost PRIVATE openspodes cmocka)
@@ -185,7 +193,7 @@ if(ENABLE_COVERAGE)
 		COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure
 		COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/coverage_report.py
 		WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-		DEPENDS openspodes_test openspodes_test_golden openspodes_test_ic openspodes_test_errors openspodes_test_integration openspodes_test_phase0 openspodes_test_phase1
+		DEPENDS openspodes_test openspodes_test_golden openspodes_test_ic openspodes_test_errors openspodes_test_integration openspodes_test_phase0 openspodes_test_phase1 openspodes_test_spodus
 		COMMENT "Run tests and print gcov coverage report"
 	)
 endif()
