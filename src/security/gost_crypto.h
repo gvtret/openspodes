@@ -26,6 +26,20 @@ int osp_gost_kdf_tree(const uint8_t *key, uint32_t key_len, const uint8_t *label
 /* Kuznyechik-CMAC (GOST R 34.13), 128-bit tag truncated to 16 bytes. */
 int osp_gost_kuznyechik_cmac(const uint8_t key[32], const uint8_t *data, uint32_t len, uint8_t mac[16]);
 
+/* Kuznyechik-CTR (R 1323565.1 KUZN_CTR): CTR1 = IV(96) || counter(32), counter starts at 1. */
+int osp_gost_kuznyechik_ctr(const uint8_t key[32], const uint8_t iv[12], const uint8_t *in, uint32_t in_len, uint8_t *out);
+
+/* KUZN_CMAC with s=96 (12-byte auth tag for DLMS transport). */
+int osp_gost_kuznyechik_cmac96(const uint8_t key[32], const uint8_t *data, uint32_t len, uint8_t tag[12]);
+
+/* KUZN-CTR-CMAC transport AEAD (R 1323565.1 §7.1): MSB256(K_EM)=encrypt, LSB256=MAC. */
+int osp_gost_kuzn_aead_encrypt(const uint8_t k_em[64], const uint8_t iv[12], uint8_t sc, const uint8_t *af, uint32_t af_len,
+                               const uint8_t *plaintext, uint32_t plain_len, bool auth, bool encr, uint8_t *out,
+                               uint32_t *out_len, uint8_t tag[12]);
+int osp_gost_kuzn_aead_decrypt(const uint8_t k_em[64], const uint8_t iv[12], uint8_t sc, const uint8_t *af, uint32_t af_len,
+                               const uint8_t *in, uint32_t in_len, bool auth, bool encr, uint8_t *plaintext, uint32_t *plain_len,
+                               const uint8_t tag[12]);
+
 /* HLS mechanism 8: KUZN_CMAC(LSB256(K_EM), IV || SC || chal_a || chal_b). */
 int osp_hls_gost_cmac(const uint8_t k_em[64], const uint8_t iv[12], uint8_t sc, const uint8_t *challenge_a,
                       uint32_t challenge_a_len, const uint8_t *challenge_b, uint32_t challenge_b_len, uint8_t mac[16]);

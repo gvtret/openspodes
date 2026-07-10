@@ -149,6 +149,169 @@ int osp_gost_kuznyechik_cmac(const uint8_t key[32], const uint8_t *data, uint32_
 	return 0;
 }
 
+int osp_gost_kuznyechik_ctr(const uint8_t key[32], const uint8_t iv[12], const uint8_t *in, uint32_t in_len, uint8_t *out) {
+	if (!key || !iv || !out || (!in && in_len > 0)) {
+		return -1;
+	}
+
+	kuz_round_keys keys;
+	kuz_expand(key, keys);
+
+	uint32_t offset = 0;
+	uint32_t counter = 1;
+	while (offset < in_len) {
+		kuz_block ctr = {0};
+		memcpy(ctr, iv, 12);
+		ctr[12] = (uint8_t)(counter >> 24);
+		ctr[13] = (uint8_t)(counter >> 16);
+		ctr[14] = (uint8_t)(counter >> 8);
+		ctr[15] = (uint8_t)(counter);
+
+		kuz_encrypt_block(keys, ctr);
+
+		uint32_t chunk = in_len - offset;
+		if (chunk > 16) {
+			chunk = 16;
+		}
+		for (uint32_t i = 0; i < chunk; i++) {
+			out[offset + i] = in[offset + i] ^ ctr[i];
+		}
+		offset += chunk;
+		counter++;
+	}
+	return 0;
+}
+
+int osp_gost_kuznyechik_cmac96(const uint8_t key[32], const uint8_t *data, uint32_t len, uint8_t tag[12]) {
+	uint8_t mac[16];
+	if (osp_gost_kuznyechik_cmac(key, data, len, mac) != 0) {
+		return -1;
+	}
+	memcpy(tag, mac, 12);
+	return 0;
+}
+
+static int kuzn_build_tag(const uint8_t k_m[32], const uint8_t iv[12], uint8_t sc, const uint8_t *af, uint32_t af_len,
+                          const uint8_t *data, uint32_t data_len, uint8_t tag[12]) {
+	uint8_t buf[12 + 1 + 512 + OSP_GLO_MAX_PLAIN];
+	uint32_t pos = 0;
+	if (12 + 1 + af_len + data_len > sizeof(buf)) {
+		return -1;
+	}
+	memcpy(&buf[pos], iv, 12);
+	pos += 12;
+	buf[pos++] = sc;
+	if (af && af_len > 0) {
+		memcpy(&buf[pos], af, af_len);
+		pos += af_len;
+	}
+	if (data && data_len > 0) {
+		memcpy(&buf[pos], data, data_len);
+		pos += data_len;
+	}
+	return osp_gost_kuznyechik_cmac96(k_m, buf, pos, tag);
+}
+
+int osp_gost_kuzn_aead_encrypt(const uint8_t k_em[64], const uint8_t iv[12], uint8_t sc, const uint8_t *af, uint32_t af_len,
+                               const uint8_t *plaintext, uint32_t plain_len, bool auth, bool encr, uint8_t *out,
+                               uint32_t *out_len, uint8_t tag[12]) {
+	if (!k_em || !iv || !out || !out_len || (auth && !tag)) {
+		return -1;
+	}
+	if (encr && !plaintext && plain_len > 0) {
+		return -1;
+	}
+	if (!encr && auth && !plaintext && plain_len > 0) {
+		return -1;
+	}
+
+	const uint8_t *k_e = k_em;
+	const uint8_t *k_m = k_em + 32;
+
+	if (auth && encr) {
+		if (osp_gost_kuznyechik_ctr(k_e, iv, plaintext, plain_len, out) != 0) {
+			return -1;
+		}
+		*out_len = plain_len;
+		return kuzn_build_tag(k_m, iv, sc, af, af_len, out, plain_len, tag);
+	}
+	if (auth && !encr) {
+		memcpy(out, plaintext, plain_len);
+		*out_len = plain_len;
+		return kuzn_build_tag(k_m, iv, sc, af, af_len, plaintext, plain_len, tag);
+	}
+	if (!auth && encr) {
+		if (osp_gost_kuznyechik_ctr(k_e, iv, plaintext, plain_len, out) != 0) {
+			return -1;
+		}
+		*out_len = plain_len;
+		return 0;
+	}
+	if (!plaintext || plain_len == 0) {
+		return -1;
+	}
+	memcpy(out, plaintext, plain_len);
+	*out_len = plain_len;
+	return 0;
+}
+
+int osp_gost_kuzn_aead_decrypt(const uint8_t k_em[64], const uint8_t iv[12], uint8_t sc, const uint8_t *af, uint32_t af_len,
+                               const uint8_t *in, uint32_t in_len, bool auth, bool encr, uint8_t *plaintext, uint32_t *plain_len,
+                               const uint8_t tag[12]) {
+	if (!k_em || !iv || !plaintext || !plain_len) {
+		return -1;
+	}
+	if (auth && !tag) {
+		return -1;
+	}
+
+	const uint8_t *k_e = k_em;
+	const uint8_t *k_m = k_em + 32;
+
+	if (auth && encr) {
+		uint8_t expected[12];
+		if (kuzn_build_tag(k_m, iv, sc, af, af_len, in, in_len, expected) != 0) {
+			return -1;
+		}
+		if (memcmp(expected, tag, 12) != 0) {
+			return -2;
+		}
+		if (osp_gost_kuznyechik_ctr(k_e, iv, in, in_len, plaintext) != 0) {
+			return -1;
+		}
+		*plain_len = in_len;
+		return 0;
+	}
+	if (auth && !encr) {
+		uint8_t expected[12];
+		if (kuzn_build_tag(k_m, iv, sc, af, af_len, in, in_len, expected) != 0) {
+			return -1;
+		}
+		if (memcmp(expected, tag, 12) != 0) {
+			return -2;
+		}
+		memcpy(plaintext, in, in_len);
+		*plain_len = in_len;
+		return 0;
+	}
+	if (!auth && encr) {
+		if (osp_gost_kuznyechik_ctr(k_e, iv, in, in_len, plaintext) != 0) {
+			return -1;
+		}
+		*plain_len = in_len;
+		return 0;
+	}
+	if (!auth && !encr) {
+		if (!in || in_len == 0) {
+			return -1;
+		}
+		memcpy(plaintext, in, in_len);
+		*plain_len = in_len;
+		return 0;
+	}
+	return -1;
+}
+
 int osp_hls_gost_cmac(const uint8_t k_em[64], const uint8_t iv[12], uint8_t sc, const uint8_t *challenge_a,
                       uint32_t challenge_a_len, const uint8_t *challenge_b, uint32_t challenge_b_len, uint8_t mac[16]) {
 	if (!k_em || !iv || !challenge_a || !challenge_b || !mac) {

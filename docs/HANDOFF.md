@@ -5,7 +5,7 @@
 - **Branch**: main
 - **Reference**: spodes-rs (Rust implementation)
 - **Language**: C11, clang-format (LLVM tabs)
-- **Stats**: ~100 files, 40 IC classes, 10 CTest suites, ~210 unit tests
+- **Stats**: ~100 files, 40 IC classes, 11 CTest suites, ~215 unit tests
 
 ## Project: OpenSPODES — DLMS/COSEM protocol stack in C11
 Portable C11 implementation of IEC 62056 DLMS/COSEM, modeled after spodes-rs.
@@ -16,7 +16,7 @@ No malloc in core. HAL via function pointers. MCU-pluggable.
 src/codec/     BER/AXDR read/write, serialize/deserialize, compact-array
 src/transport/ HDLC (IEC 62056-46) + COSEM wrapper (IEC 62056-47)
 src/service/   ACSE + xDLMS + notifications + GBT codec
-src/security/  HLS GMAC/MD5/SHA1/SHA256 (pass 3/4) + glo-ciphering + replay (GMAC IC)
+src/security/  HLS + glo-ciphering (AES-GCM + KUZN-CTR-CMAC suite 8/9) + general ciphering/signing
 src/server/    RequestDispatcher (class_id+OBIS), osp_server_accept/run
 src/client/    connect/get/set/action + with-list + block transfer + recv notification
 src/ic/        40 IC classes, vtable pattern
@@ -32,7 +32,7 @@ cmake --build build-linux
 ctest --test-dir build-linux --output-on-failure
 ```
 
-### Test suites — all PASS (10/10)
+### Test suites — all PASS (11/11)
 
 | Target | File | Tests | Purpose |
 |--------|------|-------|---------|
@@ -44,6 +44,7 @@ ctest --test-dir build-linux --output-on-failure
 | `openspodes_test_phase0` | `tests/test_phase0.c` | 7 | SPODUS helpers |
 | `openspodes_test_phase1` | `tests/test_phase1.c` | 8 | Table manager / profile filter |
 | `openspodes_test_phase2` | `tests/test_phase2.c` | 9 | WithList codec, blocks, GBT confirmed |
+| `openspodes_test_gost` | `tests/test_gost_crypto.c` | 14 | Streebog, Kuznyechik, GOST3410, VKO, glo suite 8 |
 | `openspodes_test_security` | `tests/test_security_glo.c` | 2 | glo-ciphering E.5 + roundtrip (OpenSSL) |
 | `openspodes_loopback_cli` | `examples/loopback_cli.c` | demo | In-process GET/SET demo (CTest) |
 
@@ -77,7 +78,7 @@ ctest --test-dir build-linux --output-on-failure
 | `osp_client_action_with_list` | ✅ |
 | `osp_client_recv_data_notification` | ✅ |
 | GBT runtime (xDLMS only) | ✅ unconfirmed + confirmed (window>0) |
-| glo-ciphering | ✅ protect/unprotect + client/server session |
+| glo-ciphering | ✅ AES-GCM (suite 0–2) + KUZN-CTR-CMAC (suite 8/9) |
 | HLS MD5/SHA1/SHA256 | ✅ pass 3/4 + E2E loopback |
 | GBT confirmed (window>0) | ✅ ack + E2E loopback |
 | HLS GOST (8–10) | ✅ CMAC/Streebog HLS + GOST 34.10 sign/verify + VKO/KDF tree |
@@ -98,9 +99,10 @@ TableManager(8200) ProfileDataFilter(8201)
 ### Protocol / implementation
 - GBT streaming / lost-block recovery not implemented
 - `GET_WITH_LIST_BLOCK` enum only (no codec)
-- HLS mechanisms 8–10: GOST CMAC, Streebog, ECDSA (OpenSSL HAL), GOST 34.10-2018-256 (paramSetB)
-- general-glo/ded/ciphering (0xDB/0xDC/0xDD) encode/decode + protect/unprotect
-- general-signing (0xDF) encode/decode + GOST/ECDSA protect/unprotect
+- HLS mechanisms 8–10: ✅ (see above)
+- general-glo/ded/ciphering (0xDB/0xDC/0xDD): ✅ encode/decode + protect via glo (AES/GOST)
+- general-signing (0xDF): ✅ encode/decode + GOST/ECDSA protect/unprotect
+- GOST transport ciphering (suite 8/9): ✅ KUZN-CTR-CMAC in `osp_glo_protect/unprotect`
 - Selective access stubbed (encode writes 0)
 - Event notification send not implemented
 - Confirmed service error not implemented
@@ -108,12 +110,12 @@ TableManager(8200) ProfileDataFilter(8201)
 
 ### vs spodes-rs
 - OpenSPODES ahead: ACTION blocks, compact-array, push E2E, client block transfer, IC 62
-- spodes-rs ahead: GOST transport ciphering (Kuznyechik MGM APDU, suite 8/9), ded session helper, Concentrator runtime
+- spodes-rs ahead: ded session helper, Concentrator runtime, GBT streaming
 
 ## Next steps (suggested)
-1. GOST transport ciphering (Kuznyechik-MGM for suite 8/9 APDU protect/unprotect)
-2. ded-ciphering session helper
-3. GBT streaming / lost-block recovery
+1. ded-ciphering session helper (switch cipher_tx/rx to dedicated key + ded tags 0xD0–0xD7)
+2. GBT streaming / lost-block recovery
+3. Golden vectors for R 1323565.1 A.1 (KUZN transport AEAD)
 
 ## User Instructions (MUST follow)
 - **Consult doc-rag-remote when implementing features**

@@ -299,10 +299,61 @@ static void test_hls_gost_cmac_handshake(void **state) {
 	assert_int_equal(osp_hls_pass4_verify(&client_sec, f_ctos, f_len), 0);
 }
 
+static void test_kuzn_ctr_roundtrip(void **state) {
+	(void)state;
+	uint8_t key[32];
+	assert_int_equal(hex_decode("08090a0b0c0d0e0f0001020304050607fedcba9876543210eca86420fdb97531", key, sizeof(key)), 32);
+
+	uint8_t iv[12];
+	assert_int_equal(hex_decode("ff00ee11dd22cc33f0e1d2c3", iv, sizeof(iv)), 12);
+
+	const uint8_t plain[] = {0xC0, 0x01, 0xC1, 0x00, 0x08, 0x00, 0x00, 0x01, 0x00, 0x00, 0xFF, 0x02, 0x00};
+	uint8_t cipher[sizeof(plain)];
+	uint8_t recovered[sizeof(plain)];
+
+	assert_int_equal(osp_gost_kuznyechik_ctr(key, iv, plain, sizeof(plain), cipher), 0);
+	assert_int_equal(osp_gost_kuznyechik_ctr(key, iv, cipher, sizeof(plain), recovered), 0);
+	assert_memory_equal(recovered, plain, sizeof(plain));
+}
+
+static void test_glo_gost_suite8_roundtrip(void **state) {
+	(void)state;
+	osp_sec_context_t tx, rx;
+
+	uint8_t st[8];
+	assert_int_equal(hex_decode("ff00ee11dd22cc33", st, sizeof(st)), 8);
+	osp_sec_context_init(&tx, OSP_SUITE_8, OSP_MECH_HLS_GOST_CMAC, st);
+	osp_sec_context_init(&rx, OSP_SUITE_8, OSP_MECH_HLS_GOST_CMAC, st);
+	tx.policy = OSP_POLICY_ENCR_AUTH;
+	rx.policy = OSP_POLICY_ENCR_AUTH;
+	tx.invocation_counter = 0xf0e1d2c3;
+
+	assert_int_equal(hex_decode(
+	                     "08090a0b0c0d0e0f0001020304050607fedcba9876543210eca86420fdb97531"
+	                     "18191a1b1c1d1e1f10111213141516170123456789abcdef13579bdf02468ace",
+	                     tx.k_em, sizeof(tx.k_em)),
+	                 64);
+	memcpy(rx.k_em, tx.k_em, sizeof(tx.k_em));
+
+	const uint8_t plain[] = {0xC0, 0x01, 0xC1, 0x00, 0x08, 0x00, 0x00, 0x01, 0x00, 0x00, 0xFF, 0x02, 0x00};
+	uint8_t ciphered[128];
+	uint32_t ciphered_len = 0;
+	assert_int_equal(osp_glo_protect(&tx, OSP_GLO_GET_REQUEST, plain, sizeof(plain), ciphered, &ciphered_len), 0);
+	assert_int_equal(ciphered[0], OSP_GLO_GET_REQUEST);
+
+	uint8_t recovered[128];
+	uint32_t recovered_len = 0;
+	assert_int_equal(osp_glo_unprotect(&rx, ciphered, ciphered_len, recovered, &recovered_len), 0);
+	assert_int_equal(recovered_len, sizeof(plain));
+	assert_memory_equal(recovered, plain, sizeof(plain));
+}
+
 int main(void) {
 	const struct CMUnitTest tests[] = {
 	    cmocka_unit_test(test_gost_cmac_golden),
 	    cmocka_unit_test(test_streebog_hash_with_titles),
+	    cmocka_unit_test(test_kuzn_ctr_roundtrip),
+	    cmocka_unit_test(test_glo_gost_suite8_roundtrip),
 #if 1
 	    cmocka_unit_test(test_gost3410_public_key_vko_vector),
 	    cmocka_unit_test(test_gost3410_control_example),

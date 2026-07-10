@@ -62,6 +62,10 @@ static inline uint8_t osp_sec_suite_aes_key_len(osp_sec_suite_t s) {
 	return (s == OSP_SUITE_2) ? 32 : 16;
 }
 
+static inline bool osp_sec_uses_gost_kem(osp_sec_suite_t s) {
+	return s == OSP_SUITE_8 || s == OSP_SUITE_9;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  *  Security Policy (protection level per APDU)
  * ═══════════════════════════════════════════════════════════════════════════ */

@@ -672,7 +672,10 @@ static int glo_write_ciphered_apdu(uint8_t ciphered_tag, const uint8_t *body, ui
 }
 
 int osp_glo_protect(const osp_sec_context_t *ctx, uint8_t ciphered_tag, const uint8_t *plaintext, uint32_t plain_len, uint8_t *out, uint32_t *out_len) {
-	if (!ctx || !plaintext || !out || !out_len || plain_len > OSP_GLO_MAX_PLAIN || !osp_hal_gcm_crypt) {
+	if (!ctx || !plaintext || !out || !out_len || plain_len > OSP_GLO_MAX_PLAIN) {
+		return -1;
+	}
+	if (!osp_sec_uses_gost_kem(ctx->suite) && !osp_hal_gcm_crypt) {
 		return -1;
 	}
 
@@ -689,7 +692,19 @@ int osp_glo_protect(const osp_sec_context_t *ctx, uint8_t ciphered_tag, const ui
 	uint32_t protected_len = 0;
 	uint8_t tag[OSP_SEC_TAG_SIZE];
 
-	if (auth && encr) {
+	if (osp_sec_uses_gost_kem(ctx->suite)) {
+		uint32_t body_len = 0;
+		if (osp_gost_kuzn_aead_encrypt(ctx->k_em, iv, sc, NULL, 0, plaintext, plain_len, auth, encr, protected_part, &body_len,
+		                               auth ? tag : NULL) != 0) {
+			return -1;
+		}
+		if (auth) {
+			memcpy(&protected_part[body_len], tag, OSP_SEC_TAG_SIZE);
+			protected_len = body_len + OSP_SEC_TAG_SIZE;
+		} else {
+			protected_len = body_len;
+		}
+	} else if (auth && encr) {
 		uint8_t aad[17];
 		aad[0] = sc;
 		memcpy(&aad[1], ctx->gak, 16);
@@ -733,7 +748,10 @@ int osp_glo_protect(const osp_sec_context_t *ctx, uint8_t ciphered_tag, const ui
 }
 
 int osp_glo_unprotect(osp_sec_context_t *ctx, const uint8_t *ciphered, uint32_t ciphered_len, uint8_t *plaintext, uint32_t *plain_len) {
-	if (!ctx || !ciphered || ciphered_len < 7 || !plaintext || !plain_len || !osp_hal_gcm_crypt) {
+	if (!ctx || !ciphered || ciphered_len < 7 || !plaintext || !plain_len) {
+		return -1;
+	}
+	if (!osp_sec_uses_gost_kem(ctx->suite) && !osp_hal_gcm_crypt) {
 		return -1;
 	}
 	if (!osp_glo_is_ciphered_tag(ciphered[0])) {
@@ -767,7 +785,55 @@ int osp_glo_unprotect(osp_sec_context_t *ctx, const uint8_t *ciphered, uint32_t 
 	uint8_t iv[12];
 	glo_build_iv(ctx, ic, iv);
 
-	if (auth && encr) {
+	if (osp_sec_uses_gost_kem(ctx->suite)) {
+		if (auth && encr) {
+			if (protected_len < OSP_SEC_TAG_SIZE) {
+				return -1;
+			}
+			uint32_t ct_len = protected_len - OSP_SEC_TAG_SIZE;
+			if (ct_len > OSP_GLO_MAX_PLAIN) {
+				return -1;
+			}
+			int rc = osp_gost_kuzn_aead_decrypt(ctx->k_em, iv, sc, NULL, 0, protected_part, ct_len, true, true, plaintext,
+			                                      plain_len, &protected_part[ct_len]);
+			if (rc == -2) {
+				return -3;
+			}
+			if (rc != 0) {
+				return -1;
+			}
+		} else if (auth && !encr) {
+			if (protected_len < OSP_SEC_TAG_SIZE) {
+				return -1;
+			}
+			uint32_t plen = protected_len - OSP_SEC_TAG_SIZE;
+			if (plen > OSP_GLO_MAX_PLAIN) {
+				return -1;
+			}
+			int rc = osp_gost_kuzn_aead_decrypt(ctx->k_em, iv, sc, NULL, 0, protected_part, plen, true, false, plaintext,
+			                                      plain_len, &protected_part[plen]);
+			if (rc == -2) {
+				return -3;
+			}
+			if (rc != 0) {
+				return -1;
+			}
+		} else if (!auth && encr) {
+			if (protected_len > OSP_GLO_MAX_PLAIN) {
+				return -1;
+			}
+			if (osp_gost_kuzn_aead_decrypt(ctx->k_em, iv, sc, NULL, 0, protected_part, protected_len, false, true, plaintext,
+			                               plain_len, NULL) != 0) {
+				return -3;
+			}
+		} else {
+			if (protected_len > OSP_GLO_MAX_PLAIN) {
+				return -1;
+			}
+			memcpy(plaintext, protected_part, protected_len);
+			*plain_len = protected_len;
+		}
+	} else if (auth && encr) {
 		if (protected_len < OSP_SEC_TAG_SIZE) {
 			return -1;
 		}
