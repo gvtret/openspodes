@@ -203,6 +203,14 @@ add_executable(openspodes_tcp_client
 target_include_directories(openspodes_tcp_client PRIVATE tests examples)
 target_link_libraries(openspodes_tcp_client PRIVATE openspodes)
 
+add_executable(openspodes_linux_demo
+	examples/linux_demo.c
+	examples/linux_hal.c
+	tests/mock_crypto.c
+)
+target_include_directories(openspodes_linux_demo PRIVATE tests examples)
+target_link_libraries(openspodes_linux_demo PRIVATE openspodes)
+
 if(ENABLE_COVERAGE)
 	find_package(Python3 COMPONENTS Interpreter REQUIRED)
 	add_custom_target(coverage
