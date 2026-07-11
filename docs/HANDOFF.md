@@ -120,13 +120,17 @@ TableManager(8200) ProfileDataFilter(8201)
 
 - GBT STR bit on outbound streams is supported; full bi-directional streaming session is not wired
 - `GET_WITH_LIST_BLOCK` enum only (no codec)
-- Selective access encode stubbed (decode skips)
 - Golden vectors R 1323565.1 A.1 (full transport AEAD annex)
 - IC stubs: UtilityTables(26), ProfileFilter(31), RegisterTable(61), StatusMapping(63), ParameterMonitor(65), MBusSlaveSetup(76)
 
-## Next steps (optional)
-1. Bi-directional GBT streaming session
-2. Selective access encode/decode for ProfileGeneric
+## Next steps
+1. ~~Selective access encode/decode for ProfileGeneric~~ ✅ (v1.0.0)
+2. ~~Serial transport + HDLC client/server~~ ✅ (v1.0.0)
+3. ~~Интеграционный тест HDLC client↔server loopback~~ ✅ (test_hdlc_full_e2e)
+4. ~~`GET_WITH_LIST_BLOCK` codec~~ ✅ (не нужен — block transfer обрабатывается через GET_WITH_BLOCK + GET_WITH_LIST)
+5. IC stubs (utility_tables, profile_filter, register_table, status_mapping, parameter_monitor, mbus_slave)
+6. Golden vectors R 1323565.1 A.1
+7. GBT bidirectional streaming session (отложено — требует архитектурных изменений)
 3. СПОДУС discovered meters / access policies (§10.5–10.6)
 
 ## User Instructions (MUST follow)
