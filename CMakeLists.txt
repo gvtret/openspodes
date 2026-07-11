@@ -53,6 +53,7 @@ add_library(openspodes STATIC
     src/ic/profile_data_filter.c
     src/ic/table_manager.c
     src/transport/transport.c
+    src/transport/hdlc_session.c
     src/service/service.c
     src/service/xdms.c
     src/service/notification.c
@@ -152,6 +153,16 @@ add_executable(openspodes_test_gost tests/test_gost_crypto.c)
 target_include_directories(openspodes_test_gost PRIVATE ${cmocka_SOURCE_DIR}/include tests)
 target_link_libraries(openspodes_test_gost PRIVATE openspodes cmocka)
 add_test(NAME openspodes_test_gost COMMAND openspodes_test_gost)
+
+add_executable(openspodes_test_hdlc tests/test_hdlc_session.c tests/mock_transport.c)
+target_include_directories(openspodes_test_hdlc PRIVATE ${cmocka_SOURCE_DIR}/include tests)
+target_link_libraries(openspodes_test_hdlc PRIVATE openspodes cmocka)
+add_test(NAME openspodes_test_hdlc COMMAND openspodes_test_hdlc)
+
+add_executable(openspodes_test_framing tests/test_hdlc_wrapper_framing.c tests/mock_transport.c tests/mock_crypto.c)
+target_include_directories(openspodes_test_framing PRIVATE ${cmocka_SOURCE_DIR}/include tests)
+target_link_libraries(openspodes_test_framing PRIVATE openspodes cmocka)
+add_test(NAME openspodes_test_framing COMMAND openspodes_test_framing)
 
 find_package(OpenSSL QUIET)
 if(OpenSSL_FOUND)

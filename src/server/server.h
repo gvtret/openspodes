@@ -10,6 +10,7 @@
 
 #include "../openspodes.h"
 #include "../transport/transport.h"
+#include "../transport/hdlc_session.h"
 #include "../service/service.h"
 #include "../security/security.h"
 #include "../server/dispatcher.h"
@@ -69,6 +70,10 @@ typedef struct {
 	osp_sec_context_t cipher_tx;
 	osp_sec_context_t cipher_rx;
 
+	/* HDLC session (when framing == OSP_FRAMING_HDLC) */
+	osp_hdlc_session_t hdlc;
+	bool hdlc_active;
+
 	osp_server_pending_t pending_get;
 	osp_server_pending_t pending_set;
 	osp_server_pending_action_in_t pending_action_in;
@@ -106,6 +111,10 @@ osp_err_t osp_server_register(osp_server_t *s, const osp_ic_class_t *cls, void *
 
 /* Set security context (optional, before accept) */
 void osp_server_set_security(osp_server_t *s, const osp_sec_context_t *sec);
+
+/* Set HDLC addresses (optional, before accept, HDLC framing only) */
+void osp_server_set_hdlc_addresses(osp_server_t *s, uint32_t server_addr, uint8_t server_addr_len,
+                                    uint32_t client_addr, uint8_t client_addr_len);
 
 /* Bind Association LN for ACL enforcement on GET/SET/ACTION */
 void osp_server_set_association(osp_server_t *s, osp_ic_association_ln_t *association);

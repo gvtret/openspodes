@@ -9,6 +9,7 @@
 #include "../service/notification.h"
 #include "../service/gbt.h"
 #include "../codec/serialize.h"
+#include "../transport/hdlc_session.h"
 #include <string.h>
 
 osp_err_t osp_client_init(osp_client_t *c, osp_transport_t *transport, osp_framing_type_t framing) {
@@ -21,6 +22,12 @@ osp_err_t osp_client_init(osp_client_t *c, osp_transport_t *transport, osp_frami
 	c->framing = framing;
 	c->associated = false;
 	c->invoke_id = 0;
+	c->hdlc_active = false;
+
+	if (framing == OSP_FRAMING_HDLC) {
+		osp_hdlc_session_init_client(&c->hdlc, transport, 1, 1, 1, 1);
+	}
+
 	return OSP_OK;
 }
 
@@ -28,6 +35,13 @@ void osp_client_set_security(osp_client_t *c, const osp_sec_context_t *sec) {
 	if (c && sec) {
 		c->security = *sec;
 	}
+}
+
+void osp_client_set_hdlc_addresses(osp_client_t *c, uint32_t client_addr, uint8_t client_addr_len,
+                                    uint32_t server_addr, uint8_t server_addr_len) {
+	if (!c || c->framing != OSP_FRAMING_HDLC)
+		return;
+	osp_hdlc_session_init_client(&c->hdlc, c->transport, client_addr, client_addr_len, server_addr, server_addr_len);
 }
 
 void osp_client_enable_gbt(osp_client_t *c, uint32_t block_size) {
@@ -102,12 +116,21 @@ static osp_err_t client_send_apdu(osp_client_t *c, const uint8_t *data, uint32_t
 		return osp_gbt_transport_send(c->transport, c->framing, send_data, send_len, client_gbt_payload_max(c), c->gbt_window, c->tx_buf,
 		                              sizeof(c->tx_buf), c->rx_buf, sizeof(c->rx_buf), 5000);
 	}
+	if (c->hdlc_active) {
+		return osp_hdlc_session_send_apdu(&c->hdlc, send_data, send_len);
+	}
 	return osp_transport_send_apdu(c->transport, c->framing, send_data, send_len);
 }
 
 static osp_err_t client_recv_apdu(osp_client_t *c, uint8_t *apdu, uint32_t apdu_size, uint32_t *apdu_len, uint32_t timeout_ms) {
 	uint32_t rx_len = 0;
-	osp_err_t r = osp_transport_recv_apdu(c->transport, c->framing, c->rx_buf, sizeof(c->rx_buf), &rx_len, timeout_ms);
+	osp_err_t r;
+
+	if (c->hdlc_active) {
+		r = osp_hdlc_session_recv_apdu(&c->hdlc, c->rx_buf, sizeof(c->rx_buf), &rx_len, timeout_ms);
+	} else {
+		r = osp_transport_recv_apdu(c->transport, c->framing, c->rx_buf, sizeof(c->rx_buf), &rx_len, timeout_ms);
+	}
 	if (r != OSP_OK) {
 		return r;
 	}
@@ -163,6 +186,15 @@ osp_err_t osp_client_connect(osp_client_t *c, uint32_t timeout_ms) {
 	osp_err_t r = c->transport->open(c->transport->ctx);
 	if (r != OSP_OK) {
 		return r;
+	}
+
+	/* HDLC: SNRM/UA link setup before AARQ */
+	if (c->framing == OSP_FRAMING_HDLC) {
+		r = osp_hdlc_session_connect(&c->hdlc, timeout_ms);
+		if (r != OSP_OK) {
+			return r;
+		}
+		c->hdlc_active = true;
 	}
 
 	/* Build AARQ */
@@ -903,7 +935,11 @@ osp_err_t osp_client_release(osp_client_t *c) {
 	if (r != OSP_OK) {
 		return r;
 	}
-	r = osp_transport_recv_apdu(c->transport, c->framing, c->rx_buf, sizeof(c->rx_buf), &rx_len, 2000);
+	if (c->hdlc_active) {
+		r = osp_hdlc_session_recv_apdu(&c->hdlc, c->rx_buf, sizeof(c->rx_buf), &rx_len, 2000);
+	} else {
+		r = osp_transport_recv_apdu(c->transport, c->framing, c->rx_buf, sizeof(c->rx_buf), &rx_len, 2000);
+	}
 	if (r != OSP_OK) {
 		return r;
 	}
@@ -931,6 +967,12 @@ osp_err_t osp_client_disconnect(osp_client_t *c) {
 		osp_client_release(c);
 	}
 
-	c->transport->close(c->transport->ctx);
+	/* HDLC: DISC/UA link teardown */
+	if (c->hdlc_active) {
+		osp_hdlc_session_disconnect(&c->hdlc, 2000);
+		c->hdlc_active = false;
+	} else {
+		c->transport->close(c->transport->ctx);
+	}
 	return OSP_OK;
 }

@@ -12,6 +12,7 @@
 
 #include "../openspodes.h"
 #include "../transport/transport.h"
+#include "../transport/hdlc_session.h"
 #include "../service/service.h"
 #include "../service/initiate.h"
 #include "../security/security.h"
@@ -42,6 +43,10 @@ typedef struct {
 	osp_sec_context_t cipher_tx;
 	osp_sec_context_t cipher_rx;
 
+	/* HDLC session (when framing == OSP_FRAMING_HDLC) */
+	osp_hdlc_session_t hdlc;
+	bool hdlc_active;
+
 	/* Buffers */
 	uint8_t tx_buf[OSP_CLIENT_MAX_PDU];
 	uint8_t rx_buf[OSP_CLIENT_MAX_PDU];
@@ -52,6 +57,10 @@ osp_err_t osp_client_init(osp_client_t *c, osp_transport_t *transport, osp_frami
 
 /* Set security context (optional, before connect) */
 void osp_client_set_security(osp_client_t *c, const osp_sec_context_t *sec);
+
+/* Set HDLC addresses (optional, before connect, HDLC framing only) */
+void osp_client_set_hdlc_addresses(osp_client_t *c, uint32_t client_addr, uint8_t client_addr_len,
+                                    uint32_t server_addr, uint8_t server_addr_len);
 
 /* Enable general block transfer for APDUs longer than block_size */
 void osp_client_enable_gbt(osp_client_t *c, uint32_t block_size);

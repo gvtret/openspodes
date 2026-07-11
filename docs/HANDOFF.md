@@ -5,7 +5,7 @@
 - **Branch**: main
 - **Reference**: spodes-rs (Rust implementation)
 - **Language**: C11, clang-format (LLVM tabs)
-- **Stats**: ~112 files, 40 IC classes, 12 CTest suites, ~224 unit tests, GitHub CI
+- **Stats**: ~114 files, 40 IC classes, 13 CTest suites, ~242 unit tests, GitHub CI
 
 ## Project: OpenSPODES — DLMS/COSEM protocol stack in C11
 Portable C11 implementation of IEC 62056 DLMS/COSEM, modeled after spodes-rs.
@@ -49,6 +49,7 @@ ctest --test-dir build-linux --output-on-failure
 | `openspodes_test_spodus` | `tests/test_spodus_concentrator.c` | 6 | СПОДУС registry, channel/direct tables, poll, proxy, server GET |
 | `openspodes_test_gost` | `tests/test_gost_crypto.c` | 14 | Streebog, Kuznyechik, GOST3410, VKO, glo suite 8 |
 | `openspodes_test_security` | `tests/test_security_glo.c` | 3 | glo/ded-ciphering E.5 + roundtrip (OpenSSL) |
+| `openspodes_test_hdlc` | `tests/test_hdlc_session.c` | 18 | HDLC control codec, frame roundtrip, session layer |
 | `openspodes_loopback_cli` | `examples/loopback_cli.c` | demo | In-process GET/SET demo (CTest) |
 
 ## Production readiness (2026-07)
@@ -139,3 +140,42 @@ TableManager(8200) ProfileDataFilter(8201)
 - `docs/golden_vectors.txt` — BER/AXDR golden test vectors
 - `thirdparty/dlms-codec/` — cross-check reference
 - spodes-rs `/home/trgv/spodes-rs` — parity reference
+
+## 2026-07-11 02:09 — СПОДУС parity and HDLC interoperability audit
+
+**Done:** Added and committed concentrator objects: channel list §10.4 (`3c1775b`), discovered meters §10.5 (`1e7c214`), access policies §10.6 (`54ad4a9`, coverage `0de36dc`), and exchange tasks §10.7 (`cebae33`). Updated the parity canvas. Inspected `logs/GXDLMSDirector.log` against the C transport code.
+
+**State:** `main`; latest known focused test was `openspodes_test_spodus` PASS after §10.7. `build-linux/` is intentionally untracked. Production claim must be qualified: HDLC framing is not interoperable with the Director trace.
+
+**Next:** Implement production HDLC link-layer session before further feature parity: SNRM/UA negotiation, configurable client/server addresses, N(S)/N(R) state, LLC add/strip (`E6 E6 00` / `E6 E7 00`), and negotiated HDLC parameters. Evidence: `logs/GXDLMSDirector.log`, `src/transport/transport.c:245`.
+
+**Notes:** Current HDLC transport always emits I-frames with addresses 1/1 and directly exposes HDLC info to ACSE; it has no SNRM/UA flow or LLC handling. Therefore real Director AARQ/AARE traffic cannot interoperate despite loopback CTest passing.
+
+---
+
+## 2026-07-11 — HDLC session layer implementation (T1)
+
+**Done:**
+- Fixed HDLC control byte encode/decode per ISO/IEC 13239 §5.3.1:
+  - SNRM=0x83, UA=0x63, DISC=0x43, DM=0x0F, FRMR=0x87, UI=0x03, XID=0xAF
+  - I-frame: [N(R):3][P/F:1][N(S):3][0], S-frame: [N(R):3][P/F:1][mod:2][01]
+  - U-frame: [mod_hi:3][P/F:1][mod_lo:2][11], modifier 5 bits: hi=[7:5], lo=[3:2]
+- Added HCS validation in `osp_hdlc_deframe()` for frames with info field
+- Created `src/transport/hdlc_session.h/.c`:
+  - `osp_hdlc_session_init_client/server` — configurable addresses
+  - `osp_hdlc_session_connect` — SNRM→UA with XID parameter negotiation (max info, window size)
+  - `osp_hdlc_session_disconnect` — DISC→UA/DM
+  - `osp_hdlc_session_send_apdu` — LLC+E6 E6 00, I-frame with N(S)/N(R)
+  - `osp_hdlc_session_recv_apdu` — strip LLC, update N(R)
+- Added 18 HDLC tests in `tests/test_hdlc_session.c` (control codec round-trips, frame encode/decode with HCS+FCS, FCS corruption, address round-trip, session connect/disconnect, send/receive APDU)
+- All 13 test suites pass (100%)
+
+**State:** `main`, uncommitted. `build-linux/` untracked. `openspodes_test_hdlc` added.
+
+**Next:**
+- Integration test for HDLC client↔server loopback (currently only unit tests for codec + session layer)
+
+**Notes:**
+- GXDLMSDirector uses non-standard U-frame encoding (SNRM=0x61 instead of ISO standard 0x93). The Director's I-frame and S-frame encoding is standard. Only U-frame modifier bits differ.
+- spodes-rs uses ISO standard encoding (SNRM=0x83). Our codec matches spodes-rs.
+- LLC constants: command=`E6 E6 00`, response=`E6 E7 00` (IEC 62056-47)

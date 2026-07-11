@@ -37,29 +37,40 @@ typedef struct {
 void osp_hdlc_address_init(osp_hdlc_address_t *addr, uint32_t value, uint8_t length);
 uint32_t osp_hdlc_address_value(const osp_hdlc_address_t *addr);
 
-/* HDLC frame */
+/* HDLC frame types (ISO/IEC 13239 control field) */
 typedef enum {
-	OSP_HDLC_TYPE_I = 0,    /* Information */
+	/* I-frame (information): bit 0 = 0 */
+	OSP_HDLC_TYPE_I = 0,
+
+	/* S-frames (supervisory): bit 0 = 1, bit 1 = 0 */
 	OSP_HDLC_TYPE_RR = 1,   /* Receive Ready */
 	OSP_HDLC_TYPE_RNR = 2,  /* Receive Not Ready */
 	OSP_HDLC_TYPE_REJ = 3,  /* Reject */
-	OSP_HDLC_TYPE_SABM = 4, /* Set Balanced Mode */
-	OSP_HDLC_TYPE_DISC = 5, /* Disconnect */
-	OSP_HDLC_TYPE_DM = 3,   /* Disconnected Mode */
-	OSP_HDLC_TYPE_UA = 6,   /* Unnumbered Acknowledge */
-	OSP_HDLC_TYPE_FRMR = 8, /* Frame Reject */
-	OSP_HDLC_TYPE_UI = 3,   /* Unnumbered Information */
-	OSP_HDLC_TYPE_XID = 5,  /* Exchange Identification */
-	OSP_HDLC_TYPE_SNRM = 4, /* Set Normal Response Mode */
+
+	/* U-frames (unnumbered): bit 0 = 1, bit 1 = 1 */
+	OSP_HDLC_TYPE_SABM = 4, /* Set Asynchronous Balanced Mode */
+	OSP_HDLC_TYPE_SNRM = 5, /* Set Normal Response Mode */
+	OSP_HDLC_TYPE_DISC = 6, /* Disconnect */
+	OSP_HDLC_TYPE_DM = 7,   /* Disconnected Mode */
+	OSP_HDLC_TYPE_UA = 8,   /* Unnumbered Acknowledge */
+	OSP_HDLC_TYPE_FRMR = 9, /* Frame Reject */
+	OSP_HDLC_TYPE_UI = 10,  /* Unnumbered Information */
+	OSP_HDLC_TYPE_XID = 11, /* Exchange Identification */
 } osp_hdlc_frame_type_t;
 
 /* HDLC control field */
 typedef struct {
 	osp_hdlc_frame_type_t type;
-	uint8_t poll_final;
-	uint8_t send_seq; /* N(S) for I-frames */
-	uint8_t recv_seq; /* N(R) for I/RR/RNR/REJ */
+	uint8_t poll_final; /* P/F bit (position 4) */
+	uint8_t send_seq;   /* N(S) for I-frames (bits 3:1, mod 8) */
+	uint8_t recv_seq;   /* N(R) for I/S-frames (bits 7:5, mod 8) */
 } osp_hdlc_control_t;
+
+/* Encode control field to a single byte */
+uint8_t osp_hdlc_control_encode(const osp_hdlc_control_t *ctrl);
+
+/* Decode control field from a single byte */
+osp_err_t osp_hdlc_control_decode(uint8_t byte, osp_hdlc_control_t *ctrl);
 
 /* Complete HDLC frame */
 typedef struct {
@@ -70,10 +81,10 @@ typedef struct {
 	uint16_t info_len;
 } osp_hdlc_frame_t;
 
-/* Frame a message into HDLC: prepends/strips 7E flags, adds address, control, FCS */
+/* Frame a message into HDLC: prepends/strips 7E flags, adds address, control, HCS, FCS */
 osp_err_t osp_hdlc_frame(const osp_hdlc_frame_t *frame, uint8_t *out, uint32_t max_len, uint32_t *out_len);
 
-/* Deframe: strip flags, validate FCS, parse into osp_hdlc_frame_t */
+/* Deframe: strip flags, validate FCS/HCS, parse into osp_hdlc_frame_t */
 osp_err_t osp_hdlc_deframe(const uint8_t *data, uint32_t len, osp_hdlc_frame_t *frame);
 
 /* ═══════════════════════════════════════════════════════════════════════════

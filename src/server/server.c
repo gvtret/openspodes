@@ -10,6 +10,7 @@
 #include "../codec/serialize.h"
 #include "../ic/compact_data.h"
 #include "../ic/push_setup.h"
+#include "../transport/hdlc_session.h"
 #include <string.h>
 
 static osp_err_t server_send(osp_server_t *s, const uint8_t *data, uint32_t len);
@@ -71,7 +72,13 @@ osp_err_t osp_server_init(osp_server_t *s, osp_transport_t *transport, osp_frami
 	s->framing = framing;
 	s->associated = false;
 	s->max_pdu = OSP_SERVER_MAX_PDU;
+	s->hdlc_active = false;
 	osp_dispatcher_init(&s->dispatcher);
+
+	if (framing == OSP_FRAMING_HDLC) {
+		osp_hdlc_session_init_server(&s->hdlc, transport, 1, 1, 1, 1);
+	}
+
 	return OSP_OK;
 }
 
@@ -96,6 +103,13 @@ void osp_server_set_security(osp_server_t *s, const osp_sec_context_t *sec) {
 	if (s && sec) {
 		s->security = *sec;
 	}
+}
+
+void osp_server_set_hdlc_addresses(osp_server_t *s, uint32_t server_addr, uint8_t server_addr_len,
+                                    uint32_t client_addr, uint8_t client_addr_len) {
+	if (!s || s->framing != OSP_FRAMING_HDLC)
+		return;
+	osp_hdlc_session_init_server(&s->hdlc, s->transport, server_addr, server_addr_len, client_addr, client_addr_len);
 }
 
 void osp_server_set_association(osp_server_t *s, osp_ic_association_ln_t *association) {
@@ -128,6 +142,9 @@ static osp_err_t server_send(osp_server_t *s, const uint8_t *data, uint32_t len)
 		}
 		return osp_gbt_transport_send(s->transport, s->framing, send_data, send_len, server_gbt_payload_max(s), s->gbt_window, s->tx_buf,
 		                              sizeof(s->tx_buf), s->rx_buf, sizeof(s->rx_buf), 5000);
+	}
+	if (s->hdlc_active) {
+		return osp_hdlc_session_send_apdu(&s->hdlc, send_data, send_len);
 	}
 	return osp_transport_send_apdu(s->transport, s->framing, send_data, send_len);
 }
@@ -698,7 +715,23 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 
 	/* Receive raw APDU */
 	uint32_t rx_len = 0;
-	osp_err_t r = osp_transport_recv_apdu(s->transport, s->framing, s->rx_buf, sizeof(s->rx_buf), &rx_len, timeout_ms);
+	osp_err_t r = OSP_OK;
+
+	/* HDLC: handle SNRM/UA on first call */
+	if (s->framing == OSP_FRAMING_HDLC && !s->hdlc_active) {
+		r = osp_hdlc_session_connect(&s->hdlc, timeout_ms);
+		if (r != OSP_OK) {
+			return r;
+		}
+		s->hdlc_active = true;
+		return OSP_OK; /* link established, caller calls again for APDU */
+	}
+
+	if (s->hdlc_active) {
+		r = osp_hdlc_session_recv_apdu(&s->hdlc, s->rx_buf, sizeof(s->rx_buf), &rx_len, timeout_ms);
+	} else {
+		r = osp_transport_recv_apdu(s->transport, s->framing, s->rx_buf, sizeof(s->rx_buf), &rx_len, timeout_ms);
+	}
 	if (r != OSP_OK) {
 		return r;
 	}
