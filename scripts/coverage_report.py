@@ -5,7 +5,7 @@ import subprocess
 import sys
 
 root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-build = os.path.join(root, "build-coverage")
+build = os.path.join(root, os.environ.get("COVERAGE_BUILD_DIR", "build-cov"))
 src_root = os.path.join(root, "src")
 
 
@@ -23,7 +23,10 @@ def run_gcov(sources):
     for src in sources:
         rel = os.path.relpath(src, root).replace("\\", "/")
         parts = rel.split("/")
-        obj_path = os.path.join("CMakeFiles", "openspodes.dir", *parts[:-1], parts[-1] + ".obj")
+        # Try .o (Linux) first, then .obj (Windows)
+        obj_path = os.path.join("CMakeFiles", "openspodes.dir", *parts[:-1], parts[-1] + ".o")
+        if not os.path.exists(obj_path):
+            obj_path = os.path.join("CMakeFiles", "openspodes.dir", *parts[:-1], parts[-1] + ".obj")
         if not os.path.exists(obj_path):
             continue
         subprocess.run(

@@ -54,9 +54,9 @@ osp_err_t osp_axdr_read_i64(osp_buf_t *buf, int64_t *val) {
 	if (!buf || !val || osp_buf_unread(buf) < 8) {
 		return OSP_ERR_INVALID;
 	}
-	*val = ((int64_t)buf->buf[buf->rd] << 56) | ((int64_t)buf->buf[buf->rd + 1] << 48) | ((int64_t)buf->buf[buf->rd + 2] << 40) |
-	    ((int64_t)buf->buf[buf->rd + 3] << 32) | ((int64_t)buf->buf[buf->rd + 4] << 24) | ((int64_t)buf->buf[buf->rd + 5] << 16) |
-	    ((int64_t)buf->buf[buf->rd + 6] << 8) | (int64_t)buf->buf[buf->rd + 7];
+	*val = ((uint64_t)buf->buf[buf->rd] << 56) | ((uint64_t)buf->buf[buf->rd + 1] << 48) | ((uint64_t)buf->buf[buf->rd + 2] << 40) |
+	    ((uint64_t)buf->buf[buf->rd + 3] << 32) | ((uint64_t)buf->buf[buf->rd + 4] << 24) | ((uint64_t)buf->buf[buf->rd + 5] << 16) |
+	    ((uint64_t)buf->buf[buf->rd + 6] << 8) | (uint64_t)buf->buf[buf->rd + 7];
 	buf->rd += 8;
 	return OSP_OK;
 }

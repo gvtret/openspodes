@@ -344,6 +344,29 @@ static osp_err_t handle_get(osp_server_t *s, const osp_get_request_t *req) {
 	resp.invoke_id_priority = req->invoke_id_priority;
 	osp_get_result_item_t item;
 	dispatch_get_attr(s, &req->as.normal.attr, &item);
+
+	/* Apply selective access filter for ProfileGeneric buffer (attr 2) */
+	if (item.is_data && req->as.normal.access_selection.type != OSP_SEL_ACCESS_NONE &&
+	    req->as.normal.attr.attribute_id == 2 && item.data.tag == OSP_TAG_ARRAY) {
+		osp_value_list_t *arr = &item.data.as.array.elements;
+		if (req->as.normal.access_selection.type == OSP_SEL_ACCESS_BY_ENTRY ||
+		    req->as.normal.access_selection.type == OSP_SEL_ACCESS_BY_RANGE) {
+			uint32_t from = req->as.normal.access_selection.param.entry.from;
+			uint32_t to = req->as.normal.access_selection.param.entry.to;
+			uint8_t filtered = 0;
+			for (uint8_t i = 0; i < arr->count; i++) {
+				uint32_t entry = i + 1;
+				if (entry >= from && (to == 0 || entry <= to)) {
+					if (filtered != i) {
+						arr->items[filtered] = arr->items[i];
+					}
+					filtered++;
+				}
+			}
+			arr->count = filtered;
+		}
+	}
+
 	if (item.is_data) {
 		resp.type = OSP_GET_RESP_DATA;
 		resp.data = item.data;

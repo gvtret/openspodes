@@ -378,6 +378,8 @@ void linux_hal_set_tcp(osp_hal_t *hal, const char *host, uint16_t port) {
 	if (ctx->fd >= 0)
 		close(ctx->fd);
 	ctx->fd = connect_tcp(host, port);
+	/* Transport wraps/unwraps COSEM wrapper internally.
+	   Client/server use FRAMING_NONE — HAL does the framing. */
 	ctx->framing = OSP_FRAMING_WRAPPER;
 	ctx->wrapper_source = 1000;
 	ctx->wrapper_dest = 4059;

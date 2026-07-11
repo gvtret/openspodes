@@ -426,6 +426,48 @@ osp_err_t osp_client_get(osp_client_t *c, uint16_t class_id, const osp_obis_t *o
 	return osp_value_read(&vbuf, result) == OSP_OK ? OSP_OK : OSP_ERR_INVALID;
 }
 
+osp_err_t osp_client_get_with_selective_access(osp_client_t *c, uint16_t class_id, const osp_obis_t *obis, uint8_t attr_id,
+                                                 const osp_selective_access_t *sa, osp_value_t *result) {
+	if (!c || !c->associated || !obis || !sa || !result) {
+		return OSP_ERR_INVALID;
+	}
+
+	osp_get_request_t req;
+	memset(&req, 0, sizeof(req));
+	req.type = OSP_GET_NORMAL;
+	req.invoke_id_priority = OSP_IIDP(++c->invoke_id, 0);
+	req.as.normal.attr.class_id = class_id;
+	req.as.normal.attr.instance_id = *obis;
+	req.as.normal.attr.attribute_id = attr_id;
+	req.as.normal.access_selection = *sa;
+
+	osp_buf_t buf;
+	osp_buf_init(&buf, c->tx_buf, sizeof(c->tx_buf));
+	if (osp_get_request_encode(&buf, &req) != 0) {
+		return OSP_ERR_INVALID;
+	}
+
+	osp_err_t r = client_send_apdu(c, buf.buf, buf.wr);
+	if (r != OSP_OK) {
+		return r;
+	}
+
+	osp_get_response_t resp;
+	r = client_recv_get_response(c, &resp);
+	if (r != OSP_OK) {
+		return r;
+	}
+
+	if (resp.type == OSP_GET_RESP_DATA) {
+		*result = resp.data;
+		return OSP_OK;
+	}
+	if (resp.type == OSP_GET_RESP_DATA_ERROR) {
+		return OSP_ERR_NOT_FOUND;
+	}
+	return OSP_ERR_INVALID;
+}
+
 osp_err_t osp_client_get_with_list(osp_client_t *c, const osp_client_attr_ref_t *attrs, uint8_t count, osp_get_result_item_t *results) {
 	if (!c || !c->associated || !attrs || !results || count == 0 || count > OSP_XDLMS_MAX_LIST) {
 		return OSP_ERR_INVALID;

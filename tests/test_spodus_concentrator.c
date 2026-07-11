@@ -46,13 +46,14 @@ static osp_err_t downstream_recv(void *ctx, uint8_t *buf, uint32_t size, uint32_
 	return mock_recv_from_peer(&dc->pair->client_rx, buf, size, out_len, timeout_ms);
 }
 
+static osp_ic_data_t g_meter_data;
+
 static void setup_meter_server(osp_server_t *meter, mock_transport_pair_t *pair, downstream_ctx_t *dc, osp_obis_t obis, uint32_t energy) {
 	mock_transport_pair_init(pair);
 	osp_server_init(meter, &pair->server_transport, OSP_FRAMING_NONE);
-	osp_ic_data_t data_obj;
-	osp_ic_data_init(&data_obj, obis);
-	data_obj.value = osp_val_u32(energy);
-	osp_server_register(meter, osp_ic_data_class(), &data_obj);
+	osp_ic_data_init(&g_meter_data, obis);
+	g_meter_data.value = osp_val_u32(energy);
+	osp_server_register(meter, osp_ic_data_class(), &g_meter_data);
 
 	dc->pair = pair;
 	dc->meter = meter;

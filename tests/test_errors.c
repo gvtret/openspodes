@@ -393,6 +393,7 @@ static void test_transport_hdlc_framing(void **state) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static osp_server_t *g_server = NULL;
+static osp_ic_data_t g_error_data_obj;
 
 static osp_err_t loopback_send(void *ctx, const uint8_t *data, uint32_t len) {
 	mock_transport_pair_t *p = (mock_transport_pair_t *)ctx;
@@ -436,10 +437,9 @@ static void test_client_get_not_found(void **state) {
 	osp_server_t server;
 	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
 
-	osp_ic_data_t data_obj;
-	osp_ic_data_init(&data_obj, (osp_obis_t){0, 0, 1, 0, 0, 255});
-	data_obj.value = osp_val_u32(1);
-	osp_server_register(&server, osp_ic_data_class(), &data_obj);
+	osp_ic_data_init(&g_error_data_obj, (osp_obis_t){0, 0, 1, 0, 0, 255});
+	g_error_data_obj.value = osp_val_u32(1);
+	osp_server_register(&server, osp_ic_data_class(), &g_error_data_obj);
 
 	osp_sec_context_t sec;
 	osp_sec_context_init(&sec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
@@ -613,10 +613,9 @@ static void setup_connected_lowest_client(osp_client_t *client, mock_transport_p
 	mock_transport_pair_init(pair);
 
 	osp_server_init(server, &pair->server_transport, OSP_FRAMING_NONE);
-	osp_ic_data_t data_obj;
-	osp_ic_data_init(&data_obj, (osp_obis_t){0, 0, 1, 0, 0, 255});
-	data_obj.value = osp_val_u32(1);
-	osp_server_register(server, osp_ic_data_class(), &data_obj);
+	osp_ic_data_init(&g_error_data_obj, (osp_obis_t){0, 0, 1, 0, 0, 255});
+	g_error_data_obj.value = osp_val_u32(1);
+	osp_server_register(server, osp_ic_data_class(), &g_error_data_obj);
 
 	osp_sec_context_t sec;
 	osp_sec_context_init(&sec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);

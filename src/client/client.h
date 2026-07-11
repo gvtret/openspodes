@@ -98,6 +98,10 @@ typedef struct {
 /* GET request/response */
 osp_err_t osp_client_get(osp_client_t *c, uint16_t class_id, const osp_obis_t *obis, uint8_t attr_id, osp_value_t *result);
 
+/* GET with selective access (ProfileGeneric buffer: date/entry range) */
+osp_err_t osp_client_get_with_selective_access(osp_client_t *c, uint16_t class_id, const osp_obis_t *obis, uint8_t attr_id,
+                                                 const osp_selective_access_t *sa, osp_value_t *result);
+
 /* GET with-list (up to OSP_XDLMS_MAX_LIST attributes) */
 osp_err_t osp_client_get_with_list(osp_client_t *c, const osp_client_attr_ref_t *attrs, uint8_t count, osp_get_result_item_t *results);
 

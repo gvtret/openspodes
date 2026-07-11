@@ -11,3 +11,8 @@ logs/
 *.gcno
 *.gcda
 *.gcov
+build-cov/
+files.zip
+build-linux/
+build-orig/
+build-san/

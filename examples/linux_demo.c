@@ -77,7 +77,7 @@ int main(int argc, char **argv) {
 
 	/* Initialize client */
 	osp_client_t client;
-	osp_client_init(&client, &hal.transport, OSP_FRAMING_WRAPPER);
+	osp_client_init(&client, &hal.transport, OSP_FRAMING_NONE);
 
 	/* Security: lowest (no authentication) */
 	osp_sec_context_t sec;
@@ -93,10 +93,10 @@ int main(int argc, char **argv) {
 	}
 	printf("Associated.\n");
 
-	/* GET Data 0.0.1.0.0.255 attribute 1 */
-	osp_obis_t obis = {0, 0, 1, 0, 0, 255};
+	/* GET Data 1.0.1.8.0.255 attribute 1 (active energy import) */
+	osp_obis_t obis = {1, 0, 1, 8, 0, 255};
 	osp_value_t result;
-	printf("GET 0.0.1.0.0.255 attr 1... ");
+	printf("GET 1.0.1.8.0.255 attr 1... ");
 	if (osp_client_get(&client, 1, &obis, 1, &result) == OSP_OK) {
 		print_value(&result);
 		printf("\n");

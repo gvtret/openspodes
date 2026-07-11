@@ -160,7 +160,7 @@ int osp_gen_ciphering_unprotect(osp_sec_context_t *ctx, const uint8_t *apdu, uin
 	if (read_octet_string(&buf, &tmp, &tmp_len) != 0 || tmp_len != OSP_SEC_SYSTEM_TITLE_SIZE) {
 		return -1;
 	}
-	memcpy(ctx->peer_system_title, tmp, tmp_len);
+	if (tmp_len > 0 && tmp) memcpy(ctx->peer_system_title, tmp, tmp_len);
 	if (read_octet_string(&buf, &tmp, &tmp_len) != 0) {
 		return -1;
 	}
@@ -279,36 +279,38 @@ int osp_gen_signing_decode(const uint8_t *apdu, uint32_t apdu_len, osp_gen_signi
 	if (read_octet_string(&buf, &tmp, &tmp_len) != 0 || tmp_len > sizeof(decoded->transaction_id)) {
 		return -1;
 	}
-	memcpy(decoded->transaction_id, tmp, tmp_len);
+	if (tmp_len > 0 && tmp) memcpy(decoded->transaction_id, tmp, tmp_len);
 	decoded->transaction_id_len = tmp_len;
 	if (read_octet_string(&buf, &tmp, &tmp_len) != 0 || tmp_len != OSP_SEC_SYSTEM_TITLE_SIZE) {
 		return -1;
 	}
-	memcpy(decoded->originator_st, tmp, tmp_len);
+	if (tmp_len > 0 && tmp) memcpy(decoded->originator_st, tmp, tmp_len);
 	if (read_octet_string(&buf, &tmp, &tmp_len) != 0 || tmp_len > sizeof(decoded->recipient_st)) {
 		return -1;
 	}
-	memcpy(decoded->recipient_st, tmp, tmp_len);
+	if (tmp_len > 0 && tmp) memcpy(decoded->recipient_st, tmp, tmp_len);
 	decoded->recipient_st_len = tmp_len;
 	if (read_octet_string(&buf, &tmp, &tmp_len) != 0 || tmp_len > sizeof(decoded->date_time)) {
 		return -1;
 	}
-	memcpy(decoded->date_time, tmp, tmp_len);
+	if (tmp_len > 0 && tmp) {
+		memcpy(decoded->date_time, tmp, tmp_len);
+	}
 	decoded->date_time_len = tmp_len;
 	if (read_octet_string(&buf, &tmp, &tmp_len) != 0 || tmp_len > sizeof(decoded->other_information)) {
 		return -1;
 	}
-	memcpy(decoded->other_information, tmp, tmp_len);
+	if (tmp_len > 0 && tmp) memcpy(decoded->other_information, tmp, tmp_len);
 	decoded->other_information_len = tmp_len;
 	if (read_octet_string(&buf, &tmp, &tmp_len) != 0 || tmp_len > sizeof(decoded->content)) {
 		return -1;
 	}
-	memcpy(decoded->content, tmp, tmp_len);
+	if (tmp_len > 0 && tmp) memcpy(decoded->content, tmp, tmp_len);
 	decoded->content_len = tmp_len;
 	if (read_octet_string(&buf, &tmp, &tmp_len) != 0 || tmp_len > sizeof(decoded->signature)) {
 		return -1;
 	}
-	memcpy(decoded->signature, tmp, tmp_len);
+	if (tmp_len > 0 && tmp) memcpy(decoded->signature, tmp, tmp_len);
 	decoded->signature_len = tmp_len;
 	return 0;
 }

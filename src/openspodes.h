@@ -5,7 +5,7 @@
  * of spodes-rs (Rust) with HAL abstractions for MCU portability.
  *
  * Copyright (c) 2025 OpenSPODES contributors
- * SPDX-License-Identifier: MIT OR Apache-2.0
+ * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
 #ifndef OPENSPODES_H
@@ -50,7 +50,7 @@ typedef struct {
 	uint8_t f; /* sub-item */
 } osp_obis_t;
 
-static inline bool osp_obis_eq(const osp_obis_t *a, const osp_obis_t *b) {
+static inline __attribute__((noinline)) bool osp_obis_eq(const osp_obis_t *a, const osp_obis_t *b) {
 	return a && b && memcmp(a, b, sizeof(osp_obis_t)) == 0;
 }
 
