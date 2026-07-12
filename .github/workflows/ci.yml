@@ -60,14 +60,11 @@ jobs:
         run: ctest --test-dir build-cov --output-on-failure
 
       - name: Generate coverage report
-        run: |
-          cd build-cov
-          gcovr --root .. --filter '../src/' --print-summary
+        run: cmake --build build-cov --target coverage
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
-          files: build-cov/coverage.xml
           fail_ci_if_error: false
 
   docs:
