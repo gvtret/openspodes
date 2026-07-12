@@ -8,6 +8,7 @@
 #include <stddef.h>
 #include <setjmp.h>
 #include <string.h>
+#include <stdlib.h>
 #include <cmocka.h>
 
 #include "openspodes.h"
@@ -21,6 +22,16 @@
 #include "mock_transport.h"
 #include "mock_crypto.h"
 #include "security/security.h"
+
+static void hex_to_bytes(const char *hex, uint8_t *out, uint32_t *out_len) {
+	uint32_t n = 0;
+	while (hex[0] && hex[1]) {
+		char pair[3] = {hex[0], hex[1], 0};
+		out[n++] = (uint8_t)strtoul(pair, NULL, 16);
+		hex += 2;
+	}
+	*out_len = n;
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  Codec error paths
@@ -945,6 +956,100 @@ static void test_server_invalid_and_unsupported(void **state) {
 	assert_int_equal(osp_server_accept(&server, 5000), OSP_ERR_UNSUPPORTED);
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  Security error injection tests
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+static void test_glo_unprotect_wrong_tag(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_crypto_init_real_gcm();
+	if (!osp_hal_gcm_crypt) {
+		skip();
+	}
+
+	/* Build two contexts with DIFFERENT system titles (different IVs) */
+	osp_sec_context_t tx, rx;
+	uint8_t ek[16], ak[16];
+	uint32_t len;
+
+	uint8_t st_tx[] = {0x4D, 0x4D, 0x4D, 0x00, 0x00, 0xBC, 0x61, 0x4E};
+	uint8_t st_rx[] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+
+	hex_to_bytes("000102030405060708090A0B0C0D0E0F", ek, &len);
+	hex_to_bytes("D0D1D2D3D4D5D6D7D8D9DADBDCDDDEDF", ak, &len);
+
+	osp_sec_context_init(&tx, OSP_SUITE_0, OSP_MECH_LOWEST, st_tx);
+	tx.policy = OSP_POLICY_ENCR_AUTH;
+	memcpy(tx.guek, ek, 16);
+	memcpy(tx.gak, ak, 16);
+	tx.invocation_counter = 1;
+
+	osp_sec_context_init(&rx, OSP_SUITE_0, OSP_MECH_LOWEST, st_rx);
+	rx.policy = OSP_POLICY_ENCR_AUTH;
+	memcpy(rx.guek, ek, 16);
+	memcpy(rx.gak, ak, 16);
+
+	/* Encrypt with tx context (system title A) */
+	const uint8_t plain[] = {0xC0, 0x01, 0xC1, 0x00, 0x08, 0x00, 0x00, 0x01, 0x00, 0x00, 0xFF, 0x02, 0x00};
+	uint8_t ciphered[128];
+	uint32_t ciphered_len = 0;
+	assert_int_equal(osp_glo_protect(&tx, OSP_GLO_GET_REQUEST, plain, sizeof(plain), ciphered, &ciphered_len), 0);
+
+	/* Try to unprotect with rx context (different system title) -> must fail */
+	uint8_t recovered[128];
+	uint32_t recovered_len = 0;
+	assert_int_not_equal(osp_glo_unprotect(&rx, ciphered, ciphered_len, recovered, &recovered_len), 0);
+}
+
+static void test_glo_unprotect_replay_ic(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_crypto_init_real_gcm();
+	if (!osp_hal_gcm_crypt) {
+		skip();
+	}
+
+	osp_sec_context_t tx, rx;
+	uint8_t ek[16], ak[16], st[8];
+	uint32_t len;
+
+	hex_to_bytes("000102030405060708090A0B0C0D0E0F", ek, &len);
+	hex_to_bytes("D0D1D2D3D4D5D6D7D8D9DADBDCDDDEDF", ak, &len);
+	hex_to_bytes("4D4D4D0000BC614E", st, &len);
+
+	osp_sec_context_init(&tx, OSP_SUITE_0, OSP_MECH_LOWEST, st);
+	tx.policy = OSP_POLICY_ENCR_AUTH;
+	memcpy(tx.guek, ek, 16);
+	memcpy(tx.gak, ak, 16);
+
+	osp_sec_context_init(&rx, OSP_SUITE_0, OSP_MECH_LOWEST, st);
+	rx.policy = OSP_POLICY_ENCR_AUTH;
+	memcpy(rx.guek, ek, 16);
+	memcpy(rx.gak, ak, 16);
+
+	const uint8_t plain[] = {0xC0, 0x01, 0xC1, 0x00, 0x08, 0x00, 0x00, 0x01, 0x00, 0x00, 0xFF, 0x02, 0x00};
+	uint8_t ciphered[128];
+	uint8_t recovered[128];
+	uint32_t recovered_len;
+
+	/* First: establish a valid session with IC=5 */
+	tx.invocation_counter = 5;
+	uint32_t ciphered_len = 0;
+	assert_int_equal(osp_glo_protect(&tx, OSP_GLO_GET_REQUEST, plain, sizeof(plain), ciphered, &ciphered_len), 0);
+	recovered_len = sizeof(recovered);
+	assert_int_equal(osp_glo_unprotect(&rx, ciphered, ciphered_len, recovered, &recovered_len), 0);
+	assert_true(rx.ic_valid);
+	assert_int_equal(rx.last_peer_ic, 5);
+
+	/* Now: encrypt with IC=3 (lower than last_peer_ic=5) -> must fail replay detection */
+	tx.invocation_counter = 3;
+	ciphered_len = 0;
+	assert_int_equal(osp_glo_protect(&tx, OSP_GLO_GET_REQUEST, plain, sizeof(plain), ciphered, &ciphered_len), 0);
+	recovered_len = sizeof(recovered);
+	assert_int_not_equal(osp_glo_unprotect(&rx, ciphered, ciphered_len, recovered, &recovered_len), 0);
+}
+
 static void test_server_init_errors(void **state) {
 	(void)state;
 	osp_server_t server;
@@ -990,6 +1095,8 @@ int main(void) {
 	    cmocka_unit_test(test_client_hls_invalid_pass4_response),
 	    cmocka_unit_test(test_client_release_bad_rlre),
 	    cmocka_unit_test(test_client_disconnect_releases),
+	    cmocka_unit_test(test_glo_unprotect_wrong_tag),
+	    cmocka_unit_test(test_glo_unprotect_replay_ic),
 	    cmocka_unit_test(test_server_rlrq_release),
 	    cmocka_unit_test(test_server_invalid_and_unsupported),
 	    cmocka_unit_test(test_server_init_errors),
