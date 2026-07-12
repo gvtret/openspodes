@@ -95,9 +95,9 @@ void osp_sec_rotate_keys(osp_sec_context_t *ctx, const uint8_t *new_guek, const 
 	if (!ctx || !new_guek || !new_gak)
 		return;
 
-	/* Update keys */
-	memcpy(ctx->guek, new_guek, OSP_SEC_KEY_MAX);
-	memcpy(ctx->gak, new_gak, OSP_SEC_KEY_MAX);
+	/* Update keys (copy 16 bytes, the actual key size for AES-128) */
+	memcpy(ctx->guek, new_guek, 16);
+	memcpy(ctx->gak, new_gak, 16);
 
 	/* Reset invocation counter */
 	ctx->invocation_counter = 0;
