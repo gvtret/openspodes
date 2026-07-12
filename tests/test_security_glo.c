@@ -124,11 +124,47 @@ static void test_ded_get_roundtrip(void **state) {
 	assert_memory_equal(recovered, plain, sizeof(plain));
 }
 
+static void test_gen_ciphering_roundtrip(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_crypto_init_real_gcm();
+	if (!osp_hal_gcm_crypt) {
+		skip();
+	}
+
+	osp_sec_context_t ctx;
+	fill_e5_ctx(&ctx);
+
+	/* Transaction ID and recipient system title */
+	uint8_t tx_id[] = {0xDE, 0xAD, 0xBE, 0xEF};
+	uint8_t recipient_st[] = {0x4D, 0x4D, 0x4D, 0x00, 0x00, 0xBC, 0x61, 0x4E};
+
+	const uint8_t plain[] = {0xC0, 0x01, 0xC1, 0x00, 0x08, 0x00, 0x00, 0x01, 0x00, 0x00, 0xFF, 0x02, 0x00};
+	uint8_t ciphered[256];
+	uint32_t ciphered_len = 0;
+
+	/* Protect */
+	assert_int_equal(osp_gen_ciphering_protect(&ctx, tx_id, sizeof(tx_id), recipient_st, sizeof(recipient_st),
+	                                            plain[0], plain, sizeof(plain), ciphered, &ciphered_len),
+	                 0);
+	assert_true(ciphered_len > sizeof(plain)); /* must be larger due to envelope */
+
+	/* Unprotect */
+	uint8_t recovered[256];
+	uint32_t recovered_len = 0;
+	uint8_t recovered_tag = 0;
+	assert_int_equal(osp_gen_ciphering_unprotect(&ctx, ciphered, ciphered_len, recovered, &recovered_len, &recovered_tag), 0);
+	assert_int_equal(recovered_len, sizeof(plain));
+	assert_memory_equal(recovered, plain, sizeof(plain));
+	assert_int_equal(recovered_tag, plain[0]);
+}
+
 int main(void) {
 	const struct CMUnitTest tests[] = {
 	    cmocka_unit_test(test_glo_e5_vector),
 	    cmocka_unit_test(test_glo_get_roundtrip),
 	    cmocka_unit_test(test_ded_get_roundtrip),
+	    cmocka_unit_test(test_gen_ciphering_roundtrip),
 	};
 	return cmocka_run_group_tests(tests, NULL, NULL);
 }
