@@ -224,6 +224,74 @@ osp_err_t osp_gbt_transport_recv(osp_transport_t *transport, osp_framing_type_t 
 	}
 }
 
+osp_err_t osp_gbt_transport_send_streaming_bidir(osp_transport_t *transport, osp_framing_type_t framing, const uint8_t *apdu, uint32_t apdu_len,
+                                                  uint32_t block_payload_max, uint8_t window, uint8_t *tx_scratch, uint32_t tx_scratch_size,
+                                                  uint8_t *rx_scratch, uint32_t rx_scratch_size, uint32_t timeout_ms,
+                                                  osp_gbt_streaming_recv_cb on_receive, void *user_ctx) {
+	if (!transport || !apdu || apdu_len == 0 || apdu_len > OSP_GBT_MAX_APDU || block_payload_max == 0 || block_payload_max > OSP_MAX_OCTET_LEN ||
+	    !tx_scratch || !rx_scratch || !on_receive) {
+		return OSP_ERR_INVALID;
+	}
+
+	uint8_t win = window & OSP_GBT_WINDOW_MASK;
+	uint32_t offset = 0;
+	uint16_t block_number = 1;
+	uint16_t blocks_in_window = 0;
+
+	while (offset < apdu_len) {
+		uint32_t chunk = apdu_len - offset;
+		if (chunk > block_payload_max) {
+			chunk = block_payload_max;
+		}
+		bool last = (offset + chunk >= apdu_len);
+
+		osp_general_block_transfer_t gbt = {0};
+		gbt.last_block = last;
+		gbt.streaming = true;
+		gbt.window = win;
+		gbt.block_number = block_number;
+		gbt.block_number_ack = 0;
+		gbt.block_data_len = chunk;
+		memcpy(gbt.block_data, &apdu[offset], chunk);
+
+		osp_err_t r = gbt_send_block(transport, framing, &gbt, tx_scratch, tx_scratch_size);
+		if (r != OSP_OK) {
+			return r;
+		}
+
+		offset += chunk;
+		blocks_in_window++;
+		block_number++;
+
+		/* Confirmed mode: wait for ack after each window. */
+		if (win > 0 && !last && blocks_in_window >= win) {
+			/* Receive next block — may be ack-only or carry data. */
+			osp_general_block_transfer_t ack;
+			r = gbt_recv_block(transport, framing, &ack, rx_scratch, rx_scratch_size, timeout_ms);
+			if (r != OSP_OK) {
+				return r;
+			}
+			/* Piggybacked data: invoke callback. */
+			if (ack.block_data_len > 0) {
+				on_receive(ack.block_data, ack.block_data_len, user_ctx);
+			}
+			/* Retransmit if peer reports missing blocks. */
+			if (ack.block_number_ack + 1 < block_number) {
+				block_number = (uint16_t)(ack.block_number_ack + 1);
+				offset = (uint32_t)(block_number - 1) * block_payload_max;
+				if (offset >= apdu_len) {
+					offset = 0;
+					block_number = 1;
+				}
+				blocks_in_window = 0;
+				continue;
+			}
+			blocks_in_window = 0;
+		}
+	}
+	return OSP_OK;
+}
+
 bool osp_gbt_applies_to_apdu(const uint8_t *apdu, uint32_t len) {
 	if (!apdu || len == 0) {
 		return false;

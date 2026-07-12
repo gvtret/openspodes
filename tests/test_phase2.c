@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include <setjmp.h>
 #include <string.h>
+#include <stdio.h>
 #include <cmocka.h>
 
 #include "openspodes.h"
@@ -503,6 +504,63 @@ static void test_compact_data_capture(void **state) {
 	assert_int_equal(buf_val.as.octetstring.len, 0);
 }
 
+/* ── Bidirectional GBT streaming test ──────────────────────────────── */
+
+static uint8_t g_bidir_received[64];
+static uint32_t g_bidir_received_len = 0;
+
+static void test_bidir_recv_cb(const uint8_t *data, uint32_t data_len, void *user_ctx) {
+	(void)user_ctx;
+	if (data_len <= sizeof(g_bidir_received)) {
+		memcpy(g_bidir_received, data, data_len);
+		g_bidir_received_len = data_len;
+	}
+}
+
+static void test_gbt_bidir_streaming(void **state) {
+	(void)state;
+	/* Direct mock: server writes/reads from same buffer (client_rx).
+	 * No loopback auto-process — avoids osp_server_accept interference. */
+	mock_transport_pair_t pair;
+	mock_transport_pair_init(&pair);
+
+	const uint8_t server_data[] = {0xC4, 0x01, 0x41, 0x00, 0x11, 0x01, 0x02, 0x03};
+	uint8_t tx_scratch[128];
+	uint8_t rx_scratch[128];
+
+	/* Pre-populate client_rx with an ack that carries piggybacked data */
+	osp_general_block_transfer_t client_ack = {0};
+	client_ack.last_block = true;
+	client_ack.streaming = false;
+	client_ack.window = 1;
+	client_ack.block_number = 1;
+	client_ack.block_number_ack = 1;
+	uint8_t client_response[] = {0xC4, 0x01, 0x42, 0x00, 0x11, 0x02};
+	memcpy(client_ack.block_data, client_response, sizeof(client_response));
+	client_ack.block_data_len = sizeof(client_response);
+
+	osp_buf_t ack_buf;
+	osp_buf_init(&ack_buf, tx_scratch, sizeof(tx_scratch));
+	assert_int_equal(osp_gbt_encode(&ack_buf, &client_ack), 0);
+	/* Server reads from server_rx — put ack there */
+	assert_int_equal(mock_send_to_peer(&pair.server_rx, tx_scratch, ack_buf.wr), OSP_OK);
+
+	g_bidir_received_len = 0;
+
+	/* Server sends with block_payload_max=5 (2 blocks for 8 bytes), window=1.
+	 * Server reads from client_rx (direct mock, no loopback). */
+	osp_err_t r = osp_gbt_transport_send_streaming_bidir(&pair.server_transport, OSP_FRAMING_NONE, server_data, sizeof(server_data), 5, 1,
+	                                            tx_scratch, sizeof(tx_scratch), rx_scratch, sizeof(rx_scratch), 5000,
+	                                            test_bidir_recv_cb, NULL);
+	assert_int_equal(r, OSP_OK);
+
+	/* Server sent data blocks to client_rx */
+	assert_true(pair.client_rx.msg_count >= 2);
+
+	/* Callback was invoked with piggybacked data from ack */
+	assert_true(g_bidir_received_len > 0);
+}
+
 int main(void) {
 	const struct CMUnitTest tests[] = {
 	    cmocka_unit_test(test_get_with_list_golden),
@@ -516,6 +574,7 @@ int main(void) {
 	    cmocka_unit_test(test_gbt_recv_gap_recovery),
 	    cmocka_unit_test(test_confirmed_service_error_roundtrip),
 	    cmocka_unit_test(test_gbt_transport_confirmed),
+	    cmocka_unit_test(test_gbt_bidir_streaming),
 	    cmocka_unit_test(test_action_param_block_golden),
 	    cmocka_unit_test(test_compact_data_capture),
 	};

@@ -50,6 +50,17 @@ osp_err_t osp_gbt_transport_recv(osp_transport_t *transport, osp_framing_type_t 
                                  uint8_t *apdu, uint32_t apdu_size, uint32_t *apdu_len, uint8_t *tx_scratch, uint32_t tx_scratch_size,
                                  uint32_t timeout_ms, const uint8_t *first_block, uint32_t first_block_len);
 
+/* Bidirectional GBT streaming: send data with STR bit, receive data from ack blocks.
+ * The on_receive callback is invoked for each incoming data block piggybacked in an ack.
+ * The callback may send response data using gbt_send_block on the same transport.
+ * This enables full-duplex streaming where both sides send and receive simultaneously. */
+typedef void (*osp_gbt_streaming_recv_cb)(const uint8_t *data, uint32_t data_len, void *user_ctx);
+
+osp_err_t osp_gbt_transport_send_streaming_bidir(osp_transport_t *transport, osp_framing_type_t framing, const uint8_t *apdu, uint32_t apdu_len,
+                                                  uint32_t block_payload_max, uint8_t window, uint8_t *tx_scratch, uint32_t tx_scratch_size,
+                                                  uint8_t *rx_scratch, uint32_t rx_scratch_size, uint32_t timeout_ms,
+                                                  osp_gbt_streaming_recv_cb on_receive, void *user_ctx);
+
 #ifdef __cplusplus
 }
 #endif
