@@ -49,9 +49,41 @@ python3 scripts/coverage_report.py   # run inside build-cov/
 
 ### Loopback (in-process)
 
+Full client↔server demo with no network — runs entirely in-process using mock transport.
+
 ```bash
+# Build and run the demo
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build -j$(nproc)
 ./build/openspodes_loopback_cli demo
 ```
+
+The demo performs:
+1. Initializes server with 2 Data IC objects (OBIS `0.0.1.0.0.255` = 42, `1.0.1.8.0.255` = 123456)
+2. Connects client to server (AARQ → AARE, lowest security)
+3. GET attribute 1 from both objects
+4. SET attribute 1 on the first object to 999
+5. Verifies the new value with GET
+6. Disconnects (RLRQ → RLRE)
+
+You can also use it as a CLI tool:
+```bash
+./build/openspodes_loopback_cli get 1 0.0.1.0.0.255 1   # GET Data OBIS 0.0.1.0.0.255 attr 1
+./build/openspodes_loopback_cli set 1 0.0.1.0.0.255 1 u32:100  # SET to 100
+```
+
+### Push notifications (in-process)
+
+Demonstrates unsolicited Data/Event Notification send and receive:
+
+```bash
+./build/openspodes_push_listener
+```
+
+Performs:
+1. Server sends Data Notification (0x0F) → client receives and decodes
+2. Server sends Event Notification (0xC2) → client receives and decodes
+3. Burst of 5 rapid notifications to verify throughput
 
 ### TCP wrapper example (port 4059)
 
@@ -136,11 +168,14 @@ The library provides pluggable HAL interfaces for MCU portability:
 | Interface | Purpose |
 |-----------|---------|
 | `osp_transport_t` | TCP/serial send/recv |
-| `osp_crypto_t` | AES-GCM, MD5, SHA1, SHA256 |
-| `osp_random_t` | Random number generation |
+| `osp_hal_gcm_crypt` | AES-128-GCM encrypt/decrypt |
+| `osp_hal_md5/sha1/sha256` | Hash functions for HLS |
+| `osp_hal_random_fill` | Cryptographic random bytes |
 | `osp_timer_t` | Timing (now_ms, delay_ms) |
 | `osp_system_t` | System title + key store |
+| `osp_mutex_t` | Optional thread-safety (bare-metal: NULL) |
 
+See `docs/HAL.md` for a comprehensive MCU porting guide with examples for bare metal, FreeRTOS, Zephyr, and Linux/pthreads.
 See `examples/linux_hal.h/.c` for a complete Linux implementation (TCP + OpenSSL + POSIX timer).
 
 ## Security notes (production)
@@ -162,8 +197,8 @@ src/client/      Session client
 src/server/      Dispatcher + accept loop
 src/ic/          42 interface classes
 src/spodus/      SPODUS concentrator runtime
-tests/           CMocka suites (14 CTest targets, 271 test functions)
-examples/        loopback, TCP client/server, Linux HAL demo
+tests/           CMocka suites (16 CTest targets, 300+ test functions)
+examples/        loopback, push listener, TCP client/server, Linux HAL demo
 ```
 
 ## References
