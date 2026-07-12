@@ -263,6 +263,10 @@ static int hls_pass4_gost_cmac_build(osp_sec_context_t *ctx, uint8_t *out, uint3
 		return -1;
 	}
 	uint8_t sc = osp_sec_control_byte(OSP_POLICY_AUTH_ONLY, ctx->suite);
+	/* Check for IC overflow — per IEC 62056-5-3, counter must not wrap to 0 */
+	if (ctx->invocation_counter == 0xFFFFFFFF) {
+		return -1; /* IC overflow — re-keying required */
+	}
 	uint32_t ic = ctx->invocation_counter++;
 	uint8_t iv[12];
 	memcpy(iv, ctx->system_title, 8);
@@ -402,6 +406,10 @@ static int hls_pass3_gmac_build(const osp_sec_context_t *ctx, uint8_t *out, uint
 
 static int hls_pass4_gmac_build(osp_sec_context_t *ctx, uint8_t *out, uint32_t out_size, uint32_t *out_len) {
 	if (!ctx || !out || out_size < 17 || !out_len) {
+		return -1;
+	}
+	/* Check for IC overflow */
+	if (ctx->invocation_counter == 0xFFFFFFFF) {
 		return -1;
 	}
 	uint8_t sc = osp_sec_control_byte(OSP_POLICY_AUTH_ONLY, ctx->suite);

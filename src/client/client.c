@@ -103,6 +103,10 @@ static osp_err_t client_send_apdu(osp_client_t *c, const uint8_t *data, uint32_t
 		if (osp_glo_protect(&c->cipher_tx, osp_svc_cipher_tag_for_plain(&c->cipher_tx, data[0]), data, len, cipher_buf, &cipher_len) != 0) {
 			return OSP_ERR_SECURITY;
 		}
+		/* IC overflow check — re-keying required */
+		if (c->cipher_tx.invocation_counter == 0xFFFFFFFF) {
+			return OSP_ERR_SECURITY;
+		}
 		c->cipher_tx.invocation_counter++;
 		send_data = cipher_buf;
 		send_len = cipher_len;

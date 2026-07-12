@@ -130,6 +130,10 @@ static osp_err_t server_send(osp_server_t *s, const uint8_t *data, uint32_t len)
 		if (osp_glo_protect(&s->cipher_tx, osp_svc_cipher_tag_for_plain(&s->cipher_tx, data[0]), data, len, cipher_buf, &cipher_len) != 0) {
 			return OSP_ERR_SECURITY;
 		}
+		/* IC overflow check — re-keying required */
+		if (s->cipher_tx.invocation_counter == 0xFFFFFFFF) {
+			return OSP_ERR_SECURITY;
+		}
 		s->cipher_tx.invocation_counter++;
 		send_data = cipher_buf;
 		send_len = cipher_len;
