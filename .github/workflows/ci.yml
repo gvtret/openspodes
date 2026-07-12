@@ -59,5 +59,40 @@ jobs:
       - name: Run tests
         run: ctest --test-dir build-cov --output-on-failure
 
-      - name: Coverage summary
-        run: cmake --build build-cov --target coverage
+      - name: Generate coverage report
+        run: |
+          cd build-cov
+          gcovr --root .. --filter '../src/' --print-summary
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: build-cov/coverage.xml
+          fail_ci_if_error: false
+
+  docs:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Doxygen
+        run: sudo apt-get update && sudo apt-get install -y doxygen graphviz
+
+      - name: Generate API documentation
+        run: doxygen Doxyfile
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/api/html
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
