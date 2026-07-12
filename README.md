@@ -534,3 +534,36 @@ docs/            Architecture, Security, HAL porting, Troubleshooting
 ## License
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+## Contributing
+
+Contributions are welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/my-feature`)
+3. Ensure all tests pass (`ctest --test-dir build`)
+4. Ensure ASAN passes (`ctest --test-dir build-san`)
+5. Submit a pull request
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
+
+## Support
+
+- **Issues**: [GitHub Issues](https://github.com/gvtret/openspodes/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/gvtret/openspodes/discussions)
+- **Documentation**: [GitHub Pages](https://gvtret.github.io/openspodes/)
+- **Security vulnerabilities**: Report privately via [security advisories](https://github.com/gvtret/openspodes/security/advisories)
+
+## Authors
+
+- **gvtret** — [GitHub](https://github.com/gvtret)
+
+## Acknowledgments
+
+- [spodes-rs](https://github.com/gvtret/spodes-rs) — Rust reference implementation that inspired this project
+- [dlms-codec](https://github.com/Gurux/gurux.dlms) — Reference DLMS codec for test vectors
+- IEC 62056 standard series — DLMS/COSEM protocol specifications
