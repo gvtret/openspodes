@@ -128,9 +128,9 @@ TableManager(8200) ProfileDataFilter(8201)
 2. ~~Serial transport + HDLC client/server~~ ✅ (v1.0.0)
 3. ~~Интеграционный тест HDLC client↔server loopback~~ ✅ (test_hdlc_full_e2e)
 4. ~~`GET_WITH_LIST_BLOCK` codec~~ ✅ (не нужен — block transfer обрабатывается через GET_WITH_BLOCK + GET_WITH_LIST)
-5. IC stubs (utility_tables, profile_filter, register_table, status_mapping, parameter_monitor, mbus_slave)
-6. Golden vectors R 1323565.1 A.1
-7. GBT bidirectional streaming session (отложено — требует архитектурных изменений)
+5. ~~IC stubs~~ ✅ — get/set реализованы для всех 6 классов + set_attr для десериализации
+6. ~~Golden vectors R 1323565.1 A.1~~ ✅ — Kuznyechik AEAD encrypt/decrypt + auth-only тесты из Р 1323565.1.032-2020
+7. ~~GBT bidirectional streaming~~ ✅ — `osp_gbt_transport_send_streaming_bidir` + callback
 3. СПОДУС discovered meters / access policies (§10.5–10.6)
 
 ## User Instructions (MUST follow)
