@@ -11,22 +11,33 @@ Designed for embedded and server use: **no heap allocation in the core library**
 **Version:** 1.2.0
 **License:** GPL-3.0-or-later (see [LICENSE](LICENSE))
 
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [API Reference](https://gvtret.github.io/openspodes/api/) | Doxygen-generated API documentation |
+| [Architecture](docs/ARCHITECTURE.md) | Full architecture description, module breakdown, data flows |
+| [Security Guide](docs/SECURITY.md) | HLS handshake, suites, keys, glo-ciphering, production checklist |
+| [HAL Porting Guide](docs/HAL.md) | MCU porting: transport, crypto, random, timer, mutex, examples |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and solutions for HDLC, auth, encryption |
+
 ## Features
 
 | Area | Status |
 |------|--------|
 | Codec (BER/AXDR, compact-array) | ✅ |
 | Transport (HDLC session + wrapper) | ✅ |
-| HDLC session: SNRM/UA + XID + N(S)/N(R) + DISC/DM | ✅ |
+| HDLC session: SNRM/UA + XID + N(S)/N(R) + DISC/DM + REJ retransmission | ✅ |
 | Client / Server session drivers | ✅ |
 | GET / SET / ACTION (+ with-list, block transfer) | ✅ |
 | General block transfer (unconfirmed + confirmed + lost-block recovery) | ✅ |
 | glo- / ded-ciphering (AES-GCM + Kuznyechik suite 8/9) | ✅ |
-| HLS (GMAC, MD5/SHA1/SHA256, GOST 8–10) | ✅ |
-| general-ciphering / general-signing | ✅ |
+| HLS mechanisms 0–10 (GMAC, MD5/SHA1/SHA256, GOST CMAC/Sig) | ✅ |
+| General ciphering / general-signing | ✅ |
 | Push + event notifications | ✅ |
-| 42 COSEM IC classes | ✅ |
+| 42 COSEM IC classes (all Set functional) | ✅ |
 | GOST (Streebog, Kuznyechik, GOST 34.10, VKO/KDF) | ✅ |
+| Thread safety via HAL mutex | ✅ |
 | Linux HAL (TCP, OpenSSL, timer, random) | ✅ |
 
 ## Build
@@ -39,12 +50,20 @@ cmake --build build -j$(nproc)
 ctest --test-dir build --output-on-failure
 ```
 
-Coverage (gcov):
+ASAN + UBSan:
+
+```bash
+cmake -S . -B build-san -DCMAKE_BUILD_TYPE=Debug -DENABLE_ASAN=ON
+cmake --build build-san -j$(nproc)
+UBSAN_OPTIONS=print_stacktrace=1 ctest --test-dir build-san --output-on-failure
+```
+
+Coverage:
 
 ```bash
 cmake -S . -B build-cov -DENABLE_COVERAGE=ON
 cmake --build build-cov && ctest --test-dir build-cov
-python3 scripts/coverage_report.py   # run inside build-cov/
+python3 scripts/coverage_report.py
 ```
 
 ## Quick start
@@ -54,9 +73,6 @@ python3 scripts/coverage_report.py   # run inside build-cov/
 Full client↔server demo with no network — runs entirely in-process using mock transport.
 
 ```bash
-# Build and run the demo
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-cmake --build build -j$(nproc)
 ./build/openspodes_loopback_cli demo
 ```
 
@@ -68,10 +84,10 @@ The demo performs:
 5. Verifies the new value with GET
 6. Disconnects (RLRQ → RLRE)
 
-You can also use it as a CLI tool:
+CLI usage:
 ```bash
-./build/openspodes_loopback_cli get 1 0.0.1.0.0.255 1   # GET Data OBIS 0.0.1.0.0.255 attr 1
-./build/openspodes_loopback_cli set 1 0.0.1.0.0.255 1 u32:100  # SET to 100
+./build/openspodes_loopback_cli get 1 0.0.1.0.0.255 1
+./build/openspodes_loopback_cli set 1 0.0.1.0.0.255 1 u32:100
 ```
 
 ### Push notifications (in-process)
@@ -82,16 +98,18 @@ Demonstrates unsolicited Data/Event Notification send and receive:
 ./build/openspodes_push_listener
 ```
 
-Performs:
-1. Server sends Data Notification (0x0F) → client receives and decodes
-2. Server sends Event Notification (0xC2) → client receives and decodes
-3. Burst of 5 rapid notifications to verify throughput
-
 ### TCP wrapper example (port 4059)
 
 ```bash
 ./build/openspodes_tcp_server &
 ./build/openspodes_tcp_client
+```
+
+### Serial/HDLC example
+
+```bash
+./build/openspodes_serial_server /dev/ttyUSB0 9600 &
+./build/openspodes_serial_client /dev/ttyUSB0 9600
 ```
 
 ### Linux HAL demo
@@ -149,7 +167,7 @@ for (;;) {
 }
 ```
 
-### HDLC session (serial/TCP with HDLC framing)
+### HDLC session
 
 ```c
 #include "transport/hdlc_session.h"
@@ -157,15 +175,13 @@ for (;;) {
 osp_hdlc_session_t session;
 osp_hdlc_session_init_client(&session, &transport, 2, 1, 3, 1);
 
-osp_hdlc_session_connect(&session, 5000);  /* SNRM/UA + XID */
+osp_hdlc_session_connect(&session, 5000);
 osp_hdlc_session_send_apdu(&session, apdu, apdu_len);
 osp_hdlc_session_recv_apdu(&session, buf, sizeof(buf), &len, 5000);
-osp_hdlc_session_disconnect(&session, 2000);  /* DISC/UA */
+osp_hdlc_session_disconnect(&session, 2000);
 ```
 
 ## HAL interfaces
-
-The library provides pluggable HAL interfaces for MCU portability:
 
 | Interface | Purpose |
 |-----------|---------|
@@ -177,16 +193,19 @@ The library provides pluggable HAL interfaces for MCU portability:
 | `osp_system_t` | System title + key store |
 | `osp_mutex_t` | Optional thread-safety (bare-metal: NULL) |
 
-See `docs/HAL.md` for a comprehensive MCU porting guide with examples for bare metal, FreeRTOS, Zephyr, and Linux/pthreads.
-See `examples/linux_hal.h/.c` for a complete Linux implementation (TCP + OpenSSL + POSIX timer).
+See [docs/HAL.md](docs/HAL.md) for MCU porting guide with examples for bare metal, FreeRTOS, Zephyr, and Linux/pthreads.
 
-## Security notes (production)
+See [examples/linux_hal.h](examples/linux_hal.h) for complete Linux HAL implementation.
 
-- Set **unique** `system_title`, keys, and monotonic **invocation counters** per association.
-- Use **HLS** (not LLS) on untrusted links; prefer suite 1/2 or GOST suite 8/9 where required.
-- **Dedicated keys**: transfer only inside authenticated+encrypted `glo-initiate-request` when ciphering is active.
-- Replay protection: `osp_glo_unprotect` rejects non-increasing IC; server returns **exception-response** on IC/decipher errors.
-- Wire real crypto HAL in production — bundled GOST is for portability/testing; use certified modules where mandated.
+## Security
+
+- Set **unique** `system_title`, keys, and monotonic **invocation counters** per association
+- Use **HLS** (not LLS) on untrusted links; prefer suite 1/2 or GOST suite 8/9
+- **Dedicated keys**: transfer only inside authenticated+encrypted `glo-initiate-request`
+- Replay protection: `osp_glo_unprotect` rejects non-increasing IC
+- Wire real crypto HAL in production — bundled GOST is for portability/testing
+
+See [docs/SECURITY.md](docs/SECURITY.md) for full security guide.
 
 ## Layout
 
@@ -200,16 +219,18 @@ src/server/      Dispatcher + accept loop
 src/ic/          42 interface classes
 src/spodus/      SPODUS concentrator runtime
 tests/           CMocka suites (16 CTest targets, 300+ test functions)
-examples/        loopback, push listener, TCP client/server, Linux HAL demo
+examples/        loopback, push listener, serial, TCP, Linux HAL demo
+docs/            Architecture, Security, HAL porting, Troubleshooting
 ```
 
 ## References
 
-- IEC 62056-5-3 (xDLMS)
-- IEC 62056-46 / -47 (HDLC / wrapper)
-- ISO/IEC 13239 (HDLC frame format)
-- R 1323565.1 (GOST transport & HLS)
-- spodes-rs — API and test vector parity reference
+- [IEC 62056-5-3](https://webstore.iec.ch/en/publication/26676) (xDLMS)
+- [IEC 62056-46](https://webstore.iec.ch/en/publication/26672) (HDLC)
+- [IEC 62056-47](https://webstore.iec.ch/en/publication/26673) (wrapper)
+- [ISO/IEC 13239](https://webstore.iec.ch/en/publication/8872) (HDLC frame format)
+- [R 1323565.1](https://docs.cntd.ru/document/1200139859) (GOST transport & HLS)
+- [spodes-rs](https://github.com/gvtret/spodes-rs) — Rust reference implementation
 
 ## License
 
