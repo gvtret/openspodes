@@ -113,9 +113,10 @@ int osp_hls_gmac(
 		memcpy(&aad_buf[17], data, data_len);
 	}
 
-	/* Use HAL GCM: init(encrypt) → update(zero plaintext) → finish(tag) */
+	/* Use HAL GCM: init(encrypt) → update(zero plaintext) → finish(tag)
+	 * Per IEC 62056-5-3, GMAC uses GAK (Authentication Key), not GUEK. */
 	if (osp_hal_gcm_init != NULL) {
-		osp_hal_gcm_init(OSP_SEC_GUEK, 16, iv, 12, aad_buf, 17 + data_len);
+		osp_hal_gcm_init(OSP_SEC_GAK, 16, iv, 12, aad_buf, 17 + data_len);
 		osp_hal_gcm_update(NULL, 0, NULL); /* zero-length plaintext */
 		osp_hal_gcm_finish(tag);
 	} else {
