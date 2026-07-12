@@ -85,10 +85,13 @@ jobs:
       - name: Generate API documentation
         run: doxygen Doxyfile
 
+      - name: Copy main page to API output
+        run: cp docs/pages/index.html docs/pages/api/
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs/api/html
+          path: docs/pages
 
       - name: Deploy to GitHub Pages
         id: deployment

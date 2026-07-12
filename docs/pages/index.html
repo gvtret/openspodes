@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenSPODES — Portable DLMS/COSEM Protocol Stack</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 900px; margin: 0 auto; padding: 2rem; }
+        header { background: #1a1a2e; color: #fff; padding: 3rem 2rem; text-align: center; }
+        header h1 { font-size: 2.5rem; margin-bottom: 0.5rem; }
+        header p { font-size: 1.1rem; opacity: 0.9; }
+        .badge { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.8rem; margin: 0.5rem 0.25rem; }
+        .badge-version { background: #4CAF50; }
+        .badge-license { background: #FF9800; }
+        .badge-lang { background: #2196F3; }
+        section { padding: 2rem 0; }
+        h2 { color: #1a1a2e; margin-bottom: 1rem; border-bottom: 2px solid #1a1a2e; padding-bottom: 0.5rem; }
+        .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin: 1rem 0; }
+        .feature { background: #f8f9fa; padding: 1rem; border-radius: 8px; border-left: 4px solid #1a1a2e; }
+        .feature h3 { font-size: 1rem; color: #1a1a2e; }
+        .feature p { font-size: 0.9rem; color: #666; }
+        pre { background: #1a1a2e; color: #a8e6cf; padding: 1rem; border-radius: 8px; overflow-x: auto; margin: 1rem 0; }
+        code { font-family: 'Fira Code', 'Consolas', monospace; font-size: 0.9rem; }
+        .links { display: flex; gap: 1rem; flex-wrap: wrap; margin: 1rem 0; }
+        .links a { display: inline-block; padding: 0.75rem 1.5rem; background: #1a1a2e; color: #fff; text-decoration: none; border-radius: 8px; transition: background 0.3s; }
+        .links a:hover { background: #16213e; }
+        .links a.api { background: #4CAF50; }
+        .links a.api:hover { background: #45a049; }
+        footer { text-align: center; padding: 2rem; color: #999; font-size: 0.9rem; border-top: 1px solid #eee; margin-top: 2rem; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>OpenSPODES</h1>
+        <p>Portable C11 DLMS/COSEM Protocol Stack for Smart Metering</p>
+        <div>
+            <span class="badge badge-version">v1.2.0</span>
+            <span class="badge badge-license">GPL-3.0</span>
+            <span class="badge badge-lang">C11</span>
+        </div>
+    </header>
+
+    <div class="container">
+        <section>
+            <h2>About</h2>
+            <p>OpenSPODES is a portable, zero-heap-allocation C11 implementation of the IEC 62056 DLMS/COSEM protocol stack. Designed for embedded systems, smart meters, and concentrators with MCU-friendly architecture.</p>
+        </section>
+
+        <section>
+            <h2>Features</h2>
+            <div class="features">
+                <div class="feature">
+                    <h3>DLMS/COSEM Full Stack</h3>
+                    <p>BER/AXDR codec, HDLC session + wrapper framing, ACSE, xDLMS GET/SET/ACTION</p>
+                </div>
+                <div class="feature">
+                    <h3>42 COSEM IC Classes</h3>
+                    <p>Data, Register, ProfileGeneric, Clock, AssociationLN, SecuritySetup, and more</p>
+                </div>
+                <div class="feature">
+                    <h3>Security Suites</h3>
+                    <p>AES-GCM-128, GOST Kuznyechik, ECDH-ECDSA, Streebog — HLS mechanisms 0-10</p>
+                </div>
+                <div class="feature">
+                    <h3>Zero Heap Allocation</h3>
+                    <p>All buffers are static, no malloc/free — safe for bare-metal MCU targets</p>
+                </div>
+                <div class="feature">
+                    <h3>HAL Abstraction</h3>
+                    <p>Pluggable transport, crypto, timer, random — port to any MCU/RTOS</p>
+                </div>
+                <div class="feature">
+                    <h3>Thread-Safe</h3>
+                    <p>Optional HAL mutex for multi-threaded use (Linux, FreeRTOS, Zephyr)</p>
+                </div>
+            </div>
+        </section>
+
+        <section>
+            <h2>Quick Start</h2>
+            <pre><code># Build
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build -j$(nproc)
+
+# Run loopback demo
+./build/openspodes_loopback_cli demo
+
+# Run tests
+ctest --test-dir build --output-on-failure</code></pre>
+        </section>
+
+        <section>
+            <h2>Resources</h2>
+            <div class="links">
+                <a href="api/" class="api">API Reference</a>
+                <a href="https://github.com/gvtret/openspodes">GitHub Repository</a>
+                <a href="https://github.com/gvtret/openspodes/blob/master/docs/ARCHITECTURE.md">Architecture</a>
+                <a href="https://github.com/gvtret/openspodes/blob/master/docs/SECURITY.md">Security Guide</a>
+                <a href="https://github.com/gvtret/openspodes/blob/master/docs/HAL.md">HAL Porting Guide</a>
+                <a href="https://github.com/gvtret/openspodes/blob/master/docs/TROUBLESHOOTING.md">Troubleshooting</a>
+            </div>
+        </section>
+
+        <section>
+            <h2>Security Suites</h2>
+            <table style="width:100%; border-collapse: collapse; margin: 1rem 0;">
+                <tr style="background: #1a1a2e; color: white;">
+                    <th style="padding: 0.75rem; text-align: left;">Suite</th>
+                    <th style="padding: 0.75rem; text-align: left;">Name</th>
+                    <th style="padding: 0.75rem; text-align: left;">Cipher</th>
+                    <th style="padding: 0.75rem; text-align: left;">Use Case</th>
+                </tr>
+                <tr style="border-bottom: 1px solid #ddd;">
+                    <td style="padding: 0.75rem;">0</td>
+                    <td style="padding: 0.75rem;">AES-GCM-128</td>
+                    <td style="padding: 0.75rem;">AES-128-GCM</td>
+                    <td style="padding: 0.75rem;">General, testing</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #ddd;">
+                    <td style="padding: 0.75rem;">1</td>
+                    <td style="padding: 0.75rem;">ECDH-ECDSA-AES-GCM-128-SHA-256</td>
+                    <td style="padding: 0.75rem;">AES-128-GCM + ECDSA</td>
+                    <td style="padding: 0.75rem;">High security</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #ddd;">
+                    <td style="padding: 0.75rem;">8</td>
+                    <td style="padding: 0.75rem;">Kuznyechik</td>
+                    <td style="padding: 0.75rem;">Kuznyechik-GCM</td>
+                    <td style="padding: 0.75rem;">GOST / SPODES</td>
+                </tr>
+                <tr style="border-bottom: 1px solid #ddd;">
+                    <td style="padding: 0.75rem;">9</td>
+                    <td style="padding: 0.75rem;">Kuznyechik+VKO+Streebog</td>
+                    <td style="padding: 0.75rem;">Kuznyechik-GCM + Streebog</td>
+                    <td style="padding: 0.75rem;">GOST full stack</td>
+                </tr>
+            </table>
+        </section>
+
+        <section>
+            <h2>HLS Authentication</h2>
+            <p>OpenSPODES supports all 11 HLS mechanisms (0-10) per IEC 62056-5-3 Green Book:</p>
+            <ul style="margin: 1rem 0; padding-left: 1.5rem;">
+                <li><strong>Mechanism 5 (GMAC)</strong> — AES-GCM authentication tag</li>
+                <li><strong>Mechanism 8 (GOST-CMAC)</strong> — Kuznyechik CMAC</li>
+                <li><strong>Mechanism 10 (GOST-Sig)</strong> — GOST 34.10 digital signature</li>
+            </ul>
+        </section>
+    </div>
+
+    <footer>
+        <p>OpenSPODES v1.2.0 &mdash; GPL-3.0-or-later &mdash; <a href="https://github.com/gvtret/openspodes">GitHub</a></p>
+    </footer>
+</body>
+</html>

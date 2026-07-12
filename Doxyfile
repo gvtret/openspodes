@@ -5,7 +5,7 @@ PROJECT_NAME           = "OpenSPODES"
 PROJECT_NUMBER         = "1.2.0"
 PROJECT_BRIEF          = "Portable C11 DLMS/COSEM protocol stack (IEC 62056)"
 
-OUTPUT_DIRECTORY       = docs/api
+OUTPUT_DIRECTORY       = docs/pages/api
 CREATE_SUBDIRS         = NO
 
 # Input
