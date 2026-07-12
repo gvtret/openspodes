@@ -1,6 +1,8 @@
 # OpenSPODES
 
 [![CI](https://github.com/gvtret/openspodes/actions/workflows/ci.yml/badge.svg)](https://github.com/gvtret/openspodes/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://gvtret.github.io/openspodes/)
+[![API](https://img.shields.io/badge/API-Doxygen-green)](https://gvtret.github.io/openspodes/api/)
 
 Portable **C11** implementation of **IEC 62056 DLMS/COSEM** (LN referencing), modeled after [spodes-rs](https://github.com/gvtret/spodes-rs) and aligned with the **SPODES / GOST** profile (R 1323565.1).
 
