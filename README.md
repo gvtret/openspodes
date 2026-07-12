@@ -68,98 +68,147 @@ python3 scripts/coverage_report.py
 
 ## Quick start
 
-### Loopback (in-process)
+### 1. Loopback demo (no network)
 
-Full client↔server demo with no network — runs entirely in-process using mock transport.
+Full client↔server demo running in-process — zero configuration needed:
 
 ```bash
 ./build/openspodes_loopback_cli demo
 ```
 
-The demo performs:
-1. Initializes server with 2 Data IC objects (OBIS `0.0.1.0.0.255` = 42, `1.0.1.8.0.255` = 123456)
-2. Connects client to server (AARQ → AARE, lowest security)
+This performs a complete DLMS/COSEM session:
+1. Server registers 2 Data IC objects (OBIS `0.0.1.0.0.255` = 42, `1.0.1.8.0.255` = 123456)
+2. Client connects (AARQ → AARE)
 3. GET attribute 1 from both objects
-4. SET attribute 1 on the first object to 999
-5. Verifies the new value with GET
-6. Disconnects (RLRQ → RLRE)
+4. SET attribute 1 to 999, verify with GET
+5. Disconnect (RLRQ → RLRE)
 
-CLI usage:
+CLI usage for individual operations:
 ```bash
-./build/openspodes_loopback_cli get 1 0.0.1.0.0.255 1
-./build/openspodes_loopback_cli set 1 0.0.1.0.0.255 1 u32:100
+./build/openspodes_loopback_cli get 1 0.0.1.0.0.255 1    # GET Data OBIS 0.0.1.0.0.255 attr 1
+./build/openspodes_loopback_cli set 1 0.0.1.0.0.255 1 u32:100  # SET to 100
 ```
 
-### Push notifications (in-process)
+### 2. Push notifications demo
 
-Demonstrates unsolicited Data/Event Notification send and receive:
+Unsolicited Data/Event Notification send and receive:
 
 ```bash
 ./build/openspodes_push_listener
 ```
 
-### TCP wrapper example (port 4059)
+Demonstrates:
+- Server sends Data Notification (0x0F) → client receives and decodes
+- Server sends Event Notification (0xC2) → client receives and decodes
+- Burst of 5 rapid notifications to verify throughput
+
+### 3. TCP example (port 4059)
 
 ```bash
 ./build/openspodes_tcp_server &
 ./build/openspodes_tcp_client
 ```
 
-### Serial/HDLC example
+### 4. Serial/HDLC example
 
 ```bash
 ./build/openspodes_serial_server /dev/ttyUSB0 9600 &
 ./build/openspodes_serial_client /dev/ttyUSB0 9600
 ```
 
-### Linux HAL demo
+### 5. Linux HAL demo
 
 ```bash
 ./build/openspodes_tcp_server &
 ./build/openspodes_linux_demo 127.0.0.1:4059
 ```
 
-## Integration pattern
+---
 
-### Client
+## Usage examples
+
+### Client: GET/SET with security
 
 ```c
 #include "openspodes.h"
 #include "client/client.h"
+#include "security/security.h"
 
+/* 1. Initialize transport (TCP, serial, etc.) */
+osp_transport_t transport = { .send = my_send, .recv = my_recv, .ctx = ... };
+
+/* 2. Initialize client */
 osp_client_t client;
 osp_client_init(&client, &transport, OSP_FRAMING_WRAPPER);
 
+/* 3. Configure security (HLS-GMAC, suite 0) */
 osp_sec_context_t sec;
 osp_sec_context_init(&sec, OSP_SUITE_0, OSP_MECH_HLS_GMAC, system_title);
+memcpy(sec.guek, encryption_key, 16);
+memcpy(sec.gak, authentication_key, 16);
 osp_client_set_security(&client, &sec);
 
+/* 4. Enable block transfer for large payloads */
 osp_client_enable_gbt(&client, 64);
-osp_client_connect(&client, 5000);
 
+/* 5. Connect (AARQ → AARE → HLS pass 3/4) */
+osp_err_t r = osp_client_connect(&client, 5000);
+if (r != OSP_OK) { /* handle error */ }
+
+/* 6. GET attribute 1 from Data IC (OBIS 0.0.1.8.0.255) */
 osp_value_t result;
-osp_obis_t obis = {1, 0, 1, 8, 0, 255};
-osp_client_get(&client, 1, &obis, 1, &result);
+osp_obis_t obis = {0, 0, 1, 8, 0, 255};
+r = osp_client_get(&client, 1, &obis, 1, &result);
+if (r == OSP_OK && result.tag == OSP_TAG_DOUBLE_LONG_UNS) {
+    printf("Energy: %u kWh\n", result.as.uint32.value);
+}
 
+/* 7. SET attribute 1 to 100 */
+osp_value_t new_val = osp_val_u32(100);
+r = osp_client_set(&client, 1, &obis, 1, &new_val);
+
+/* 8. Release and disconnect */
 osp_client_release(&client);
 osp_client_disconnect(&client);
 ```
 
-### Server
+### Server: register IC objects and accept requests
 
 ```c
 #include "openspodes.h"
 #include "server/server.h"
 #include "ic/data.h"
+#include "ic/register.h"
+#include "ic/clock.h"
 
+/* 1. Initialize transport */
+osp_transport_t transport = { .send = my_send, .recv = my_recv, .ctx = ... };
+
+/* 2. Initialize server */
 osp_server_t server;
 osp_server_init(&server, &transport, OSP_FRAMING_WRAPPER);
 
-osp_ic_data_t data_obj;
-osp_ic_data_init(&data_obj, (osp_obis_t){1, 0, 1, 8, 0, 255});
-data_obj.value = osp_val_u32(123456);
-osp_server_register(&server, osp_ic_data_class(), &data_obj);
+/* 3. Configure security */
+osp_sec_context_t sec;
+osp_sec_context_init(&sec, OSP_SUITE_0, OSP_MECH_LOWEST, system_title);
+osp_server_set_security(&server, &sec);
 
+/* 4. Register IC objects */
+osp_ic_data_t energy;
+osp_ic_data_init(&energy, (osp_obis_t){0, 0, 1, 8, 0, 255});
+energy.value = osp_val_u32(123456);
+osp_server_register(&server, osp_ic_data_class(), &energy);
+
+osp_ic_register_t voltage;
+osp_ic_register_init(&voltage, (osp_obis_t){0, 0, 1, 8, 1, 255});
+voltage.value = osp_val_u32(230);
+osp_server_register(&server, osp_ic_register_class(), &voltage);
+
+osp_ic_clock_t clock;
+osp_ic_clock_init(&clock, (osp_obis_t){0, 0, 1, 0, 0, 255});
+osp_server_register(&server, osp_ic_clock_class(), &clock);
+
+/* 5. Accept loop */
 for (;;) {
     osp_err_t r = osp_server_accept(&server, 30000);
     if (r == OSP_ERR_TIMEOUT) continue;
@@ -167,19 +216,110 @@ for (;;) {
 }
 ```
 
-### HDLC session
+### Server: send push notification
+
+```c
+#include "service/notification.h"
+
+/* Send unsolicited Data Notification */
+osp_data_notification_t dn;
+memset(&dn, 0, sizeof(dn));
+dn.long_invoke_id_and_priority = 0x12345678;
+dn.date_time_len = 12;
+memcpy(dn.date_time, current_time, 12);
+dn.notification_body = osp_val_u32(energy_value);
+
+osp_err_t r = osp_server_send_data_notification(&server, &dn);
+```
+
+### HDLC session (serial transport)
 
 ```c
 #include "transport/hdlc_session.h"
 
+/* Initialize HDLC session (client side) */
 osp_hdlc_session_t session;
-osp_hdlc_session_init_client(&session, &transport, 2, 1, 3, 1);
+osp_hdlc_session_init_client(&session, &transport,
+    0x41, 1,   /* client address: 0x41, 1 byte */
+    0x42, 1);  /* server address: 0x42, 1 byte */
 
-osp_hdlc_session_connect(&session, 5000);
+/* Connect: SNRM → UA with XID negotiation */
+osp_err_t r = osp_hdlc_session_connect(&session, 5000);
+
+/* Send APDU (prepending LLC header + I-frame) */
 osp_hdlc_session_send_apdu(&session, apdu, apdu_len);
-osp_hdlc_session_recv_apdu(&session, buf, sizeof(buf), &len, 5000);
+
+/* Receive APDU (strips LLC header, updates N(R)) */
+uint8_t buf[512];
+uint32_t len;
+r = osp_hdlc_session_recv_apdu(&session, buf, sizeof(buf), &len, 5000);
+
+/* Disconnect: DISC → UA */
 osp_hdlc_session_disconnect(&session, 2000);
 ```
+
+### Glo-ciphering (encrypted APDU)
+
+```c
+#include "security/security.h"
+
+/* Protect: plaintext → encrypted APDU */
+osp_sec_context_t sec;
+osp_sec_context_init(&sec, OSP_SUITE_0, OSP_MECH_HLS_GMAC, system_title);
+memcpy(sec.guek, encryption_key, 16);
+memcpy(sec.gak, authentication_key, 16);
+
+uint8_t plaintext[] = {0xC0, 0x01, 0xC1, 0x00};  /* GET request */
+uint8_t ciphered[256];
+uint32_t ciphered_len;
+
+r = osp_glo_protect(&sec, OSP_GLO_GET_REQUEST,
+                     plaintext, sizeof(plaintext),
+                     ciphered, &ciphered_len);
+
+/* Unprotect: encrypted → plaintext */
+uint8_t recovered[256];
+uint32_t recovered_len;
+r = osp_glo_unprotect(&sec, ciphered, ciphered_len,
+                       recovered, &recovered_len);
+```
+
+### Custom HAL transport (bare metal UART)
+
+```c
+#include "openspodes.h"
+
+static osp_err_t uart_send(void *ctx, const uint8_t *data, uint32_t len) {
+    uart_handle_t *uart = (uart_handle_t *)ctx;
+    for (uint32_t i = 0; i < len; i++) {
+        uart_putc(uart, data[i]);
+    }
+    return OSP_OK;
+}
+
+static osp_err_t uart_recv(void *ctx, uint8_t *buf, uint32_t size,
+                           uint32_t *out_len, uint32_t timeout_ms) {
+    uart_handle_t *uart = (uart_handle_t *)ctx;
+    uint32_t start = systick_ms();
+    uint32_t got = 0;
+    while (got < size && (systick_ms() - start) < timeout_ms) {
+        if (uart_data_available(uart)) {
+            buf[got++] = uart_getc(uart);
+        }
+    }
+    *out_len = got;
+    return (got > 0) ? OSP_OK : OSP_ERR_TIMEOUT;
+}
+
+/* Use in client/server */
+osp_transport_t transport = {
+    .send = uart_send,
+    .recv = uart_recv,
+    .ctx = &my_uart,
+};
+```
+
+---
 
 ## HAL interfaces
 
