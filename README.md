@@ -321,6 +321,165 @@ osp_transport_t transport = {
 
 ---
 
+## FAQ
+
+### What is OpenSPODES?
+
+OpenSPODES is a portable C11 implementation of the IEC 62056 DLMS/COSEM protocol stack for smart metering. It's designed for embedded systems (MCU) and servers with zero heap allocation in the core library.
+
+### How is this different from other DLMS implementations?
+
+- **Zero heap allocation** — all buffers are static, safe for bare-metal MCU
+- **HAL abstraction** — pluggable transport, crypto, timer — port to any platform
+- **Full GOST support** — Kuznyechik, Streebog, GOST 34.10 for Russian СПОДЭС deployments
+- **Thread-safe** — optional HAL mutex for multi-threaded use
+- **42 COSEM IC classes** — all with working Set operations
+
+### Can I use this on a bare-metal MCU?
+
+Yes. The library uses no `malloc`/`free`, no OS primitives, and no threads. All HAL interfaces are optional function pointers. See [docs/HAL.md](docs/HAL.md) for porting guide.
+
+### What platforms are supported?
+
+Any platform with a C11 compiler:
+- Bare metal MCU (ARM Cortex-M, RISC-V, etc.)
+- FreeRTOS, Zephyr, RT-Thread
+- Linux, macOS, Windows (via MinGW)
+- Any RTOS with thread/mutex primitives
+
+### How do I enable encryption?
+
+```c
+/* Set up security context with keys */
+osp_sec_context_t sec;
+osp_sec_context_init(&sec, OSP_SUITE_0, OSP_MECH_HLS_GMAC, system_title);
+memcpy(sec.guek, encryption_key, 16);  /* Global Unicast Encryption Key */
+memcpy(sec.gak, authentication_key, 16);  /* Global Authentication Key */
+osp_client_set_security(&client, &sec);
+```
+
+See [docs/SECURITY.md](docs/SECURITY.md) for all suites and key management.
+
+### How do I implement my own transport?
+
+Implement the `osp_transport_t` interface:
+
+```c
+osp_transport_t transport = {
+    .open = my_open,
+    .send = my_send,
+    .recv = my_recv,
+    .close = my_close,
+    .is_connected = my_is_connected,
+    .ctx = &my_context,
+};
+```
+
+See [docs/HAL.md](docs/HAL.md) for examples (TCP, UART, SPI).
+
+### How do I use GOST crypto (suite 8/9)?
+
+1. Set suite to `OSP_SUITE_8` or `OSP_SUITE_9`
+2. Provide Kuznyechik keys (GUEK, GAK)
+3. The library includes built-in Kuznyechik and Streebog implementations
+4. For production, use certified crypto modules via HAL
+
+### How do I register custom IC objects?
+
+```c
+/* Implement the IC vtable */
+static osp_err_t my_get(const void *inst, uint8_t attr_id, osp_value_t *result) {
+    /* Return attribute value */
+}
+
+static osp_err_t my_set(void *inst, uint8_t attr_id, const osp_value_t *value) {
+    /* Store attribute value */
+}
+
+static const osp_ic_class_t my_ic = {
+    .name = "My Custom IC",
+    .class_id = 9999,
+    .get_attr = my_get,
+    .set_attr = my_set,
+};
+
+/* Register with server */
+osp_server_register(&server, &my_ic, &my_instance);
+```
+
+### How do I send push notifications?
+
+```c
+/* Data Notification (unsolicited) */
+osp_data_notification_t dn;
+memset(&dn, 0, sizeof(dn));
+dn.long_invoke_id_and_priority = 0x12345678;
+dn.notification_body = osp_val_u32(energy_value);
+osp_server_send_data_notification(&server, &dn);
+
+/* Event Notification */
+osp_event_notification_t ev;
+memset(&ev, 0, sizeof(ev));
+ev.has_time = 1;
+memcpy(ev.time, current_time, 12);
+ev.attribute.class_id = 1;
+ev.attribute.instance_id = (osp_obis_t){0, 0, 1, 8, 0, 255};
+ev.attribute.attribute_id = 2;
+ev.value = osp_val_u32(42);
+osp_server_send_event_notification(&server, &ev);
+```
+
+### What is the maximum APDU size?
+
+Default is 1024 bytes (`OSP_CLIENT_MAX_PDU`, `OSP_SERVER_MAX_PDU`). Increase for larger payloads:
+
+```c
+#define OSP_CLIENT_MAX_PDU 2048
+#define OSP_SERVER_MAX_PDU 2048
+```
+
+### How do I handle block transfer for large payloads?
+
+Enable GBT on the client:
+
+```c
+osp_client_enable_gbt(&client, 64);  /* block size = 64 bytes */
+osp_client_set_gbt_window(&client, 4);  /* window size = 4 */
+```
+
+The library automatically fragments large APDUs and handles reassembly.
+
+### How do I debug HDLC issues?
+
+1. Check baud rate and physical connection
+2. Verify HDLC addresses match between client/server
+3. Enable raw frame logging in your transport implementation
+4. Try the loopback example first (no network issues)
+
+See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for more.
+
+### Is this production-ready?
+
+Yes. The library:
+- Passes ASAN + UBSan checks
+- Has 16 test suites with 300+ test functions
+- Implements all HLS mechanisms 0-10
+- Has proper key zeroization (`osp_sec_context_destroy`)
+- Handles invocation counter overflow
+- Supports REJ retransmission
+
+See [docs/SECURITY.md](docs/SECURITY.md) for production security checklist.
+
+### How do I contribute?
+
+1. Fork the repository
+2. Create a feature branch
+3. Ensure all tests pass: `ctest --test-dir build`
+4. Ensure ASAN passes: `ctest --test-dir build-san`
+5. Submit a pull request
+
+---
+
 ## HAL interfaces
 
 | Interface | Purpose |
