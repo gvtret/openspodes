@@ -85,19 +85,19 @@ typedef struct {
 	uint8_t tx_buf[OSP_SERVER_MAX_PDU];
 } osp_server_t;
 
-/* Set max PDU size for block transfer segmentation (default: full buffer) */
+/** @brief Set max PDU size for block transfer segmentation (default: full buffer). */
 void osp_server_set_max_pdu(osp_server_t *s, uint32_t max_pdu);
 
-/* Enable general block transfer for APDUs longer than block_size (default payload 56 B) */
+/** @brief Enable general block transfer for APDUs longer than block_size (default payload 56 B). */
 void osp_server_enable_gbt(osp_server_t *s, uint32_t block_size);
 
-/* Set GBT window (0=unconfirmed, 1+=confirmed with ack between windows) */
+/** @brief Set GBT window (0=unconfirmed, 1+=confirmed with ack between windows). */
 void osp_server_set_gbt_window(osp_server_t *s, uint8_t window);
 
-/* Set the STR bit on outbound GBT data blocks. */
+/** @brief Set the STR bit on outbound GBT data blocks. */
 void osp_server_set_gbt_streaming(osp_server_t *s, bool enabled);
 
-/* Enable glo-ciphering (rx unprotects requests, tx protects responses) */
+/** @brief Enable glo-ciphering (rx unprotects requests, tx protects responses). */
 void osp_server_set_ciphering(osp_server_t *s, const osp_sec_context_t *tx, const osp_sec_context_t *rx);
 
 /**
@@ -134,14 +134,14 @@ osp_err_t osp_server_init(osp_server_t *s, osp_transport_t *transport, osp_frami
  */
 osp_err_t osp_server_register(osp_server_t *s, const osp_ic_class_t *cls, void *instance);
 
-/* Set security context (optional, before accept) */
+/** @brief Set security context (optional, before accept). */
 void osp_server_set_security(osp_server_t *s, const osp_sec_context_t *sec);
 
-/* Set HDLC addresses (optional, before accept, HDLC framing only) */
+/** @brief Set HDLC addresses (optional, before accept, HDLC framing only). */
 void osp_server_set_hdlc_addresses(osp_server_t *s, uint32_t server_addr, uint8_t server_addr_len,
                                     uint32_t client_addr, uint8_t client_addr_len);
 
-/* Bind Association LN for ACL enforcement on GET/SET/ACTION */
+/** @brief Bind Association LN for ACL enforcement on GET/SET/ACTION. */
 void osp_server_set_association(osp_server_t *s, osp_ic_association_ln_t *association);
 
 /**
@@ -159,7 +159,7 @@ void osp_server_set_association(osp_server_t *s, osp_ic_association_ln_t *associ
  */
 osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms);
 
-/* Convenience: run server until RLRQ/timeout */
+/** @brief Convenience: run server until RLRQ/timeout. */
 osp_err_t osp_server_run(osp_server_t *s, uint32_t timeout_ms);
 
 #ifdef __cplusplus
