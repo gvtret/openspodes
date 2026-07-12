@@ -5,7 +5,7 @@ PROJECT_NAME           = "OpenSPODES"
 PROJECT_NUMBER         = "1.2.0"
 PROJECT_BRIEF          = "Portable C11 DLMS/COSEM protocol stack (IEC 62056)"
 
-OUTPUT_DIRECTORY       = docs/pages/api
+OUTPUT_DIRECTORY       = docs/pages
 CREATE_SUBDIRS         = NO
 
 # Input
@@ -25,7 +25,7 @@ STRIP_CODE_COMMENTS    = YES
 
 # HTML output
 GENERATE_HTML          = YES
-HTML_OUTPUT            = html
+HTML_OUTPUT            = api
 HTML_COLORSTYLE_HUE    = 220
 HTML_COLORSTYLE_SAT    = 100
 HTML_COLORSTYLE_GAMMA  = 80
