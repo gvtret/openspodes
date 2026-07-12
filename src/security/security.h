@@ -228,6 +228,24 @@ void osp_sec_context_init(osp_sec_context_t *ctx, osp_sec_suite_t suite, osp_aut
  */
 void osp_sec_context_destroy(osp_sec_context_t *ctx);
 
+/** @brief Check if key rotation is needed (IC approaching overflow). */
+bool osp_sec_key_rotation_needed(const osp_sec_context_t *ctx);
+
+/**
+ * @brief Rotate keys: update GUEK and GAK, reset invocation counter.
+ *
+ * Per IEC 62056-5-3, when IC approaches 0xFFFFFFFF, the association
+ * must be re-keyed with fresh key material. This function:
+ * 1. Copies new_guek/new_gak into the context
+ * 2. Resets invocation_counter to 0
+ * 3. Clears ic_valid flag (forces re-authentication)
+ *
+ * @param ctx Security context to update.
+ * @param new_guek New Global Unicast Encryption Key (16 bytes).
+ * @param new_gak New Global Authentication Key (16 bytes).
+ */
+void osp_sec_rotate_keys(osp_sec_context_t *ctx, const uint8_t *new_guek, const uint8_t *new_gak);
+
 /* ═══════════════════════════════════════════════════════════════════════════
  *  HLS 4-pass handshake
  * ═══════════════════════════════════════════════════════════════════════════ */

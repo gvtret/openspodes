@@ -84,6 +84,32 @@ void osp_sec_context_destroy(osp_sec_context_t *ctx) {
 	memset(ctx->stoc, 0, sizeof(ctx->stoc));
 }
 
+bool osp_sec_key_rotation_needed(const osp_sec_context_t *ctx) {
+	if (!ctx)
+		return false;
+	/* Rotation needed when IC is within 1000 of overflow */
+	return ctx->invocation_counter >= (0xFFFFFFFF - 1000);
+}
+
+void osp_sec_rotate_keys(osp_sec_context_t *ctx, const uint8_t *new_guek, const uint8_t *new_gak) {
+	if (!ctx || !new_guek || !new_gak)
+		return;
+
+	/* Update keys */
+	memcpy(ctx->guek, new_guek, OSP_SEC_KEY_MAX);
+	memcpy(ctx->gak, new_gak, OSP_SEC_KEY_MAX);
+
+	/* Reset invocation counter */
+	ctx->invocation_counter = 0;
+	ctx->last_peer_ic = 0;
+	ctx->ic_valid = false;
+
+	/* Clear dedicated key (must be re-established after re-keying) */
+	ctx->use_dedicated_key = false;
+	memset(ctx->dedicated_key, 0, sizeof(ctx->dedicated_key));
+	ctx->dedicated_key_len = 0;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  *  GMAC computation using HAL crypto
  * ═══════════════════════════════════════════════════════════════════════════ */
