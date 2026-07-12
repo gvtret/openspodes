@@ -10,9 +10,12 @@ static int encode_attr_descriptor(osp_buf_t *buf, const osp_attribute_descriptor
 	if (!buf || !ad) {
 		return -1;
 	}
-	osp_axdr_write_u16(buf, ad->class_id);
-	osp_obis_write(buf, &ad->instance_id);
-	osp_axdr_write_u8(buf, (uint8_t)ad->attribute_id);
+	if (osp_axdr_write_u16(buf, ad->class_id) != OSP_OK)
+		return -1;
+	if (osp_obis_write(buf, &ad->instance_id) != OSP_OK)
+		return -1;
+	if (osp_axdr_write_u8(buf, (uint8_t)ad->attribute_id) != OSP_OK)
+		return -1;
 	return 0;
 }
 
@@ -20,9 +23,12 @@ static int decode_attr_descriptor(osp_buf_t *buf, osp_attribute_descriptor_t *ad
 	if (!buf || !ad) {
 		return -1;
 	}
-	osp_axdr_read_u16(buf, &ad->class_id);
-	osp_obis_read(buf, &ad->instance_id);
-	osp_axdr_read_i8(buf, &ad->attribute_id);
+	if (osp_axdr_read_u16(buf, &ad->class_id) != OSP_OK)
+		return -1;
+	if (osp_obis_read(buf, &ad->instance_id) != OSP_OK)
+		return -1;
+	if (osp_axdr_read_i8(buf, &ad->attribute_id) != OSP_OK)
+		return -1;
 	return 0;
 }
 
@@ -30,9 +36,12 @@ static int encode_method_descriptor(osp_buf_t *buf, const osp_method_descriptor_
 	if (!buf || !md) {
 		return -1;
 	}
-	osp_axdr_write_u16(buf, md->class_id);
-	osp_obis_write(buf, &md->instance_id);
-	osp_axdr_write_u8(buf, (uint8_t)md->method_id);
+	if (osp_axdr_write_u16(buf, md->class_id) != OSP_OK)
+		return -1;
+	if (osp_obis_write(buf, &md->instance_id) != OSP_OK)
+		return -1;
+	if (osp_axdr_write_u8(buf, (uint8_t)md->method_id) != OSP_OK)
+		return -1;
 	return 0;
 }
 
@@ -40,9 +49,12 @@ static int decode_method_descriptor(osp_buf_t *buf, osp_method_descriptor_t *md)
 	if (!buf || !md) {
 		return -1;
 	}
-	osp_axdr_read_u16(buf, &md->class_id);
-	osp_obis_read(buf, &md->instance_id);
-	osp_axdr_read_i8(buf, &md->method_id);
+	if (osp_axdr_read_u16(buf, &md->class_id) != OSP_OK)
+		return -1;
+	if (osp_obis_read(buf, &md->instance_id) != OSP_OK)
+		return -1;
+	if (osp_axdr_read_i8(buf, &md->method_id) != OSP_OK)
+		return -1;
 	return 0;
 }
 
@@ -71,8 +83,10 @@ int osp_data_block_sa_encode(osp_buf_t *buf, const osp_data_block_t *block) {
 	if (!buf || !block) {
 		return -1;
 	}
-	osp_axdr_write_u8(buf, block->last_block ? 1 : 0);
-	osp_axdr_write_u32(buf, block->block_number);
+	if (osp_axdr_write_u8(buf, block->last_block ? 1 : 0) != OSP_OK)
+		return -1;
+	if (osp_axdr_write_u32(buf, block->block_number) != OSP_OK)
+		return -1;
 	if (osp_axdr_push_length(buf, block->raw_data_len) != 0) {
 		return -1;
 	}

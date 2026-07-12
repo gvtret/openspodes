@@ -1,5 +1,5 @@
 /**
- * direct_channel.h — Direct-channel table (СТО §10.3, 0.0.94.7.129.255)
+ * direct_channel.h — Direct-channel table (STO §10.3, 0.0.94.7.129.255)
  */
 
 #ifndef OSP_SPODUS_DIRECT_CHANNEL_H

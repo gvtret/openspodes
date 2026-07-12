@@ -2,7 +2,7 @@
  * test_phase1.c — Phase 1 IC parity tests (fixtures + golden vectors + round-trips)
  *
  * Fixture attribute values:
- *   - doc-rag-remote: Blue Book §4.3.x, СТО 34.01-5.1-006, GOST R 58940-2020
+ *   - doc-rag-remote: Blue Book §4.3.x, STO 34.01-5.1-006, GOST R 58940-2020
  *   - spodes-rs/tests/integration.rs (parity)
  * Golden BER bytes: tests/fixtures/ic_golden_vectors.h (regen via gen_ic_golden_vectors)
  * Codec primitives: docs/golden_vectors.txt (covered in test_codec_golden.c)
@@ -228,7 +228,7 @@ static void test_ic_golden_field_values(void **state) {
 
 static void test_sto_cosem_datetime_octet(void **state) {
 	(void)state;
-	/* СТО 34.01-5.1-013: date-time filter 2020-01-01, wildcards, deviation not used */
+	/* STO 34.01-5.1-013: date-time filter 2020-01-01, wildcards, deviation not used */
 	static const uint8_t wire[] = {0x09, 0x0C, 0x07, 0xE4, 0x01, 0x01, 0xFF, 0x00,
 	                               0x00, 0x00, 0x00, 0x80, 0x00, 0x00};
 	osp_buf_t r;

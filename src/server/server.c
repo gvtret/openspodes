@@ -170,6 +170,18 @@ osp_err_t osp_server_send_event_notification(osp_server_t *s, const osp_event_no
 	return server_send(s, buf.buf, buf.wr);
 }
 
+osp_err_t osp_server_send_data_notification(osp_server_t *s, const osp_data_notification_t *dn) {
+	if (!s || !s->associated || !dn) {
+		return OSP_ERR_INVALID;
+	}
+	osp_buf_t buf;
+	osp_buf_init(&buf, s->tx_buf, sizeof(s->tx_buf));
+	if (osp_data_notification_encode(&buf, dn) != 0) {
+		return OSP_ERR_INVALID;
+	}
+	return server_send(s, buf.buf, buf.wr);
+}
+
 static osp_err_t server_flush_pending_push(osp_server_t *s) {
 	if (!s || !s->pending_push.pending) {
 		return OSP_OK;
@@ -213,8 +225,13 @@ static osp_err_t handle_aarq(osp_server_t *s, const osp_aarq_t *aarq) {
 
 		/* Generate StoC challenge */
 		s->security.stoc_len = 8;
-		for (uint8_t i = 0; i < 8; i++) {
-			s->security.stoc[i] = (uint8_t)(i + 0x41);
+		if (osp_hal_random_fill) {
+			osp_hal_random_fill(s->security.stoc, 8);
+		} else {
+			/* Fallback: deterministic but unique per system title (not secure) */
+			for (uint8_t i = 0; i < 8; i++) {
+				s->security.stoc[i] = (uint8_t)(s->security.system_title[i % OSP_SEC_SYSTEM_TITLE_SIZE] + i);
+			}
 		}
 		memcpy(aare.responding_auth_value, s->security.stoc, 8);
 		aare.responding_auth_value_len = 8;

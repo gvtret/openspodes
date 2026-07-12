@@ -100,13 +100,38 @@ void osp_server_set_gbt_streaming(osp_server_t *s, bool enabled);
 /* Enable glo-ciphering (rx unprotects requests, tx protects responses) */
 void osp_server_set_ciphering(osp_server_t *s, const osp_sec_context_t *tx, const osp_sec_context_t *rx);
 
-/* Send unsolicited event-notification (0xC2) to the associated client */
+/**
+ * @brief Send unsolicited event-notification (0xC2) to the associated client.
+ * @param s  Associated server context.
+ * @param ev Event notification to send.
+ * @return 0 on success, negative on failure.
+ */
 osp_err_t osp_server_send_event_notification(osp_server_t *s, const osp_event_notification_t *ev);
 
-/* Initialize server */
+/**
+ * @brief Send unsolicited data-notification (0x0F) to the associated client.
+ * @param s  Associated server context.
+ * @param dn Data notification to send.
+ * @return 0 on success, negative on failure.
+ */
+osp_err_t osp_server_send_data_notification(osp_server_t *s, const osp_data_notification_t *dn);
+
+/**
+ * @brief Initialize a server context.
+ * @param s         Server context to initialize (caller-owned, should be static).
+ * @param transport Transport HAL interface for I/O.
+ * @param framing   Framing type: OSP_FRAMING_HDLC or OSP_FRAMING_WRAPPER.
+ * @return OSP_OK on success, OSP_ERR_INVALID on bad arguments.
+ */
 osp_err_t osp_server_init(osp_server_t *s, osp_transport_t *transport, osp_framing_type_t framing);
 
-/* Register an IC object */
+/**
+ * @brief Register a COSEM Interface Class with the server dispatcher.
+ * @param s        Server context (must be initialized).
+ * @param cls      IC class vtable (get_attr, set_attr, invoke, serialize, deserialize).
+ * @param instance Pointer to the IC instance data (caller-owned, static storage recommended).
+ * @return OSP_OK on success, OSP_ERR_NOMEM if dispatcher is full.
+ */
 osp_err_t osp_server_register(osp_server_t *s, const osp_ic_class_t *cls, void *instance);
 
 /* Set security context (optional, before accept) */
@@ -119,14 +144,18 @@ void osp_server_set_hdlc_addresses(osp_server_t *s, uint32_t server_addr, uint8_
 /* Bind Association LN for ACL enforcement on GET/SET/ACTION */
 void osp_server_set_association(osp_server_t *s, osp_ic_association_ln_t *association);
 
-/* Accept one incoming request (blocking). Returns:
- *   OSP_OK — request was handled (response sent)
- *   OSP_ERR_TIMEOUT — no data within timeout
- *   Other — error
+/**
+ * @brief Accept and process one incoming request (blocking).
  *
- * Internally:
- *   - If CF_IDLE: processes AARQ → sends AARE
- *   - If CF_ASSOCIATED: processes GET/SET/ACTION/RLRQ
+ * Dispatches based on current association state:
+ *   - CF_IDLE: processes AARQ -> sends AARE, performs HLS
+ *   - CF_ASSOCIATED: processes GET/SET/ACTION/RLRQ
+ *
+ * @param s          Server context (must be initialized, optionally registered).
+ * @param timeout_ms Maximum time to wait for incoming data (ms).
+ * @return OSP_OK if request handled and response sent,
+ *         OSP_ERR_TIMEOUT if no data within timeout,
+ *         negative on transport/protocol error.
  */
 osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms);
 

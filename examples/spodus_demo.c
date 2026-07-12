@@ -1,11 +1,11 @@
 /**
- * spodus_demo.c — СПОДУС концентратор на 3 прибора учёта
+ * spodus_demo.c — SPODUS concentrator with 3 meters
  *
- * Демонстрирует:
- *   - Регистрация 3 ПУ в реестре
- *   - Опрос каждого ПУ (GET атрибутов) через mock loopback
- *   - Кэширование результатов
- *   - Формирование списков для верхнего уровня
+ * Demonstrates:
+ *   - Registration of 3 meters in the registry
+ *   - Polling each meter (GET attributes) via mock loopback
+ *   - Caching results
+ *   - Building channel lists for upstream
  *
  * Build:
  *   cmake --build build --target openspodes_spodus_demo
@@ -27,7 +27,7 @@
 #include <string.h>
 
 /* ═══════════════════════════════════════════════════════════════════════════
- *  Mock transport: простой loopback для симуляции ПУ
+ *  Mock transport: simple loopback for meter simulation
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 #define MOCK_BUF_SIZE 4096
@@ -122,7 +122,7 @@ static void pair_init(mock_pair_t *p) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- *  Модель ПУ: Data IC объекты
+ *  Meter model: Data IC objects
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 typedef struct {
@@ -152,7 +152,7 @@ static void meter_init(simulated_meter_t *m, const char *name, osp_obis_t obis, 
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- *  Вывод значений
+ *  Value printing
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void print_value(const char *label, const osp_value_t *v) {
@@ -172,7 +172,7 @@ static void print_value(const char *label, const osp_value_t *v) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- *  Опрос одного ПУ
+ *  Poll single meter
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void poll_meter(simulated_meter_t *m, osp_obis_t obis, uint8_t attr_id, const char *label) {
@@ -203,9 +203,9 @@ static void poll_meter(simulated_meter_t *m, osp_obis_t obis, uint8_t attr_id, c
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 int main(void) {
-	printf("=== СПОДУС Концентратор: 3 прибора учёта ===\n\n");
+	printf("=== SPODUS Concentrator: 3 meters ===\n\n");
 
-	/* ── 1. Создаём 3 симулированных ПУ ─────────────────────────────── */
+	/* ── 1. Create 3 simulated meters ─────────────────────────────── */
 
 	simulated_meter_t meters[3];
 	osp_obis_t energy_obis = {1, 0, 1, 8, 0, 255};
@@ -214,12 +214,12 @@ int main(void) {
 	meter_init(&meters[1], "MTR-0002", energy_obis, 456789);
 	meter_init(&meters[2], "MTR-0003", energy_obis, 789012);
 
-	printf("ПУ созданы:\n");
+	printf("Meters created:\n");
 	for (int i = 0; i < 3; i++) {
 		printf("  %d. %s (Data OBIS 1.0.1.8.0.255)\n", i + 1, meters[i].name);
 	}
 
-	/* ── 2. Регистрируем ПУ в реестре концентратора ────────────────── */
+	/* ── 2. Register meters in concentrator registry ────────────────── */
 
 	osp_spodus_concentrator_t conc;
 	osp_spodus_concentrator_init(&conc);
@@ -246,29 +246,29 @@ int main(void) {
 		desc.channels[0].address[0] = (uint8_t)(0x11 + i);
 
 		osp_err_t r = osp_spodus_registry_add(&conc.registry, &desc);
-		printf("  Регистрация %s: %s\n", meter_info[i].id, r == OSP_OK ? "OK" : "FAIL");
+		printf("  Register %s: %s\n", meter_info[i].id, r == OSP_OK ? "OK" : "FAIL");
 	}
 
-	/* ── 3. Подключаем downstream транспорт ─────────────────────────── */
+	/* ── 3. Connect downstream transport ─────────────────────────── */
 
 	for (int i = 0; i < 3; i++) {
 		const uint8_t *mid = (const uint8_t *)meter_info[i].id;
 		uint8_t mid_len = (uint8_t)strlen(meter_info[i].id);
 		osp_err_t r = osp_spodus_concentrator_attach_downstream(&conc, mid, mid_len, &meters[i].pair.client_transport, OSP_FRAMING_NONE);
-		printf("  Подключение %s: %s\n", meter_info[i].id, r == OSP_OK ? "OK" : "FAIL");
+		printf("  Connect %s: %s\n", meter_info[i].id, r == OSP_OK ? "OK" : "FAIL");
 	}
 
-	/* ── 4. Опрашиваем каждый ПУ через прямой loopback ─────────────── */
+	/* ── 4. Poll each meter via direct loopback ─────────────── */
 
-	printf("\n--- Прямой опрос ПУ ---\n");
+	printf("\n--- Direct meter polling ---\n");
 	for (int i = 0; i < 3; i++) {
-		printf("\nПУ %d: %s\n", i + 1, meters[i].name);
-		poll_meter(&meters[i], energy_obis, 1, "Энергия A+ (kWh)");
+		printf("\nMeter %d: %s\n", i + 1, meters[i].name);
+		poll_meter(&meters[i], energy_obis, 1, "Energy A+ (kWh)");
 	}
 
-	/* ── 5. Опрос через концентратор (poll_meter) ──────────────────── */
+	/* ── 5. poll_meter (poll_meter) ──────────────────── */
 
-	printf("\n--- Опрос через концентратор ---\n");
+	printf("\n--- poll_meter ---\n");
 	for (int i = 0; i < 3; i++) {
 		const uint8_t *mid = (const uint8_t *)meter_info[i].id;
 		uint8_t mid_len = (uint8_t)strlen(meter_info[i].id);
@@ -280,27 +280,27 @@ int main(void) {
 
 		osp_spodus_downstream_t *ds = osp_spodus_concentrator_downstream(&conc, mid, mid_len);
 		if (!ds) {
-			printf("  ПУ %d: downstream не найден\n", i + 1);
+			printf("  Meter %d: downstream not found\n", i + 1);
 			continue;
 		}
 
-		/* poll_meter требует connected state — reconnect */
+		/* poll_meter requires connected state — reconnect */
 		osp_client_connect(&ds->client, 1000);
 		uint32_t found = osp_spodus_poll_meter(&ds->client, &conc.registry, mid, mid_len, attrs, 1);
 		osp_client_release(&ds->client);
-		printf("  ПУ %d (%s): опрошено %u атрибутов\n", i + 1, meter_info[i].id, found);
+		printf("  Meter %d (%s): polled %u attributes\n", i + 1, meter_info[i].id, found);
 
 		const osp_value_t *cached = osp_spodus_registry_cached(&conc.registry, mid, mid_len, &energy_obis, 1);
 		if (cached)
-			print_value("  Кэш энергии", cached);
+			print_value("  Energy cache", cached);
 	}
 
-	/* ── 6. Формируем список ПУ ────────────────────────────────────── */
+	/* ── 6. Build meter list ────────────────────────────────────── */
 
-	printf("\n--- Список ПУ в реестре ---\n");
+	printf("\n--- Meter list in registry ---\n");
 	osp_value_t meter_list;
 	if (osp_spodus_registry_build_meter_list(&conc.registry, &meter_list) == OSP_OK) {
-		printf("Всего ПУ: %u\n", meter_list.as.array.elements.count);
+		printf("Total meters: %u\n", meter_list.as.array.elements.count);
 		for (uint8_t i = 0; i < meter_list.as.array.elements.count; i++) {
 			osp_value_t *item = &meter_list.as.array.elements.items[i];
 			osp_value_t *id_val = &item->as.structure.elements.items[0];
@@ -309,16 +309,16 @@ int main(void) {
 			if (id_val->tag == OSP_TAG_OCTETSTRING)
 				fwrite(id_val->as.octetstring.data, 1, id_val->as.octetstring.len, stdout);
 			if (model_val->tag == OSP_TAG_OCTETSTRING) {
-				printf("  модель: ");
+				printf("  model: ");
 				fwrite(model_val->as.octetstring.data, 1, model_val->as.octetstring.len, stdout);
 			}
 			printf("\n");
 		}
 	}
 
-	/* ── 7. Итоговая сводка кэша ───────────────────────────────────── */
+	/* ── 7. Cache summary ───────────────────────────────────── */
 
-	printf("\n--- Кэш показаний ---\n");
+	printf("\n--- Readings cache ---\n");
 	for (int i = 0; i < 3; i++) {
 		const uint8_t *mid = (const uint8_t *)meter_info[i].id;
 		uint8_t mid_len = (uint8_t)strlen(meter_info[i].id);
@@ -327,6 +327,6 @@ int main(void) {
 			printf("  %s: %u kWh\n", meter_info[i].id, cached->as.uint32.value);
 	}
 
-	printf("\n=== Готово ===\n");
+	printf("\n=== Done ===\n");
 	return 0;
 }

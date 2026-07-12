@@ -3,7 +3,7 @@
  *
  * Primary normative refs (doc-rag-remote):
  *   - IEC 62056-6-2 / Blue Book §4.3.x — IC attribute tables, scaler_unit, Clock
- *   - СТО 34.01-5.1-006 — date-time 12-octet layout (deviation, clock_status)
+ *   - STO 34.01-5.1-006 — date-time 12-octet layout (deviation, clock_status)
  *   - GOST R 58940-2020 — Register IC (class 3)
  * Secondary parity ref:
  *   - spodes-rs/tests/integration.rs — Rust roundtrip fixtures
@@ -76,7 +76,7 @@ extern "C" {
 /* Generic fallback */
 #define OSP_FIXTURE_LN_DEFAULT ((osp_obis_t){0, 0, 1, 0, 0, 255})
 
-/** 12-octet COSEM date-time (СТО 34.01-5.1-006 §date-time, Blue Book §4.1.6.1). */
+/** 12-octet COSEM date-time (STO 34.01-5.1-006 §date-time, Blue Book §4.1.6.1). */
 osp_cosem_datetime_t osp_fixture_cosem_datetime_bytes(const uint8_t dt[12]);
 
 /** Legacy helper: first 9 bytes → AXDR datetime (capture_time in registers). */

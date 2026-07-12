@@ -1,5 +1,5 @@
 /**
- * profile_data_filter.c — СПОДУС Profile Data Filter (class 8201)
+ * profile_data_filter.c — SPODUS Profile Data Filter (class 8201)
  */
 
 #include "profile_data_filter.h"

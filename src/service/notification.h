@@ -1,3 +1,12 @@
+/**
+ * @file notification.h
+ * @brief DLMS/COSEM notification APDUs (unsolicited messages).
+ *
+ * Provides encode/decode for:
+ * - Data Notification (0x0F): unsolicited data push from server
+ * - Event Notification (0xC2): unsolicited event push from server
+ */
+
 #ifndef OSP_NOTIFICATION_H
 #define OSP_NOTIFICATION_H
 

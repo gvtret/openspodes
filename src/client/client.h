@@ -52,10 +52,20 @@ typedef struct {
 	uint8_t rx_buf[OSP_CLIENT_MAX_PDU];
 } osp_client_t;
 
-/* Initialize a client session */
+/**
+ * @brief Initialize a client session.
+ * @param c        Client context to initialize (caller-owned).
+ * @param transport Transport HAL interface for I/O.
+ * @param framing   Framing type: OSP_FRAMING_HDLC or OSP_FRAMING_WRAPPER.
+ * @return OSP_OK on success, OSP_ERR_INVALID if c or transport is NULL.
+ */
 osp_err_t osp_client_init(osp_client_t *c, osp_transport_t *transport, osp_framing_type_t framing);
 
-/* Set security context (optional, before connect) */
+/**
+ * @brief Set security context before connect (optional).
+ * @param c   Client context.
+ * @param sec Security context with keys, suite, and mechanism configured.
+ */
 void osp_client_set_security(osp_client_t *c, const osp_sec_context_t *sec);
 
 /* Set HDLC addresses (optional, before connect, HDLC framing only) */
@@ -77,10 +87,19 @@ void osp_client_set_ciphering(osp_client_t *c, const osp_sec_context_t *tx, cons
 /* Include dedicated encryption key in InitiateRequest (ded-ciphering after connect) */
 void osp_client_set_dedicated_key(osp_client_t *c, const uint8_t *key, uint8_t key_len);
 
-/* Connect: AARQ→AARE→HLS pass3/4. Returns 0 on success. */
+/**
+ * @brief Connect to server: sends AARQ, receives AARE, performs HLS pass 3/4.
+ * @param c          Client context (must be initialized, optionally secured).
+ * @param timeout_ms Maximum time to wait for AARE response in milliseconds.
+ * @return 0 on success, negative on connection/auth failure.
+ */
 osp_err_t osp_client_connect(osp_client_t *c, uint32_t timeout_ms);
 
-/* Release: RLRQ→RLRE */
+/**
+ * @brief Release association: sends RLRQ, waits for RLRE.
+ * @param c Associated client context.
+ * @return 0 on success, negative on failure.
+ */
 osp_err_t osp_client_release(osp_client_t *c);
 
 typedef struct {
@@ -95,24 +114,58 @@ typedef struct {
 	uint8_t method_id;
 } osp_client_method_ref_t;
 
-/* GET request/response */
+/**
+ * @brief Send GET request and receive response.
+ * @param c        Associated client context.
+ * @param class_id COSEM class ID (e.g., OSP_IC_DATA = 1).
+ * @param obis     OBIS code of the target object.
+ * @param attr_id  Attribute ID to read (1-based).
+ * @param result   Output: decoded value from the response.
+ * @return 0 on success, negative on failure or timeout.
+ */
 osp_err_t osp_client_get(osp_client_t *c, uint16_t class_id, const osp_obis_t *obis, uint8_t attr_id, osp_value_t *result);
 
-/* GET with selective access (ProfileGeneric buffer: date/entry range) */
+/**
+ * @brief Send GET request with selective access (e.g., ProfileGeneric date range).
+ * @param c        Associated client context.
+ * @param class_id COSEM class ID.
+ * @param obis     OBIS code of the target object.
+ * @param attr_id  Attribute ID to read.
+ * @param sa       Selective access descriptor (access selector + descriptor).
+ * @param result   Output: decoded value from the response.
+ * @return 0 on success, negative on failure.
+ */
 osp_err_t osp_client_get_with_selective_access(osp_client_t *c, uint16_t class_id, const osp_obis_t *obis, uint8_t attr_id,
                                                  const osp_selective_access_t *sa, osp_value_t *result);
 
 /* GET with-list (up to OSP_XDLMS_MAX_LIST attributes) */
 osp_err_t osp_client_get_with_list(osp_client_t *c, const osp_client_attr_ref_t *attrs, uint8_t count, osp_get_result_item_t *results);
 
-/* SET request/response */
+/**
+ * @brief Send SET request and receive response.
+ * @param c        Associated client context.
+ * @param class_id COSEM class ID.
+ * @param obis     OBIS code of the target object.
+ * @param attr_id  Attribute ID to write (1-based).
+ * @param value    Value to write.
+ * @return 0 on success, negative on failure or data-access-result error.
+ */
 osp_err_t osp_client_set(osp_client_t *c, uint16_t class_id, const osp_obis_t *obis, uint8_t attr_id, const osp_value_t *value);
 
 /* SET with-list */
 osp_err_t osp_client_set_with_list(osp_client_t *c, const osp_client_attr_ref_t *attrs, const osp_value_t *values, uint8_t count,
                                    osp_dar_t *results);
 
-/* ACTION request/response */
+/**
+ * @brief Send ACTION request and receive response.
+ * @param c         Associated client context.
+ * @param class_id  COSEM class ID.
+ * @param obis      OBIS code of the target object.
+ * @param method_id Method ID to invoke (1-based).
+ * @param param     Input parameter for the method (may be NULL for void methods).
+ * @param result    Output: method return value.
+ * @return 0 on success, negative on failure.
+ */
 osp_err_t osp_client_action(osp_client_t *c, uint16_t class_id, const osp_obis_t *obis, uint8_t method_id, const osp_value_t *param, osp_value_t *result);
 
 /* ACTION with-list */

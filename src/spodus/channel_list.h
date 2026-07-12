@@ -1,5 +1,5 @@
 /**
- * channel_list.h — ИВКЭ communication channel list (СТО §10.4)
+ * channel_list.h — IVCV communication channel list (STO §10.4)
  */
 
 #ifndef OSP_SPODUS_CHANNEL_LIST_H

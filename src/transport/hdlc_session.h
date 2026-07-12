@@ -59,28 +59,29 @@ typedef struct {
 	uint8_t rx_buf[OSP_HDLC_MAX_FRAME_SIZE + 64];
 } osp_hdlc_session_t;
 
-/* Initialize an HDLC session as client or server */
+/** @brief Initialize an HDLC session as client (SNRM initiator). */
 void osp_hdlc_session_init_client(osp_hdlc_session_t *s, osp_transport_t *t,
                                    uint32_t client_addr, uint8_t client_addr_len,
                                    uint32_t server_addr, uint8_t server_addr_len);
+/** @brief Initialize an HDLC session as server (SNRM responder). */
 void osp_hdlc_session_init_server(osp_hdlc_session_t *s, osp_transport_t *t,
                                    uint32_t server_addr, uint8_t server_addr_len,
                                    uint32_t client_addr, uint8_t client_addr_len);
 
-/* Connect: send SNRM, wait for UA. Returns OSP_OK on success. */
+/** @brief Connect: send SNRM, wait for UA. Returns OSP_OK on success. */
 osp_err_t osp_hdlc_session_connect(osp_hdlc_session_t *s, uint32_t timeout_ms);
 
-/* Disconnect: send DISC, wait for UA/DM. */
+/** @brief Disconnect: send DISC, wait for UA/DM. */
 osp_err_t osp_hdlc_session_disconnect(osp_hdlc_session_t *s, uint32_t timeout_ms);
 
-/* Send an APDU as an I-frame (with LLC header and N(S)/N(R)) */
+/** @brief Send an APDU as an I-frame (with LLC header and N(S)/N(R)). */
 osp_err_t osp_hdlc_session_send_apdu(osp_hdlc_session_t *s, const uint8_t *apdu, uint32_t apdu_len);
 
-/* Receive an APDU from an I-frame (strips LLC header, updates N(R)) */
+/** @brief Receive an APDU from an I-frame (strips LLC header, updates N(R)). */
 osp_err_t osp_hdlc_session_recv_apdu(osp_hdlc_session_t *s, uint8_t *buf, uint32_t buf_size,
                                       uint32_t *apdu_len, uint32_t timeout_ms);
 
-/* Get current session state */
+/** @brief Get current HDLC session state. */
 osp_hdlc_state_t osp_hdlc_session_state(const osp_hdlc_session_t *s);
 
 #ifdef __cplusplus

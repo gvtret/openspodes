@@ -133,15 +133,6 @@ static void mul512(uint64_t t[8], const fe *a, const fe *b) {
 	}
 }
 
-static void fe_add_raw(fe *r, const fe *a, const fe *b) {
-	uint64_t carry = 0;
-	for (int i = 0; i < 4; i++) {
-		__uint128_t sum = (__uint128_t)a->w[i] + b->w[i] + carry;
-		r->w[i] = (uint64_t)sum;
-		carry = (uint64_t)(sum >> 64);
-	}
-}
-
 static void reduce512(fe *r, uint64_t t[8], const fe *r256) {
 	for (int iter = 0; iter < 8; iter++) {
 		fe hi = {{t[4], t[5], t[6], t[7]}};

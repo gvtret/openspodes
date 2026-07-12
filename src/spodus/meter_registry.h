@@ -1,5 +1,5 @@
 /**
- * meter_registry.h — Configured meter list and aggregation cache (СТО §10.2)
+ * meter_registry.h — Configured meter list and aggregation cache (STO §10.2)
  */
 
 #ifndef OSP_SPODUS_METER_REGISTRY_H

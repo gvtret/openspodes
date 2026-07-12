@@ -1,5 +1,5 @@
 /**
- * spodus_obis.h — OBIS codes of the СПОДУС / ИВКЭ model (СТО 34.01-5.1-013-2023)
+ * spodus_obis.h — OBIS codes of the SPODUS / IVCV model (STO 34.01-5.1-013-2023)
  */
 
 #ifndef OSP_SPODUS_OBIS_H

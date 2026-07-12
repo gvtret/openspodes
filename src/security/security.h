@@ -1,3 +1,19 @@
+/**
+ * @file security.h
+ * @brief DLMS/COSEM security layer (IEC 62056-5-3 Green Book).
+ *
+ * Provides:
+ * - Security context management (key storage, suite configuration)
+ * - HLS 4-pass authentication (mechanisms 0-10)
+ * - Glo/ded ciphering (APDU-level encryption + authentication)
+ * - General ciphering APDUs (0xDB/0xDC/0xDD tags)
+ *
+ * HAL crypto functions must be set before use:
+ *   osp_hal_gcm_init, osp_hal_gcm_update, osp_hal_gcm_finish
+ *   osp_hal_md5, osp_hal_sha1, osp_hal_sha256
+ *   osp_hal_random_fill (for random challenge generation)
+ */
+
 #ifndef OSP_SECURITY_H
 #define OSP_SECURITY_H
 
@@ -49,6 +65,10 @@ extern int (*osp_hal_ecdsa_sign)(osp_sec_suite_t suite, const uint8_t *sk, uint3
                                  uint8_t *sig, uint32_t *sig_len);
 extern int (*osp_hal_ecdsa_verify)(osp_sec_suite_t suite, const uint8_t *pk, uint32_t pk_len, const uint8_t *msg, uint32_t msg_len,
                                    const uint8_t *sig, uint32_t sig_len);
+
+/* Random number generator: fills buf with len cryptographically random bytes.
+ * Returns 0 on success, negative on failure. May be NULL if not provided by HAL. */
+extern int (*osp_hal_random_fill)(uint8_t *buf, uint32_t len);
 
 static inline uint8_t osp_sec_suite_id(osp_sec_suite_t s) {
 	return (uint8_t)s;
@@ -151,10 +171,6 @@ static inline bool osp_hls_uses_signature(osp_auth_mechanism_t mech) {
  *  Security Context (per-association)
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-#define OSP_SEC_KEY_MAX       32
-#define OSP_SEC_CHALLENGE_MAX 64
-#define OSP_SEC_TAG_SIZE      12
-
 #define OSP_SEC_K_EM_SIZE         64
 #define OSP_SEC_SIGN_KEY_MAX      48
 #define OSP_SEC_PUBKEY_MAX        96
@@ -197,31 +213,46 @@ typedef struct {
 	/* Rate limiting */
 	uint8_t hls_failures;
 } osp_sec_context_t;
-
+/**
+ * @brief Initialize a security context with the given suite and mechanism.
+ * @param ctx          Security context to initialize (caller-owned).
+ * @param suite        Security suite (OSP_SUITE_0 for AES-GCM, OSP_SUITE_8/9 for GOST).
+ * @param mech         Authentication mechanism (OSP_MECH_HLS_GMAC, etc.).
+ * @param system_title 8-byte system title (may be NULL, zeroed if so).
+ */
 void osp_sec_context_init(osp_sec_context_t *ctx, osp_sec_suite_t suite, osp_auth_mechanism_t mech, const uint8_t *system_title);
+
+/**
+ * @brief Destroy security context, zeroizing all key material.
+ * @param ctx Security context to destroy. Safe to call on NULL.
+ */
+void osp_sec_context_destroy(osp_sec_context_t *ctx);
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  HLS 4-pass handshake
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /* HLS hash functions (Green Book §9.2.7.4) */
+/** @brief Compute MD5 hash of input data. */
 int osp_hls_md5(const uint8_t *input, uint32_t len, uint8_t output[16]);
+/** @brief Compute SHA-1 hash of input data. */
 int osp_hls_sha1(const uint8_t *input, uint32_t len, uint8_t output[20]);
+/** @brief Compute SHA-256 hash of input data. */
 int osp_hls_sha256(const uint8_t *input, uint32_t len, uint8_t output[32]);
 
-/* GMAC computation using HAL crypto */
+/** @brief Compute AES-GMAC authentication tag over data. */
 int osp_hls_gmac(const osp_sec_context_t *ctx, const uint8_t *system_title, uint32_t ic, const uint8_t *data, uint32_t data_len, uint8_t tag[OSP_SEC_TAG_SIZE]);
 
-/* Pass 3: client builds f(StoC); *out_len is digest/response size (16/20/32/17) */
+/** @brief Build HLS pass-3 client response f(StoC). */
 int osp_hls_pass3_build(const osp_sec_context_t *ctx, uint8_t *out, uint32_t out_size, uint32_t *out_len);
 
-/* Pass 3: server verifies f(StoC) from client */
+/** @brief Verify HLS pass-3 client response f(StoC). */
 int osp_hls_pass3_verify(osp_sec_context_t *ctx, const uint8_t *f_stoc, uint32_t len);
 
-/* Pass 4: server builds f(CtoS) */
+/** @brief Build HLS pass-4 server response f(CtoS). */
 int osp_hls_pass4_build(osp_sec_context_t *ctx, uint8_t *out, uint32_t out_size, uint32_t *out_len);
 
-/* Pass 4: client verifies f(CtoS) from server */
+/** @brief Verify HLS pass-4 server response f(CtoS). */
 int osp_hls_pass4_verify(osp_sec_context_t *ctx, const uint8_t *f_ctos, uint32_t len);
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -247,25 +278,51 @@ int osp_hls_pass4_verify(osp_sec_context_t *ctx, const uint8_t *f_ctos, uint32_t
 #define OSP_GLO_MAX_PLAIN    1024
 #define OSP_GLO_MAX_CIPHERED (OSP_GLO_MAX_PLAIN + 32)
 
+/** @brief Check whether a tag represents a glo-ciphered APDU. */
 bool osp_glo_is_ciphered_tag(uint8_t tag);
+/** @brief Map a plain APDU tag to its glo-ciphered counterpart. */
 uint8_t osp_glo_tag_for_plain(uint8_t plain_tag);
+/** @brief Map a glo-ciphered tag back to the original plain tag. */
 uint8_t osp_glo_plain_tag_for_ciphered(uint8_t ciphered_tag);
 
+/** @brief Check whether a tag represents a dedicated-ciphered APDU. */
 bool osp_ded_is_ciphered_tag(uint8_t tag);
+/** @brief Map a plain APDU tag to its dedicated-ciphered counterpart. */
 uint8_t osp_ded_tag_for_plain(uint8_t plain_tag);
+/** @brief Map a dedicated-ciphered tag back to the original plain tag. */
 uint8_t osp_ded_plain_tag_for_ciphered(uint8_t ciphered_tag);
 
+/** @brief Check whether a tag represents a service-ciphered APDU. */
 bool osp_svc_is_ciphered_tag(uint8_t tag);
+/** @brief Map a plain tag to its service-ciphered counterpart for the given suite. */
 uint8_t osp_svc_cipher_tag_for_plain(const osp_sec_context_t *ctx, uint8_t plain_tag);
 
-/* Install DEK on tx/rx cipher contexts (InitiateRequest dedicated-key). */
+/** @brief Apply a dedicated encryption key (DEK) to the security context. */
 int osp_sec_cipher_apply_dedicated_key(osp_sec_context_t *ctx, const uint8_t *key, uint8_t key_len);
+/** @brief Enable dedicated key mode on both tx and rx cipher contexts. */
 void osp_sec_cipher_session_use_dedicated(osp_sec_context_t *tx, osp_sec_context_t *rx, const uint8_t *key, uint8_t key_len);
 
-/* Protect a plaintext APDU with glo-ciphering (auth + optional encrypt) */
+/**
+ * @brief Protect a plaintext APDU with glo-ciphering (auth + optional encrypt).
+ * @param ctx         Security context with keys and invocation counter.
+ * @param ciphered_tag Expected glo tag (e.g., OSP_GLO_GET_REQUEST).
+ * @param plaintext   Input APDU to protect.
+ * @param plain_len   Length of plaintext.
+ * @param out         Output buffer for ciphered APDU.
+ * @param out_len     In/Out: on input, size of out buffer; on output, actual written length.
+ * @return 0 on success, negative on failure.
+ */
 int osp_glo_protect(const osp_sec_context_t *ctx, uint8_t ciphered_tag, const uint8_t *plaintext, uint32_t plain_len, uint8_t *out, uint32_t *out_len);
 
-/* Unprotect a glo-ciphered APDU */
+/**
+ * @brief Unprotect a glo-ciphered APDU (verify auth tag, decrypt if needed).
+ * @param ctx         Security context with keys and invocation counter.
+ * @param ciphered    Input ciphered APDU.
+ * @param ciphered_len Length of ciphered APDU.
+ * @param plaintext   Output buffer for decrypted APDU.
+ * @param plain_len   In/Out: on input, size of plaintext buffer; on output, actual written length.
+ * @return 0 on success, negative on auth failure or invalid input.
+ */
 int osp_glo_unprotect(osp_sec_context_t *ctx, const uint8_t *ciphered, uint32_t ciphered_len, uint8_t *plaintext, uint32_t *plain_len);
 
 /* General ciphering APDUs (IEC 62056-5-3 §5.7.2) */
@@ -274,16 +331,21 @@ int osp_glo_unprotect(osp_sec_context_t *ctx, const uint8_t *ciphered, uint32_t 
 #define OSP_GEN_CIPHERING     0xDD
 #define OSP_GEN_SIGNING       0xDF
 
+/** @brief Check whether a tag represents a general-ciphered APDU. */
 bool osp_gen_is_ciphered_tag(uint8_t tag);
 
+/** @brief Protect a plaintext APDU with general glo/ded ciphering. */
 int osp_gen_glo_ded_protect(const osp_sec_context_t *ctx, bool dedicated, uint8_t plain_tag, const uint8_t *plaintext,
                             uint32_t plain_len, uint8_t *out, uint32_t *out_len);
+/** @brief Unprotect a general glo/ded-ciphered APDU. */
 int osp_gen_glo_ded_unprotect(osp_sec_context_t *ctx, const uint8_t *apdu, uint32_t apdu_len, uint8_t *plaintext,
                               uint32_t *plain_len, uint8_t *plain_tag);
 
+/** @brief Protect a plaintext APDU with general ciphering (tag 0xDD). */
 int osp_gen_ciphering_protect(const osp_sec_context_t *ctx, const uint8_t *transaction_id, uint32_t tx_id_len,
                               const uint8_t *recipient_st, uint32_t recipient_len, uint8_t plain_tag, const uint8_t *plaintext,
                               uint32_t plain_len, uint8_t *out, uint32_t *out_len);
+/** @brief Unprotect a general-ciphered APDU (tag 0xDD). */
 int osp_gen_ciphering_unprotect(osp_sec_context_t *ctx, const uint8_t *apdu, uint32_t apdu_len, uint8_t *plaintext,
                                 uint32_t *plain_len, uint8_t *plain_tag);
 

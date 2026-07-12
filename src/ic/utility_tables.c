@@ -29,6 +29,8 @@ static osp_err_t ut_get(const void *inst, uint8_t attr_id, osp_value_t *result) 
 }
 
 static osp_err_t ut_set(void *inst, uint8_t attr_id, const osp_value_t *value) {
+	(void)inst;
+	(void)attr_id;
 	if (!value) return OSP_ERR_INVALID;
 	/* All attrs accept but don't store (read-only stubs) */
 	return OSP_OK;

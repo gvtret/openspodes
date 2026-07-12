@@ -1,5 +1,5 @@
 /**
- * discovered.h — Discovered meter list (СТО §10.5)
+ * discovered.h — Discovered meter list (STO §10.5)
  */
 
 #ifndef OSP_SPODUS_DISCOVERED_H

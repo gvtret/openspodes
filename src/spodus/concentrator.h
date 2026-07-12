@@ -1,5 +1,5 @@
 /**
- * concentrator.h — СПОДУС ИВКЭ runtime: registry, direct proxy, downstream poll
+ * concentrator.h — SPODUS IVCV runtime: registry, direct proxy, downstream poll
  */
 
 #ifndef OSP_SPODUS_CONCENTRATOR_H

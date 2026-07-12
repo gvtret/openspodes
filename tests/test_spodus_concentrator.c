@@ -1,5 +1,5 @@
 /**
- * test_spodus_concentrator.c — СПОДУС concentrator runtime (registry, proxy, poll)
+ * test_spodus_concentrator.c — SPODUS concentrator runtime (registry, proxy, poll)
  */
 
 #include <stdarg.h>

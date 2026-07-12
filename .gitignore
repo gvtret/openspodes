@@ -1,9 +1,14 @@
 build/
 build-coverage/
+build-cov/
+build-linux/
+build-orig/
+build-san/
 logs/
 .cache/
 .claude/
 .mimocode/
+docs/api/
 *.o
 *.a
 *.so
@@ -11,8 +16,4 @@ logs/
 *.gcno
 *.gcda
 *.gcov
-build-cov/
 files.zip
-build-linux/
-build-orig/
-build-san/

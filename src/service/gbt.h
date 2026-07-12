@@ -1,3 +1,14 @@
+/**
+ * @file gbt.h
+ * @brief General Block Transfer (GBT) for large APDU segmentation.
+ *
+ * Implements IEC 62056-5-3 block transfer protocol:
+ * - Fragmentation of APDUs exceeding max PDU size
+ * - Block numbering and acknowledgment
+ * - Confirmed (with window) and unconfirmed modes
+ * - Streaming mode (STR bit)
+ */
+
 #ifndef OSP_GBT_H
 #define OSP_GBT_H
 

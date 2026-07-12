@@ -43,17 +43,20 @@ static const uint8_t OID_PREFIX_MECH[] = {0x60, 0x85, 0x74, 0x05, 0x08, 0x02};
 
 /* BER length backpatch: reserve 1 byte, then fix up after content is written.
  * Uses short form for < 128, shifts content and uses long form otherwise. */
-static void ber_backpatch_length(osp_buf_t *buf, uint32_t len_pos) {
+static int ber_backpatch_length(osp_buf_t *buf, uint32_t len_pos) {
 	uint32_t content_len = buf->wr - len_pos - 1;
 	if (content_len < 0x80) {
 		buf->buf[len_pos] = (uint8_t)content_len;
 	} else {
 		/* Shift content right by 1 byte to make room for 0x81 prefix */
+		if (buf->wr + 1 > buf->size)
+			return -1;
 		memmove(&buf->buf[len_pos + 2], &buf->buf[len_pos + 1], content_len);
 		buf->buf[len_pos] = 0x81;
 		buf->buf[len_pos + 1] = (uint8_t)content_len;
 		buf->wr++;
 	}
+	return 0;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -79,7 +82,8 @@ int osp_aarq_encode(osp_aarq_t *aarq, osp_buf_t *buf) {
 		return -1;
 	buf->buf[buf->wr++] = 0x00; /* placeholder */
 	ber_write_oid(buf, OID_PREFIX_APP, 6, aarq->application_context);
-	ber_backpatch_length(buf, oid_len_pos);
+	if (ber_backpatch_length(buf, oid_len_pos) != 0)
+		return -1;
 
 	/* [10] sender-acse-requirements: IMPLICIT BIT STRING */
 	osp_ber_write_tag(buf, 2, false, 10);
@@ -94,7 +98,8 @@ int osp_aarq_encode(osp_aarq_t *aarq, osp_buf_t *buf) {
 		return -1;
 	buf->buf[buf->wr++] = 0x00; /* placeholder */
 	ber_write_oid(buf, OID_PREFIX_MECH, 6, aarq->mechanism);
-	ber_backpatch_length(buf, mech_len_pos);
+	if (ber_backpatch_length(buf, mech_len_pos) != 0)
+		return -1;
 
 	/* [6] calling-AP-title: EXPLICIT wraps OCTET STRING (system title)
 	 * Per Rust spodes-rs: 0xA6 <len> 04 <datalen> <data> */
@@ -129,7 +134,8 @@ int osp_aarq_encode(osp_aarq_t *aarq, osp_buf_t *buf) {
 	}
 
 	/* Backpatch outer AARQ length */
-	ber_backpatch_length(buf, len_pos);
+	if (ber_backpatch_length(buf, len_pos) != 0)
+		return -1;
 
 	return 0;
 }
@@ -169,18 +175,22 @@ int osp_aarq_decode(osp_buf_t *buf, osp_aarq_t *aarq) {
 					break;
 
 				case 1: /* [1] application-context-name: EXPLICIT wraps OID */
-					ber_read_oid(buf, &aarq->application_context);
+					if (ber_read_oid(buf, &aarq->application_context) != 0)
+						return -1;
 					break;
 
 				case 6: /* [6] calling-AP-title: EXPLICIT wraps OCTET STRING */
 				{
 					osp_ber_tag_t otag;
-					osp_ber_read_tag(buf, &otag);
+					if (osp_ber_read_tag(buf, &otag) != OSP_OK)
+						return -1;
 					uint32_t olen;
-					osp_ber_read_length(buf, &olen);
+					if (osp_ber_read_length(buf, &olen) != OSP_OK)
+						return -1;
 					aarq->calling_ap_title_len = (uint8_t)olen;
 					for (uint32_t i = 0; i < olen && i < 8; i++) {
-						osp_axdr_read_u8(buf, &aarq->calling_ap_title[i]);
+						if (osp_axdr_read_u8(buf, &aarq->calling_ap_title[i]) != OSP_OK)
+							return -1;
 					}
 				}
 					break;
@@ -189,7 +199,8 @@ int osp_aarq_decode(osp_buf_t *buf, osp_aarq_t *aarq) {
 					break;
 
 				case 11: /* [11] mechanism-name: IMPLICIT OID */
-					ber_read_oid(buf, &aarq->mechanism);
+					if (ber_read_oid(buf, &aarq->mechanism) != 0)
+						return -1;
 					break;
 
 				case 12: /* [12] calling-authentication-value: EXPLICIT wraps Authentication-value */
@@ -197,10 +208,12 @@ int osp_aarq_decode(osp_buf_t *buf, osp_aarq_t *aarq) {
 					osp_ber_tag_t atag;
 					if (osp_ber_read_tag(buf, &atag) == OSP_OK && atag.tag_number == 0 && !atag.tag_constructed) {
 						uint32_t alen;
-						osp_ber_read_length(buf, &alen);
+						if (osp_ber_read_length(buf, &alen) != OSP_OK)
+							return -1;
 						aarq->calling_auth_value_len = (uint8_t)alen;
 						for (uint32_t i = 0; i < alen && i < 64; i++) {
-							osp_axdr_read_u8(buf, &aarq->calling_auth_value[i]);
+							if (osp_axdr_read_u8(buf, &aarq->calling_auth_value[i]) != OSP_OK)
+								return -1;
 						}
 					}
 					break;
@@ -209,12 +222,15 @@ int osp_aarq_decode(osp_buf_t *buf, osp_aarq_t *aarq) {
 				case 30: /* [30] user-information: EXPLICIT wraps OCTET STRING */
 				{
 					osp_ber_tag_t utag;
-					osp_ber_read_tag(buf, &utag);
+					if (osp_ber_read_tag(buf, &utag) != OSP_OK)
+						return -1;
 					uint32_t utlen;
-					osp_ber_read_length(buf, &utlen);
+					if (osp_ber_read_length(buf, &utlen) != OSP_OK)
+						return -1;
 					aarq->user_info_len = utlen;
 					for (uint32_t i = 0; i < utlen && i < 128; i++) {
-						osp_axdr_read_u8(buf, &aarq->user_info[i]);
+						if (osp_axdr_read_u8(buf, &aarq->user_info[i]) != OSP_OK)
+							return -1;
 					}
 					break;
 				}
@@ -225,8 +241,12 @@ int osp_aarq_decode(osp_buf_t *buf, osp_aarq_t *aarq) {
 		}
 
 		/* Ensure we consume exactly field_len bytes */
-		if (buf->rd < field_start + field_len) {
-			buf->rd = field_start + field_len;
+		uint32_t field_end = field_start + field_len;
+		if (field_end < field_start || field_end > buf->wr) {
+			return -1; /* overflow or read past buffer */
+		}
+		if (buf->rd < field_end) {
+			buf->rd = field_end;
 		}
 	}
 
@@ -293,7 +313,8 @@ int osp_aare_encode(osp_aare_t *aare, osp_buf_t *buf) {
 		return -1;
 	buf->buf[buf->wr++] = 0x00; /* placeholder */
 	ber_write_oid(buf, OID_PREFIX_MECH, 6, aare->mechanism);
-	ber_backpatch_length(buf, mech_len_pos);
+	if (ber_backpatch_length(buf, mech_len_pos) != 0)
+		return -1;
 
 	/* [10] responding-authentication-value: EXPLICIT Authentication-value
 	 * Per Green Book: AA <len> 80 <datalen> <data> */
@@ -315,7 +336,8 @@ int osp_aare_encode(osp_aare_t *aare, osp_buf_t *buf) {
 	}
 
 	/* Backpatch outer AARE length */
-	ber_backpatch_length(buf, len_pos);
+	if (ber_backpatch_length(buf, len_pos) != 0)
+		return -1;
 
 	return 0;
 }

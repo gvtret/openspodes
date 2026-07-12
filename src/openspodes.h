@@ -51,7 +51,7 @@ typedef struct {
 	uint8_t f; /* sub-item */
 } osp_obis_t;
 
-static inline __attribute__((noinline)) bool osp_obis_eq(const osp_obis_t *a, const osp_obis_t *b) {
+static __attribute__((noinline, unused)) bool osp_obis_eq(const osp_obis_t *a, const osp_obis_t *b) {
 	return a && b && memcmp(a, b, sizeof(osp_obis_t)) == 0;
 }
 
@@ -141,6 +141,42 @@ typedef struct {
 	uint8_t *(*get_key)(void *ctx, uint8_t sap, uint8_t key_id);
 	void *ctx;
 } osp_system_t;
+
+/**
+ * @brief Optional mutex HAL for thread-safe operation.
+ *
+ * Set these pointers when using the library from multiple threads
+ * (e.g., Linux pthreads, FreeRTOS xSemaphore, Zephyr k_mutex).
+ * Leave NULL for bare-metal or single-threaded use — no locking overhead.
+ *
+ * @code
+ *   // Linux/pthreads example:
+ *   osp_mutex_t m = {
+ *       .create  = my_pthread_mutex_create,
+ *       .lock    = my_pthread_mutex_lock,
+ *       .unlock  = my_pthread_mutex_unlock,
+ *       .destroy = my_pthread_mutex_destroy,
+ *       .ctx     = NULL,
+ *   };
+ *   osp_hal_mutex = &m;
+ * @endcode
+ */
+typedef struct {
+	void *(*create)(void *ctx);
+	int (*lock)(void *ctx, void *handle);
+	void (*unlock)(void *ctx, void *handle);
+	void (*destroy)(void *ctx, void *handle);
+	void *ctx;
+} osp_mutex_t;
+
+/**
+ * @brief Global mutex HAL pointer (set by user, NULL = no locking).
+ *
+ * When non-NULL, the library acquires this mutex around shared static
+ * state (value_read_pool, invocation counters). Each thread must use
+ * its own osp_client_t/osp_server_t — only the codec pool is shared.
+ */
+extern osp_mutex_t *osp_hal_mutex;
 
 typedef struct {
 	osp_transport_t transport;

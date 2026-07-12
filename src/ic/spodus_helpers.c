@@ -1,5 +1,5 @@
 /**
- * spodus_helpers.c — Shared helpers for СПОДУС IC classes 8200/8201
+ * spodus_helpers.c — Shared helpers for SPODUS IC classes 8200/8201
  */
 
 #include "spodus_helpers.h"

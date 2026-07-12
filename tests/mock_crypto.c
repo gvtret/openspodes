@@ -23,6 +23,14 @@ static void mock_gcm_finish(uint8_t *tag) {
 	memcpy(tag, dummy_tag, 12);
 }
 
+static int mock_random_fill(uint8_t *buf, uint32_t len) {
+	/* Deterministic but unique mock random for testing */
+	for (uint32_t i = 0; i < len; i++) {
+		buf[i] = (uint8_t)(i + 0x30);
+	}
+	return 0;
+}
+
 void mock_crypto_init(void) {
 	osp_hal_gcm_init = mock_gcm_init;
 	osp_hal_gcm_update = mock_gcm_update;
@@ -31,4 +39,5 @@ void mock_crypto_init(void) {
 	osp_hal_md5 = NULL;
 	osp_hal_sha1 = NULL;
 	osp_hal_sha256 = NULL;
+	osp_hal_random_fill = mock_random_fill;
 }

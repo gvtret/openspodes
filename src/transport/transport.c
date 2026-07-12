@@ -362,7 +362,7 @@ osp_err_t osp_wrapper_decode(const uint8_t *data, uint32_t len, osp_wrapper_head
 
 	if (header->version != OSP_WRAPPER_VERSION)
 		return OSP_ERR_INVALID;
-	if (header->length + OSP_WRAPPER_HEADER_SIZE > len)
+	if ((uint32_t)header->length + OSP_WRAPPER_HEADER_SIZE > len)
 		return OSP_ERR_INVALID;
 
 	*apdu = &data[OSP_WRAPPER_HEADER_SIZE];

@@ -1,5 +1,5 @@
 /**
- * access_policy.h — Meter access policies (СТО §10.6)
+ * access_policy.h — Meter access policies (STO §10.6)
  */
 
 #ifndef OSP_SPODUS_ACCESS_POLICY_H

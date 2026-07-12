@@ -1,5 +1,5 @@
 /**
- * table_manager.c — СПОДУС Table Manager (class 8200, СТО 34.01-5.1-013-2023 §7.2)
+ * table_manager.c — SPODUS Table Manager (class 8200, STO 34.01-5.1-013-2023 §7.2)
  */
 
 #include "table_manager.h"

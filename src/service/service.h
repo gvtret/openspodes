@@ -103,7 +103,10 @@ typedef struct {
 	osp_buf_t buf;
 } osp_aarq_encoder_t;
 
+/** @brief Encode an AARQ APDU into the output buffer. */
 int osp_aarq_encode(osp_aarq_t *aarq, osp_buf_t *buf);
+
+/** @brief Decode an AARQ APDU from the input buffer. */
 int osp_aarq_decode(osp_buf_t *buf, osp_aarq_t *aarq);
 
 /* AARE encode/decode */
@@ -120,7 +123,10 @@ typedef struct {
 	osp_xdms_context_t xdms;
 } osp_aare_t;
 
+/** @brief Encode an AARE APDU into the output buffer. */
 int osp_aare_encode(osp_aare_t *aare, osp_buf_t *buf);
+
+/** @brief Decode an AARE APDU from the input buffer. */
 int osp_aare_decode(osp_buf_t *buf, osp_aare_t *aare);
 
 /* RLRQ/RLRE */
@@ -128,9 +134,16 @@ typedef struct {
 	uint8_t reason;
 } osp_rlrq_t;
 
+/** @brief Encode an RLRQ APDU into the output buffer. */
 int osp_rlrq_encode(osp_rlrq_t *rlrq, osp_buf_t *buf);
+
+/** @brief Encode an RLRE APDU into the output buffer. */
 int osp_rlre_encode(osp_rlrq_t *rlre, osp_buf_t *buf);
+
+/** @brief Decode an RLRQ APDU from the input buffer. */
 int osp_rlrq_decode(osp_buf_t *buf, osp_rlrq_t *rlrq);
+
+/** @brief Decode an RLRE APDU from the input buffer. */
 int osp_rlre_decode(osp_buf_t *buf, osp_rlrq_t *rlre);
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -177,7 +190,10 @@ typedef struct {
 	} as;
 } osp_get_request_t;
 
+/** @brief Encode a GET request APDU into the output buffer. */
 int osp_get_request_encode(osp_buf_t *buf, const osp_get_request_t *req);
+
+/** @brief Decode a GET request APDU from the input buffer. */
 int osp_get_request_decode(osp_buf_t *buf, osp_get_request_t *req);
 
 /* GET response */
@@ -209,7 +225,10 @@ typedef struct {
 	osp_get_response_with_list_t with_list;
 } osp_get_response_t;
 
+/** @brief Encode a GET response APDU into the output buffer. */
 int osp_get_response_encode(osp_buf_t *buf, const osp_get_response_t *resp);
+
+/** @brief Decode a GET response APDU from the input buffer. */
 int osp_get_response_decode(osp_buf_t *buf, osp_get_response_t *resp);
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -271,7 +290,10 @@ typedef struct {
 	} as;
 } osp_set_request_t;
 
+/** @brief Encode a SET request APDU into the output buffer. */
 int osp_set_request_encode(osp_buf_t *buf, const osp_set_request_t *req);
+
+/** @brief Decode a SET request APDU from the input buffer. */
 int osp_set_request_decode(osp_buf_t *buf, osp_set_request_t *req);
 
 /* SET response */
@@ -302,7 +324,10 @@ typedef struct {
 	} as;
 } osp_set_response_t;
 
+/** @brief Encode a SET response APDU into the output buffer. */
 int osp_set_response_encode(osp_buf_t *buf, const osp_set_response_t *resp);
+
+/** @brief Decode a SET response APDU from the input buffer. */
 int osp_set_response_decode(osp_buf_t *buf, osp_set_response_t *resp);
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -385,7 +410,10 @@ typedef struct {
 	} as;
 } osp_action_request_t;
 
+/** @brief Encode an ACTION request APDU into the output buffer. */
 int osp_action_request_encode(osp_buf_t *buf, const osp_action_request_t *req);
+
+/** @brief Decode an ACTION request APDU from the input buffer. */
 int osp_action_request_decode(osp_buf_t *buf, osp_action_request_t *req);
 
 typedef struct {
@@ -406,11 +434,17 @@ typedef struct {
 	} as;
 } osp_action_response_t;
 
+/** @brief Encode an ACTION response APDU into the output buffer. */
 int osp_action_response_encode(osp_buf_t *buf, const osp_action_response_t *resp);
+
+/** @brief Decode an ACTION response APDU from the input buffer. */
 int osp_action_response_decode(osp_buf_t *buf, osp_action_response_t *resp);
 
 /* DataBlock-SA helper (SET/ACTION block transfer) */
+/** @brief Encode a DataBlock-SA APDU for block transfer. */
 int osp_data_block_sa_encode(osp_buf_t *buf, const osp_data_block_t *block);
+
+/** @brief Decode a DataBlock-SA APDU from block transfer. */
 int osp_data_block_sa_decode(osp_buf_t *buf, osp_data_block_t *block);
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -433,8 +467,13 @@ typedef struct {
 #define OSP_EXC_SVC_DECIPHERING_ERROR        5
 #define OSP_EXC_SVC_IC_ERROR                 6
 
+/** @brief Encode an Exception Response APDU into the output buffer. */
 int osp_exception_response_encode(osp_buf_t *buf, const osp_exception_response_t *resp);
+
+/** @brief Decode an Exception Response APDU from the input buffer. */
 int osp_exception_response_decode(osp_buf_t *buf, osp_exception_response_t *resp);
+
+/** @brief Encode a simple Exception Response with state-error and service-error codes. */
 int osp_exception_response_encode_simple(osp_buf_t *buf, uint8_t state_error, uint8_t service_error);
 
 typedef struct {
@@ -446,7 +485,10 @@ typedef struct {
 #define OSP_CSE_SERVICE_INITIATE_ERROR 1
 #define OSP_CSE_CATEGORY_INITIATE      6
 
+/** @brief Encode a Confirmed Service Error APDU into the output buffer. */
 int osp_confirmed_service_error_encode(osp_buf_t *buf, const osp_confirmed_service_error_t *err);
+
+/** @brief Decode a Confirmed Service Error APDU from the input buffer. */
 int osp_confirmed_service_error_decode(osp_buf_t *buf, osp_confirmed_service_error_t *err);
 
 #ifdef __cplusplus

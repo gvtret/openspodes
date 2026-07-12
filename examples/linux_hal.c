@@ -267,6 +267,7 @@ void linux_hal_init_crypto(void) {
 	osp_hal_md5 = linux_md5;
 	osp_hal_sha1 = linux_sha1;
 	osp_hal_sha256 = linux_sha256;
+	osp_hal_random_fill = linux_random_fill;
 }
 
 #else /* No OpenSSL */

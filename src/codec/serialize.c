@@ -3,10 +3,17 @@
  *
  * Generic osp_value_read/write handles any type by tag.
  * Typed helpers for date/time, access_right, etc.
+ *
+ * Thread safety: This module uses a static pool for nested value decoding.
+ * When osp_hal_mutex is set, the pool is protected by mutex lock/unlock.
+ * For bare-metal or single-threaded use, leave osp_hal_mutex NULL (no overhead).
  */
 
 #include "serialize.h"
 #include <string.h>
+
+/* Global mutex HAL pointer — defined here, declared in openspodes.h */
+osp_mutex_t *osp_hal_mutex = NULL;
 
 /* Bump pool for nested structure/array elements during osp_value_read (no malloc). */
 static osp_value_t value_read_pool[OSP_MAX_ARRAY_LEN * OSP_MAX_STRUCT_LEN];
@@ -393,6 +400,10 @@ osp_err_t osp_bitstring_read(osp_buf_t *buf, uint8_t *bits, uint32_t max_bits, u
 		return OSP_ERR_INVALID;
 	}
 
+	/* Check for overflow: len * 8 must not exceed uint32_t max */
+	if (len > 0x1FFFFFFFu) {
+		return OSP_ERR_NOMEM;
+	}
 	uint32_t total_bits = len * 8;
 	/* Last byte may have unused bits (specified by first byte of bitstring) */
 	if (total_bits > max_bits) {
@@ -459,7 +470,12 @@ static uint8_t dlms_encoded_len_size(uint32_t v) {
 	return 5;
 }
 
-static osp_err_t skip_type_description(osp_buf_t *buf) {
+#define OSP_MAX_TYPE_DEPTH 16
+
+static osp_err_t skip_type_description_depth(osp_buf_t *buf, uint8_t depth) {
+	if (depth >= OSP_MAX_TYPE_DEPTH) {
+		return OSP_ERR_INVALID;
+	}
 	uint8_t tag;
 	osp_err_t r = osp_axdr_read_u8(buf, &tag);
 	if (r != OSP_OK) {
@@ -472,7 +488,7 @@ static osp_err_t skip_type_description(osp_buf_t *buf) {
 			return r;
 		}
 		for (uint32_t i = 0; i < n; i++) {
-			r = skip_type_description(buf);
+			r = skip_type_description_depth(buf, depth + 1);
 			if (r != OSP_OK) {
 				return r;
 			}
@@ -482,9 +498,13 @@ static osp_err_t skip_type_description(osp_buf_t *buf) {
 			return OSP_ERR_INVALID;
 		}
 		buf->rd += 2;
-		r = skip_type_description(buf);
+		r = skip_type_description_depth(buf, depth + 1);
 	}
 	return r;
+}
+
+static osp_err_t skip_type_description(osp_buf_t *buf) {
+	return skip_type_description_depth(buf, 0);
 }
 
 static osp_err_t write_type_description(osp_buf_t *buf, const osp_value_t *val) {
@@ -1081,12 +1101,30 @@ osp_err_t osp_value_read(osp_buf_t *buf, osp_value_t *val) {
 	if (!buf || !val) {
 		return OSP_ERR_INVALID;
 	}
+
+	/* Lock if mutex is configured (thread-safe mode) */
+	void *mutex_handle = NULL;
+	if (osp_hal_mutex && osp_hal_mutex->create && osp_hal_mutex->lock) {
+		mutex_handle = osp_hal_mutex->create(osp_hal_mutex->ctx);
+		if (mutex_handle)
+			osp_hal_mutex->lock(osp_hal_mutex->ctx, mutex_handle);
+	}
+
 	if (value_read_depth == 0) {
 		value_read_pool_used = 0;
 	}
 	value_read_depth++;
 	osp_err_t r = osp_value_read_impl(buf, val);
 	value_read_depth--;
+
+	/* Unlock */
+	if (mutex_handle && osp_hal_mutex && osp_hal_mutex->unlock) {
+		osp_hal_mutex->unlock(osp_hal_mutex->ctx, mutex_handle);
+	}
+	if (mutex_handle && osp_hal_mutex && osp_hal_mutex->destroy) {
+		osp_hal_mutex->destroy(osp_hal_mutex->ctx, mutex_handle);
+	}
+
 	return r;
 }
 
@@ -1462,21 +1500,32 @@ osp_err_t osp_access_right_write(osp_buf_t *buf, const osp_access_right_t *ar) {
 	if (!buf || !ar) {
 		return OSP_ERR_INVALID;
 	}
-	osp_struct_begin(buf, 2);
+	osp_err_t r;
+	if ((r = osp_struct_begin(buf, 2)) != OSP_OK)
+		return r;
 
-	osp_array_begin(buf, ar->attr_count);
+	if ((r = osp_array_begin(buf, ar->attr_count)) != OSP_OK)
+		return r;
 	for (uint8_t i = 0; i < ar->attr_count; i++) {
-		osp_struct_begin(buf, 3);
-		osp_axdr_write_i8(buf, ar->attr_items[i].attribute_id);
-		osp_axdr_write_u8(buf, (uint8_t)ar->attr_items[i].access_mode);
-		osp_axdr_write_u8(buf, OSP_AXDR_NULL); /* access_selectors = null-data */
+		if ((r = osp_struct_begin(buf, 3)) != OSP_OK)
+			return r;
+		if ((r = osp_axdr_write_i8(buf, ar->attr_items[i].attribute_id)) != OSP_OK)
+			return r;
+		if ((r = osp_axdr_write_u8(buf, (uint8_t)ar->attr_items[i].access_mode)) != OSP_OK)
+			return r;
+		if ((r = osp_axdr_write_u8(buf, OSP_AXDR_NULL)) != OSP_OK)
+			return r;
 	}
 
-	osp_array_begin(buf, ar->method_count);
+	if ((r = osp_array_begin(buf, ar->method_count)) != OSP_OK)
+		return r;
 	for (uint8_t i = 0; i < ar->method_count; i++) {
-		osp_struct_begin(buf, 2);
-		osp_axdr_write_i8(buf, ar->method_items[i].method_id);
-		osp_axdr_write_u8(buf, (uint8_t)ar->method_items[i].access_mode);
+		if ((r = osp_struct_begin(buf, 2)) != OSP_OK)
+			return r;
+		if ((r = osp_axdr_write_i8(buf, ar->method_items[i].method_id)) != OSP_OK)
+			return r;
+		if ((r = osp_axdr_write_u8(buf, (uint8_t)ar->method_items[i].access_mode)) != OSP_OK)
+			return r;
 	}
 	return OSP_OK;
 }
@@ -1488,19 +1537,29 @@ osp_err_t osp_object_list_element_read(osp_buf_t *buf, osp_object_list_element_t
 	if (r != OSP_OK) {
 		return r;
 	}
-	osp_axdr_read_u16(buf, &elem->class_id);
-	osp_axdr_read_u8(buf, &elem->version);
-	osp_obis_read(buf, &elem->logical_name);
-	osp_access_right_read(buf, &elem->access_rights);
+	if ((r = osp_axdr_read_u16(buf, &elem->class_id)) != OSP_OK)
+		return r;
+	if ((r = osp_axdr_read_u8(buf, &elem->version)) != OSP_OK)
+		return r;
+	if ((r = osp_obis_read(buf, &elem->logical_name)) != OSP_OK)
+		return r;
+	if ((r = osp_access_right_read(buf, &elem->access_rights)) != OSP_OK)
+		return r;
 	return OSP_OK;
 }
 
 osp_err_t osp_object_list_element_write(osp_buf_t *buf, const osp_object_list_element_t *elem) {
-	osp_struct_begin(buf, 4);
-	osp_axdr_write_u16(buf, elem->class_id);
-	osp_axdr_write_u8(buf, elem->version);
-	osp_obis_write(buf, &elem->logical_name);
-	osp_access_right_write(buf, &elem->access_rights);
+	osp_err_t r;
+	if ((r = osp_struct_begin(buf, 4)) != OSP_OK)
+		return r;
+	if ((r = osp_axdr_write_u16(buf, elem->class_id)) != OSP_OK)
+		return r;
+	if ((r = osp_axdr_write_u8(buf, elem->version)) != OSP_OK)
+		return r;
+	if ((r = osp_obis_write(buf, &elem->logical_name)) != OSP_OK)
+		return r;
+	if ((r = osp_access_right_write(buf, &elem->access_rights)) != OSP_OK)
+		return r;
 	return OSP_OK;
 }
 

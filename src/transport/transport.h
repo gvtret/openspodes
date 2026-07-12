@@ -25,7 +25,7 @@ extern "C" {
 #define OSP_HDLC_MAX_ADDR_LEN   4
 #define OSP_HDLC_MAX_FRAME_SIZE 512
 
-/* CRC-16/X.25 (polynomial 0x8408 reflected, init 0xFFFF) */
+/** @brief Compute CRC-16/X.25 (polynomial 0x8408 reflected, init 0xFFFF). */
 uint16_t osp_hdlc_fcs16(const uint8_t *data, uint32_t len);
 
 /* HDLC address: up to 4 bytes, LSB-first with extension bit */
@@ -34,7 +34,10 @@ typedef struct {
 	uint8_t length;
 } osp_hdlc_address_t;
 
+/** @brief Initialize an HDLC address from an integer value and byte length. */
 void osp_hdlc_address_init(osp_hdlc_address_t *addr, uint32_t value, uint8_t length);
+
+/** @brief Read the integer value of an HDLC address. */
 uint32_t osp_hdlc_address_value(const osp_hdlc_address_t *addr);
 
 /* HDLC frame types (ISO/IEC 13239 control field) */
@@ -66,10 +69,10 @@ typedef struct {
 	uint8_t recv_seq;   /* N(R) for I/S-frames (bits 7:5, mod 8) */
 } osp_hdlc_control_t;
 
-/* Encode control field to a single byte */
+/** @brief Encode HDLC control field to a single byte. */
 uint8_t osp_hdlc_control_encode(const osp_hdlc_control_t *ctrl);
 
-/* Decode control field from a single byte */
+/** @brief Decode HDLC control field from a single byte. */
 osp_err_t osp_hdlc_control_decode(uint8_t byte, osp_hdlc_control_t *ctrl);
 
 /* Complete HDLC frame */
@@ -81,10 +84,10 @@ typedef struct {
 	uint16_t info_len;
 } osp_hdlc_frame_t;
 
-/* Frame a message into HDLC: prepends/strips 7E flags, adds address, control, HCS, FCS */
+/** @brief Frame a message into HDLC: prepends/strips 7E flags, adds address, control, HCS, FCS. */
 osp_err_t osp_hdlc_frame(const osp_hdlc_frame_t *frame, uint8_t *out, uint32_t max_len, uint32_t *out_len);
 
-/* Deframe: strip flags, validate FCS/HCS, parse into osp_hdlc_frame_t */
+/** @brief Deframe: strip flags, validate FCS/HCS, parse into osp_hdlc_frame_t. */
 osp_err_t osp_hdlc_deframe(const uint8_t *data, uint32_t len, osp_hdlc_frame_t *frame);
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -102,10 +105,10 @@ typedef struct {
 	uint16_t length;
 } osp_wrapper_header_t;
 
-/* Encode: prepend 8-byte wrapper header to APDU */
+/** @brief Encode: prepend 8-byte COSEM wrapper header to APDU. */
 osp_err_t osp_wrapper_encode(uint16_t source, uint16_t dest, const uint8_t *apdu, uint32_t apdu_len, uint8_t *out, uint32_t max_len, uint32_t *out_len);
 
-/* Decode: strip wrapper header, return APDU pointer and length */
+/** @brief Decode: strip wrapper header, return APDU pointer and length. */
 osp_err_t osp_wrapper_decode(const uint8_t *data, uint32_t len, osp_wrapper_header_t *header, const uint8_t **apdu, uint32_t *apdu_len);
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -118,10 +121,10 @@ typedef enum {
 	OSP_FRAMING_WRAPPER = 2,
 } osp_framing_type_t;
 
-/* Send a raw APDU through the framing layer */
+/** @brief Send a raw APDU through the framing layer (HDLC or wrapper). */
 osp_err_t osp_transport_send_apdu(osp_transport_t *t, osp_framing_type_t framing, const uint8_t *apdu, uint32_t apdu_len);
 
-/* Receive a raw APDU from the framing layer */
+/** @brief Receive a raw APDU from the framing layer. */
 osp_err_t osp_transport_recv_apdu(osp_transport_t *t, osp_framing_type_t framing, uint8_t *buf, uint32_t buf_size, uint32_t *apdu_len, uint32_t timeout_ms);
 
 #ifdef __cplusplus

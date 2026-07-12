@@ -255,7 +255,7 @@ static osp_err_t aln_set(void *inst, uint8_t attr_id, const osp_value_t *value) 
 }
 
 static osp_err_t aln_invoke(void *inst, uint8_t method_id, const osp_value_t *param, osp_value_t *result) {
-	osp_ic_association_ln_t *a = (osp_ic_association_ln_t *)inst;
+	(void)inst;
 	(void)param;
 	*result = osp_val_null();
 

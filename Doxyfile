@@ -1,0 +1,54 @@
+# Doxyfile for OpenSPODES
+# Generate with: doxygen Doxyfile
+
+PROJECT_NAME           = "OpenSPODES"
+PROJECT_NUMBER         = "1.0.0"
+PROJECT_BRIEF          = "Portable C11 DLMS/COSEM protocol stack (IEC 62056)"
+
+OUTPUT_DIRECTORY       = docs/api
+CREATE_SUBDIRS         = NO
+
+# Input
+INPUT                  = src
+FILE_PATTERNS          = *.h *.c
+RECURSIVE              = YES
+EXCLUDE_PATTERNS       = */thirdparty/* */build* */tests/* */examples/*
+
+# Extraction
+EXTRACT_ALL            = YES
+EXTRACT_STATIC         = YES
+
+# Source browsing
+SOURCE_BROWSER         = NO
+INLINE_SOURCES         = NO
+STRIP_CODE_COMMENTS    = YES
+
+# HTML output
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+HTML_COLORSTYLE_HUE    = 220
+HTML_COLORSTYLE_SAT    = 100
+HTML_COLORSTYLE_GAMMA  = 80
+HTML_DYNAMIC_SECTIONS  = NO
+GENERATE_TREEVIEW      = YES
+TREEVIEW_WIDTH         = 300
+
+# LaTeX output
+GENERATE_LATEX         = NO
+
+# Dot / graphs
+HAVE_DOT               = NO
+CLASS_GRAPH            = NO
+
+# Preprocessing
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = NO
+PREDEFINED             = __attribute__(x)=
+
+# Warnings
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = YES
+WARN_IF_DOC_ERROR      = YES
+WARN_NO_PARAMDOC       = YES

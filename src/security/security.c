@@ -36,6 +36,7 @@ int (*osp_hal_ecdsa_sign)(osp_sec_suite_t suite, const uint8_t *sk, uint32_t sk_
                           uint32_t *sig_len) = NULL;
 int (*osp_hal_ecdsa_verify)(osp_sec_suite_t suite, const uint8_t *pk, uint32_t pk_len, const uint8_t *msg, uint32_t msg_len,
                             const uint8_t *sig, uint32_t sig_len) = NULL;
+int (*osp_hal_random_fill)(uint8_t *buf, uint32_t len) = NULL;
 
 static void hls_streebog256(const uint8_t *input, uint32_t len, uint8_t output[32]) {
 	if (osp_hal_streebog256) {
@@ -67,6 +68,22 @@ void osp_sec_context_init(osp_sec_context_t *ctx, osp_sec_suite_t suite, osp_aut
 	}
 }
 
+void osp_sec_context_destroy(osp_sec_context_t *ctx) {
+	if (!ctx)
+		return;
+
+	/* Zeroize all key material before releasing the context */
+	memset(ctx->guek, 0, sizeof(ctx->guek));
+	memset(ctx->gak, 0, sizeof(ctx->gak));
+	memset(ctx->gbek, 0, sizeof(ctx->gbek));
+	memset(ctx->k_em, 0, sizeof(ctx->k_em));
+	memset(ctx->dedicated_key, 0, sizeof(ctx->dedicated_key));
+	memset(ctx->signing_key, 0, sizeof(ctx->signing_key));
+	memset(ctx->peer_public_key, 0, sizeof(ctx->peer_public_key));
+	memset(ctx->ctos, 0, sizeof(ctx->ctos));
+	memset(ctx->stoc, 0, sizeof(ctx->stoc));
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  *  GMAC computation using HAL crypto
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -90,7 +107,9 @@ int osp_hls_gmac(
 	uint8_t sc = osp_sec_control_byte(OSP_POLICY_AUTH_ONLY, ctx->suite);
 	aad_buf[0] = sc;
 	memcpy(&aad_buf[1], ctx->gak, 16);
-	if (data && data_len > 0 && data_len <= 256) {
+	if (data && data_len > 0) {
+		if (data_len > 256)
+			data_len = 256;
 		memcpy(&aad_buf[17], data, data_len);
 	}
 

@@ -317,10 +317,14 @@ int osp_gbt_encode(osp_buf_t *buf, const osp_general_block_transfer_t *gbt) {
 	}
 	uint8_t ctrl = (gbt->last_block ? OSP_GBT_LAST_BLOCK : 0) | (gbt->streaming ? OSP_GBT_STREAMING : 0) |
 	               (gbt->window & OSP_GBT_WINDOW_MASK);
-	osp_axdr_write_u8(buf, OSP_TAG_GENERAL_BLOCK_TRANSFER);
-	osp_axdr_write_u8(buf, ctrl);
-	osp_axdr_write_u16(buf, gbt->block_number);
-	osp_axdr_write_u16(buf, gbt->block_number_ack);
+	if (osp_axdr_write_u8(buf, OSP_TAG_GENERAL_BLOCK_TRANSFER) != OSP_OK)
+		return -1;
+	if (osp_axdr_write_u8(buf, ctrl) != OSP_OK)
+		return -1;
+	if (osp_axdr_write_u16(buf, gbt->block_number) != OSP_OK)
+		return -1;
+	if (osp_axdr_write_u16(buf, gbt->block_number_ack) != OSP_OK)
+		return -1;
 	if (osp_axdr_push_length(buf, gbt->block_data_len) != 0) {
 		return -1;
 	}

@@ -93,6 +93,10 @@ add_library(openspodes STATIC
 target_include_directories(openspodes PUBLIC src)
 target_include_directories(openspodes PRIVATE src/security/streebog)
 
+# Hardening flags
+target_compile_options(openspodes PRIVATE -Wall -Wextra -Werror -fstack-protector-strong)
+target_compile_definitions(openspodes PRIVATE _FORTIFY_SOURCE=2)
+
 # Tests
 include(FetchContent)
 FetchContent_Declare(
@@ -194,6 +198,15 @@ target_include_directories(openspodes_loopback_cli PRIVATE tests)
 target_link_libraries(openspodes_loopback_cli PRIVATE openspodes)
 add_test(NAME openspodes_loopback_cli_demo COMMAND openspodes_loopback_cli demo)
 
+add_executable(openspodes_push_listener
+	examples/push_listener.c
+	tests/mock_transport.c
+	tests/mock_crypto.c
+)
+target_include_directories(openspodes_push_listener PRIVATE tests)
+target_link_libraries(openspodes_push_listener PRIVATE openspodes)
+add_test(NAME openspodes_push_listener_demo COMMAND openspodes_push_listener)
+
 add_executable(openspodes_tcp_server
 	examples/tcp_server.c
 	examples/tcp_socket.c
@@ -251,3 +264,10 @@ if(ENABLE_COVERAGE)
 		COMMENT "Run tests and print gcov coverage report"
 	)
 endif()
+
+add_executable(openspodes_test_thread
+    tests/test_thread_safety.c
+)
+target_include_directories(openspodes_test_thread PRIVATE tests)
+target_link_libraries(openspodes_test_thread PRIVATE openspodes cmocka pthread)
+add_test(NAME openspodes_test_thread COMMAND openspodes_test_thread)

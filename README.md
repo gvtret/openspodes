@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/gvtret/openspodes/actions/workflows/ci.yml/badge.svg)](https://github.com/gvtret/openspodes/actions/workflows/ci.yml)
 
-Portable **C11** implementation of **IEC 62056 DLMS/COSEM** (LN referencing), modeled after [spodes-rs](https://github.com/gvtret/spodes-rs) and aligned with the **СПОДЭС / GOST** profile (R 1323565.1).
+Portable **C11** implementation of **IEC 62056 DLMS/COSEM** (LN referencing), modeled after [spodes-rs](https://github.com/gvtret/spodes-rs) and aligned with the **SPODES / GOST** profile (R 1323565.1).
 
 Designed for embedded and server use: **no heap allocation in the core library**, HAL crypto via function pointers, static buffers.
 
@@ -161,7 +161,7 @@ src/security/    HLS, glo/ded, GOST (Streebog, Kuznyechik, GOST 34.10)
 src/client/      Session client
 src/server/      Dispatcher + accept loop
 src/ic/          42 interface classes
-src/spodus/      СПОДУС concentrator runtime
+src/spodus/      SPODUS concentrator runtime
 tests/           CMocka suites (14 CTest targets, 271 test functions)
 examples/        loopback, TCP client/server, Linux HAL demo
 ```
@@ -171,7 +171,7 @@ examples/        loopback, TCP client/server, Linux HAL demo
 - IEC 62056-5-3 (xDLMS)
 - IEC 62056-46 / -47 (HDLC / wrapper)
 - ISO/IEC 13239 (HDLC frame format)
-- Р 1323565.1 (GOST transport & HLS)
+- R 1323565.1 (GOST transport & HLS)
 - spodes-rs — API and test vector parity reference
 
 ## License
