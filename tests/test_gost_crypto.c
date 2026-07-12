@@ -348,6 +348,94 @@ static void test_glo_gost_suite8_roundtrip(void **state) {
 	assert_memory_equal(recovered, plain, sizeof(plain));
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  Golden vectors: Kuznyechik AEAD (R 1323565.1)
+ *
+ *  Test data from R 1323565.1.032-2020 §A:
+ *  K_EM (MSB 256 of K_KEK) = 08090a0b0c0d0e0f 0001020304050607
+ *                             fedcba9876543210 eca86420fdb97531
+ *  K_ENC (LSB 256 of K_KEK) = 18191a1b1c1d1e1f 1011121314151617
+ *                              0123456789abcdef 13579bdf02468ace
+ *  IV = ff00ee11dd22cc33 f0e1d2c3 (12 bytes)
+ *  Key = 28292a2b2c2d2e2f 2021222324252627
+ *        ffeeddccbbaa9988 0011223344556677
+ *        38393a3b3c3d3e3f 3031323334353637
+ *        ffffeeeeddddcccc 0000111122223333
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+static void test_kuzn_aead_encrypt_decrypt(void **state) {
+	(void)state;
+
+	/* K_EM (MSB 256) || K_ENC (LSB 256) = 64-byte key */
+	uint8_t k_em[64] = {
+	    0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+	    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+	    0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10,
+	    0xec, 0xa8, 0x64, 0x20, 0xfd, 0xb9, 0x75, 0x31,
+	    0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+	    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+	    0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
+	    0x13, 0x57, 0x9b, 0xdf, 0x02, 0x46, 0x8a, 0xce,
+	};
+
+	/* IV = system-title-U || IC-KEK = ff00ee11dd22cc33 f0e1d2c3 */
+	uint8_t iv[12] = {
+	    0xff, 0x00, 0xee, 0x11, 0xdd, 0x22, 0xcc, 0x33,
+	    0xf0, 0xe1, 0xd2, 0xc3,
+	};
+
+	/* Plaintext (8 bytes — minimal test) */
+	uint8_t plaintext[] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+	uint8_t ciphertext[8] = {0};
+	uint32_t ciphered_len = 0;
+	uint8_t tag[12] = {0};
+
+	/* Encrypt: auth + encr */
+	assert_int_equal(osp_gost_kuzn_aead_encrypt(k_em, iv, 0x07, NULL, 0, plaintext, sizeof(plaintext),
+	                                            true, true, ciphertext, &ciphered_len, tag),
+	                 0);
+	assert_int_equal(ciphered_len, sizeof(plaintext));
+
+	/* Ciphertext should differ from plaintext */
+	assert_memory_not_equal(ciphertext, plaintext, sizeof(plaintext));
+
+	/* Tag should be non-zero */
+	uint8_t zero_tag[12] = {0};
+	assert_memory_not_equal(tag, zero_tag, sizeof(tag));
+
+	/* Decrypt: auth + encr — should recover plaintext */
+	uint8_t recovered[8] = {0};
+	uint32_t recovered_len = 0;
+	assert_int_equal(osp_gost_kuzn_aead_decrypt(k_em, iv, 0x07, NULL, 0,
+	                                            ciphertext, sizeof(ciphertext), true, true,
+	                                            recovered, &recovered_len, tag),
+	                 0);
+	assert_int_equal(recovered_len, sizeof(plaintext));
+	assert_memory_equal(recovered, plaintext, sizeof(plaintext));
+}
+
+static void test_kuzn_aead_auth_only(void **state) {
+	(void)state;
+
+	uint8_t k_em[64] = {0};
+	uint8_t iv[12] = {0};
+	uint8_t plaintext[] = {0xAA, 0xBB, 0xCC, 0xDD};
+	uint8_t out[4] = {0};
+	uint32_t out_len = 0;
+	uint8_t tag[12] = {0};
+
+	/* Auth only (no encryption): output == input, tag is computed */
+	assert_int_equal(osp_gost_kuzn_aead_encrypt(k_em, iv, 0x01, NULL, 0, plaintext, sizeof(plaintext),
+	                                            true, false, out, &out_len, tag),
+	                 0);
+	assert_int_equal(out_len, sizeof(plaintext));
+	assert_memory_equal(out, plaintext, sizeof(plaintext));
+
+	/* Verify tag is non-zero */
+	uint8_t zero_tag[12] = {0};
+	assert_memory_not_equal(tag, zero_tag, sizeof(tag));
+}
+
 int main(void) {
 	const struct CMUnitTest tests[] = {
 	    cmocka_unit_test(test_gost_cmac_golden),
@@ -366,6 +454,8 @@ int main(void) {
 #endif
 	    cmocka_unit_test(test_hls_gost_streebog_handshake),
 	    cmocka_unit_test(test_hls_gost_cmac_handshake),
+	    cmocka_unit_test(test_kuzn_aead_encrypt_decrypt),
+	    cmocka_unit_test(test_kuzn_aead_auth_only),
 	};
 	return cmocka_run_group_tests(tests, NULL, NULL);
 }
