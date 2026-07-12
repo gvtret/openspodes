@@ -29,11 +29,28 @@ static osp_err_t ut_get(const void *inst, uint8_t attr_id, osp_value_t *result) 
 }
 
 static osp_err_t ut_set(void *inst, uint8_t attr_id, const osp_value_t *value) {
-	(void)inst;
-	(void)attr_id;
+	osp_ic_utility_tables_t *i = (osp_ic_utility_tables_t *)inst;
 	if (!value) return OSP_ERR_INVALID;
-	/* All attrs accept but don't store (read-only stubs) */
-	return OSP_OK;
+	switch (attr_id) {
+		case 2:
+			i->table_id = osp_get_u16(value);
+			return OSP_OK;
+		case 3:
+			i->length = osp_get_u32(value);
+			return OSP_OK;
+		case 4:
+			if (value->tag != OSP_TAG_OCTETSTRING) {
+				return OSP_ERR_INVALID;
+			}
+			i->buffer_len = value->as.octetstring.len;
+			if (i->buffer_len > OSP_MAX_UTILITY_TABLE_BUF) {
+				i->buffer_len = OSP_MAX_UTILITY_TABLE_BUF;
+			}
+			memcpy(i->buffer, value->as.octetstring.data, i->buffer_len);
+			return OSP_OK;
+		default:
+			return OSP_ERR_NOT_FOUND;
+	}
 }
 
 static osp_err_t ut_serialize(const void *inst, osp_buf_t *buf) {

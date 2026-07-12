@@ -43,10 +43,33 @@ static osp_err_t rt_set(void *inst, uint8_t attr_id, const osp_value_t *value) {
 	osp_ic_register_table_t *i = (osp_ic_register_table_t *)inst;
 	if (!value) return OSP_ERR_INVALID;
 	switch (attr_id) {
-		case 2: /* table_cell_values: accept but don't store (read-only) */
+		case 2: {
+			/* Store table_cell_values from incoming array */
+			if (value->tag != OSP_TAG_ARRAY) {
+				return OSP_ERR_INVALID;
+			}
+			i->table_cell_count = value->as.array.elements.count;
+			if (i->table_cell_count > OSP_MAX_REGISTER_TABLE) {
+				i->table_cell_count = OSP_MAX_REGISTER_TABLE;
+			}
+			for (uint8_t idx = 0; idx < i->table_cell_count; idx++) {
+				i->table_cell_values[idx] = value->as.array.elements.items[idx];
+			}
 			return OSP_OK;
-		case 3: /* table_cell_definition: accept but don't store (static) */
+		}
+		case 3: {
+			/* Store table_cell_definition (4-field structure) */
+			if (value->tag != OSP_TAG_STRUCTURE || value->as.structure.elements.count < 4) {
+				return OSP_ERR_INVALID;
+			}
+			const osp_value_t *elems = value->as.structure.elements.items;
+			i->table_cell_definition.class_id = elems[0].as.uint16.value;
+			if (elems[1].tag == OSP_TAG_OCTETSTRING) {
+				memcpy(&i->table_cell_definition.logical_name, elems[1].as.octetstring.data, sizeof(osp_obis_t));
+			}
+			i->table_cell_definition.attribute_index = elems[2].as.int8.value;
 			return OSP_OK;
+		}
 		case 4: /* scaler_unit */
 			return osp_ic_read_scaler_unit(value, &i->scaler_unit);
 		default:

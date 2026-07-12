@@ -38,10 +38,36 @@ static osp_err_t sm_get(const void *inst, uint8_t attr_id, osp_value_t *result) 
 }
 
 static osp_err_t sm_set(void *inst, uint8_t attr_id, const osp_value_t *value) {
-	(void)inst;
-	(void)attr_id;
-	(void)value;
-	return OSP_OK; /* accept but don't store */
+	osp_ic_status_mapping_t *i = (osp_ic_status_mapping_t *)inst;
+	if (!value) {
+		return OSP_ERR_INVALID;
+	}
+	switch (attr_id) {
+		case 2: {
+			/* Store status_mappings from incoming array */
+			if (value->tag != OSP_TAG_ARRAY) {
+				return OSP_ERR_INVALID;
+			}
+			i->entry_count = value->as.array.elements.count;
+			if (i->entry_count > OSP_MAX_STATUS_MAPPINGS) {
+				i->entry_count = OSP_MAX_STATUS_MAPPINGS;
+			}
+			for (uint8_t idx = 0; idx < i->entry_count; idx++) {
+				const osp_value_t *item = &value->as.array.elements.items[idx];
+				if (item->tag == OSP_TAG_STRUCTURE && item->as.structure.elements.count >= 2) {
+					i->entries[idx].status_flag_id = item->as.structure.elements.items[0].as.uint8.value;
+					if (item->as.structure.elements.items[1].tag == OSP_TAG_OCTETSTRING) {
+						uint32_t len = item->as.structure.elements.items[1].as.octetstring.len;
+						if (len > 6) len = 6;
+						memcpy(i->entries[idx].status_reference, item->as.structure.elements.items[1].as.octetstring.data, len);
+					}
+				}
+			}
+			return OSP_OK;
+		}
+		default:
+			return OSP_ERR_NOT_FOUND;
+	}
 }
 
 static osp_err_t sm_serialize(const void *inst, osp_buf_t *buf) {
