@@ -54,6 +54,15 @@ typedef struct {
 	/* XID negotiated parameters */
 	osp_hdlc_xid_params_t xid;
 
+	/* Retransmission buffer (last sent I-frame info field) */
+	uint8_t last_sent_info[OSP_HDLC_MAX_FRAME_SIZE];
+	uint16_t last_sent_info_len;
+	uint8_t last_sent_seq; /* N(S) of the last sent frame */
+	bool has_pending_retransmit; /* true if retransmission buffer is valid */
+
+	/* Retransmission limits */
+	uint8_t max_retransmits; /* 0 = no retransmission, default 3 */
+
 	/* Buffers */
 	uint8_t tx_buf[OSP_HDLC_MAX_FRAME_SIZE + 64];
 	uint8_t rx_buf[OSP_HDLC_MAX_FRAME_SIZE + 64];

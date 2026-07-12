@@ -136,6 +136,8 @@ void osp_hdlc_session_init_client(osp_hdlc_session_t *s, osp_transport_t *t,
 	s->xid.max_info_rx = 128;
 	s->xid.window_tx = 1;
 	s->xid.window_rx = 1;
+	/* Default retransmission: 3 retries */
+	s->max_retransmits = 3;
 }
 
 void osp_hdlc_session_init_server(osp_hdlc_session_t *s, osp_transport_t *t,
@@ -151,6 +153,7 @@ void osp_hdlc_session_init_server(osp_hdlc_session_t *s, osp_transport_t *t,
 	s->xid.max_info_rx = 128;
 	s->xid.window_tx = 1;
 	s->xid.window_rx = 1;
+	s->max_retransmits = 3;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -352,6 +355,14 @@ osp_err_t osp_hdlc_session_send_apdu(osp_hdlc_session_t *s, const uint8_t *apdu,
 	if (r != OSP_OK)
 		return r;
 
+	/* Save frame for potential retransmission on REJ */
+	if (info_len <= OSP_HDLC_MAX_FRAME_SIZE) {
+		memcpy(s->last_sent_info, frame.info, info_len);
+		s->last_sent_info_len = info_len;
+		s->last_sent_seq = s->send_seq;
+		s->has_pending_retransmit = true;
+	}
+
 	s->send_seq = (s->send_seq + 1) & 0x07;
 	return OSP_OK;
 }
@@ -371,18 +382,59 @@ osp_err_t osp_hdlc_session_recv_apdu(osp_hdlc_session_t *s, uint8_t *buf, uint32
 		return r;
 
 	if (frame.control.type != OSP_HDLC_TYPE_I) {
-		/* Handle S-frames (RR/RNR) — acknowledge and retry */
-		if (frame.control.type == OSP_HDLC_TYPE_RR || frame.control.type == OSP_HDLC_TYPE_REJ) {
-			/* TODO: implement retransmission on REJ */
+		/* Handle S-frames (RR/RNR/REJ) */
+		if (frame.control.type == OSP_HDLC_TYPE_RR) {
+			/* Acknowledgment — clear retransmission buffer */
+			s->has_pending_retransmit = false;
+			return OSP_ERR_TIMEOUT; /* No data frame received */
+		}
+		if (frame.control.type == OSP_HDLC_TYPE_REJ) {
+			/* REJ received — retransmit the last sent frame */
+			if (s->has_pending_retransmit && s->max_retransmits > 0) {
+				osp_hdlc_frame_t retransmit;
+				memset(&retransmit, 0, sizeof(retransmit));
+				if (s->is_client) {
+					retransmit.destination = s->server_addr;
+					retransmit.source = s->client_addr;
+				} else {
+					retransmit.destination = s->client_addr;
+					retransmit.source = s->server_addr;
+				}
+				retransmit.control.type = OSP_HDLC_TYPE_I;
+				retransmit.control.send_seq = s->last_sent_seq;
+				retransmit.control.recv_seq = s->recv_seq;
+				retransmit.control.poll_final = true;
+				memcpy(retransmit.info, s->last_sent_info, s->last_sent_info_len);
+				retransmit.info_len = s->last_sent_info_len;
+				session_send_frame(s, &retransmit);
+				s->has_pending_retransmit = false;
+			}
 			return OSP_ERR_TIMEOUT;
 		}
 		return OSP_ERR_INVALID;
 	}
 
-	/* Update N(R): acknowledge the received frame */
-	if (frame.control.type == OSP_HDLC_TYPE_I) {
-		s->recv_seq = (frame.control.send_seq + 1) & 0x07;
+	/* Check for N(S) mismatch — send REJ if out of order */
+	if (frame.control.send_seq != s->recv_seq) {
+		/* Send REJ requesting correct sequence */
+		osp_hdlc_frame_t rej;
+		memset(&rej, 0, sizeof(rej));
+		if (s->is_client) {
+			rej.destination = s->server_addr;
+			rej.source = s->client_addr;
+		} else {
+			rej.destination = s->client_addr;
+			rej.source = s->server_addr;
+		}
+		rej.control.type = OSP_HDLC_TYPE_REJ;
+		rej.control.recv_seq = s->recv_seq;
+		rej.control.poll_final = true;
+		session_send_frame(s, &rej);
+		return OSP_ERR_INVALID;
 	}
+
+	/* Update N(R): acknowledge the received frame */
+	s->recv_seq = (frame.control.send_seq + 1) & 0x07;
 
 	/* Strip LLC header (3 bytes: E6 E6 00 or E6 E7 00) */
 	if (frame.info_len < 3) {
