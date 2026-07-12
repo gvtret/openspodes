@@ -24,6 +24,7 @@
 #include "ic/disconnect_control.h"
 #include "ic/security_setup.h"
 #include "transport/transport.h"
+#include "security/security.h"
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  Type system tests
@@ -699,6 +700,169 @@ static void test_ic_dispatcher_action(void **state) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+ *  Edge case tests
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+static void test_edge_max_octet_string(void **state) {
+	(void)state;
+	osp_buf_t buf;
+	uint8_t tx[300];
+	osp_buf_init(&buf, tx, sizeof(tx));
+
+	/* Write maximum-length octet string (256 bytes) with tag */
+	uint8_t data[256];
+	memset(data, 0xAB, sizeof(data));
+	assert_int_equal(osp_axdr_write_tag(&buf, OSP_AXDR_OCTETSTRING), OSP_OK);
+	assert_int_equal(osp_axdr_write_octet_string(&buf, data, 256), OSP_OK);
+
+	/* Read it back */
+	buf.rd = 0;
+	uint8_t out[256];
+	uint32_t out_len = 0;
+	assert_int_equal(osp_axdr_read_octet_string(&buf, out, 256, &out_len), OSP_OK);
+	assert_int_equal(out_len, 256);
+	assert_memory_equal(out, data, 256);
+}
+
+static void test_edge_zero_length_values(void **state) {
+	(void)state;
+	osp_buf_t buf;
+	uint8_t tx[64];
+	osp_buf_init(&buf, tx, sizeof(tx));
+
+	/* Zero-length octet string with tag */
+	assert_int_equal(osp_axdr_write_tag(&buf, OSP_AXDR_OCTETSTRING), OSP_OK);
+	assert_int_equal(osp_axdr_write_octet_string(&buf, NULL, 0), OSP_OK);
+	buf.rd = 0;
+	uint8_t out[32];
+	uint32_t out_len = 99;
+	assert_int_equal(osp_axdr_read_octet_string(&buf, out, sizeof(out), &out_len), OSP_OK);
+	assert_int_equal(out_len, 0);
+
+	/* Zero-length value write/read */
+	osp_buf_init(&buf, tx, sizeof(tx));
+	osp_value_t val = osp_val_null();
+	assert_int_equal(osp_value_write(&buf, &val), OSP_OK);
+	buf.rd = 0;
+	osp_value_t decoded;
+	assert_int_equal(osp_value_read(&buf, &decoded), OSP_OK);
+	assert_int_equal(decoded.tag, OSP_TAG_NULL);
+}
+
+static void test_edge_empty_struct_array(void **state) {
+	(void)state;
+	osp_buf_t buf;
+	uint8_t tx[128];
+	osp_buf_init(&buf, tx, sizeof(tx));
+
+	/* Empty structure */
+	osp_value_t val;
+	val.tag = OSP_TAG_STRUCTURE;
+	val.as.structure.elements.count = 0;
+	assert_int_equal(osp_value_write(&buf, &val), OSP_OK);
+
+	buf.rd = 0;
+	osp_value_t decoded;
+	assert_int_equal(osp_value_read(&buf, &decoded), OSP_OK);
+	assert_int_equal(decoded.tag, OSP_TAG_STRUCTURE);
+	assert_int_equal(decoded.as.structure.elements.count, 0);
+
+	/* Empty array */
+	osp_buf_init(&buf, tx, sizeof(tx));
+	val.tag = OSP_TAG_ARRAY;
+	val.as.array.elements.count = 0;
+	assert_int_equal(osp_value_write(&buf, &val), OSP_OK);
+
+	buf.rd = 0;
+	assert_int_equal(osp_value_read(&buf, &decoded), OSP_OK);
+	assert_int_equal(decoded.tag, OSP_TAG_ARRAY);
+	assert_int_equal(decoded.as.array.elements.count, 0);
+}
+
+static void test_edge_key_rotation(void **state) {
+	(void)state;
+
+	osp_sec_context_t ctx;
+	uint8_t sys_title[8] = {1, 2, 3, 4, 5, 6, 7, 8};
+	osp_sec_context_init(&ctx, OSP_SUITE_0, OSP_MECH_HLS_GMAC, sys_title);
+
+	/* Set initial keys */
+	uint8_t guek[16] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+	                     0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10};
+	uint8_t gak[16] = {0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
+	                   0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20};
+	memcpy(ctx.guek, guek, 16);
+	memcpy(ctx.gak, gak, 16);
+
+	/* Set IC near overflow */
+	ctx.invocation_counter = 0xFFFFFFFF - 500;
+	ctx.ic_valid = true;
+
+	/* Check rotation needed */
+	assert_true(osp_sec_key_rotation_needed(&ctx));
+
+	/* Rotate keys */
+	uint8_t new_guek[16] = {0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28,
+	                         0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F, 0x30};
+	uint8_t new_gak[16] = {0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38,
+	                       0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F, 0x40};
+	osp_sec_rotate_keys(&ctx, new_guek, new_gak);
+
+	/* Verify keys updated */
+	assert_memory_equal(ctx.guek, new_guek, 16);
+	assert_memory_equal(ctx.gak, new_gak, 16);
+
+	/* Verify IC reset */
+	assert_int_equal(ctx.invocation_counter, 0);
+	assert_false(ctx.ic_valid);
+
+	/* Verify dedicated key cleared */
+	assert_false(ctx.use_dedicated_key);
+
+	/* Verify rotation no longer needed */
+	assert_false(osp_sec_key_rotation_needed(&ctx));
+
+	osp_sec_context_destroy(&ctx);
+}
+
+static void test_edge_bitstring_boundary(void **state) {
+	(void)state;
+	osp_buf_t buf;
+	uint8_t tx[128];
+	osp_buf_init(&buf, tx, sizeof(tx));
+
+	/* Write bitstring with exact byte boundary (8 bits = 1 byte) */
+	uint8_t bits[1] = {0xA5}; /* 10100101 */
+	assert_int_equal(osp_bitstring_write(&buf, bits, 8), OSP_OK);
+
+	buf.rd = 0;
+	uint8_t out[8];
+	uint32_t num_bits = 0;
+	/* Bitstring read: len includes unused count byte, so total_bits = len*8 */
+	assert_int_equal(osp_bitstring_read(&buf, out, 16, &num_bits), OSP_OK);
+	/* num_bits = total_bits - unused = 16 - 0 = 16 (includes unused count byte) */
+	assert_int_equal(num_bits, 16);
+	assert_memory_equal(out, bits, 1);
+}
+
+static void test_edge_obis_boundary(void **state) {
+	(void)state;
+	osp_buf_t buf;
+	uint8_t tx[32];
+	osp_buf_init(&buf, tx, sizeof(tx));
+
+	/* Write OBIS with max values */
+	osp_obis_t obis = {255, 255, 255, 255, 255, 255};
+	assert_int_equal(osp_obis_write(&buf, &obis), OSP_OK);
+
+	buf.rd = 0;
+	osp_obis_t decoded;
+	assert_int_equal(osp_obis_read(&buf, &decoded), OSP_OK);
+	assert_int_equal(decoded.a, 255);
+	assert_int_equal(decoded.f, 255);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
  *  Test runner
  * ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -736,6 +900,13 @@ int main(void) {
 	    cmocka_unit_test(test_wrapper_roundtrip),
 	    cmocka_unit_test(test_ber_read_errors),
 	    cmocka_unit_test(test_service_decode_invalid),
+	    /* Edge cases */
+	    cmocka_unit_test(test_edge_max_octet_string),
+	    cmocka_unit_test(test_edge_zero_length_values),
+	    cmocka_unit_test(test_edge_empty_struct_array),
+	    cmocka_unit_test(test_edge_key_rotation),
+	    cmocka_unit_test(test_edge_bitstring_boundary),
+	    cmocka_unit_test(test_edge_obis_boundary),
 	};
 	return cmocka_run_group_tests(tests, NULL, NULL);
 }
