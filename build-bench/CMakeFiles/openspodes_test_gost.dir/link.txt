@@ -1,1 +1,0 @@
-/usr/bin/cc -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/openspodes_test_gost.dir/link.d CMakeFiles/openspodes_test_gost.dir/tests/test_gost_crypto.c.o -o openspodes_test_gost  libopenspodes.a _deps/cmocka-build/src/libcmocka.a

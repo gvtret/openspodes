@@ -17,3 +17,4 @@ docs/api/
 *.gcda
 *.gcov
 files.zip
+build-bench/

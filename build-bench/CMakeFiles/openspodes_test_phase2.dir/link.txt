@@ -1,1 +1,0 @@
-/usr/bin/cc -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/openspodes_test_phase2.dir/link.d CMakeFiles/openspodes_test_phase2.dir/tests/test_phase2.c.o CMakeFiles/openspodes_test_phase2.dir/tests/mock_transport.c.o -o openspodes_test_phase2  libopenspodes.a _deps/cmocka-build/src/libcmocka.a

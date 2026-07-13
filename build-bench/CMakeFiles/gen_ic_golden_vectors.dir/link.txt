@@ -1,1 +1,0 @@
-/usr/bin/cc -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/gen_ic_golden_vectors.dir/link.d CMakeFiles/gen_ic_golden_vectors.dir/tools/gen_ic_golden_vectors.c.o CMakeFiles/gen_ic_golden_vectors.dir/tests/fixtures/ic_spodes_fixtures.c.o -o gen_ic_golden_vectors  libopenspodes.a

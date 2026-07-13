@@ -1,1 +1,0 @@
-/usr/bin/cc -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/openspodes_test_ic.dir/link.d CMakeFiles/openspodes_test_ic.dir/tests/test_ic_smoke.c.o -o openspodes_test_ic  libopenspodes.a _deps/cmocka-build/src/libcmocka.a

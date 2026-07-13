@@ -1,1 +1,0 @@
-/usr/bin/cc -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/openspodes_test_thread.dir/link.d CMakeFiles/openspodes_test_thread.dir/tests/test_thread_safety.c.o -o openspodes_test_thread  libopenspodes.a _deps/cmocka-build/src/libcmocka.a -lpthread

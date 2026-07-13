@@ -1,1 +1,0 @@
-/usr/bin/cc -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/openspodes_test_hdlc.dir/link.d CMakeFiles/openspodes_test_hdlc.dir/tests/test_hdlc_session.c.o CMakeFiles/openspodes_test_hdlc.dir/tests/mock_transport.c.o -o openspodes_test_hdlc  libopenspodes.a _deps/cmocka-build/src/libcmocka.a

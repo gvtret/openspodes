@@ -1,1 +1,0 @@
-/usr/bin/cc -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/openspodes_bench.dir/link.d CMakeFiles/openspodes_bench.dir/tests/test_performance.c.o CMakeFiles/openspodes_bench.dir/tests/mock_crypto.c.o CMakeFiles/openspodes_bench.dir/tests/real_crypto.c.o -o openspodes_bench  libopenspodes.a /usr/lib/x86_64-linux-gnu/libcrypto.so
