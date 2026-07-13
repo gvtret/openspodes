@@ -259,6 +259,19 @@ add_executable(openspodes_serial_server
 target_include_directories(openspodes_serial_server PRIVATE tests examples)
 target_link_libraries(openspodes_serial_server PRIVATE openspodes)
 
+add_executable(openspodes_bench
+	tests/test_performance.c
+	tests/mock_crypto.c
+)
+target_include_directories(openspodes_bench PRIVATE tests)
+target_link_libraries(openspodes_bench PRIVATE openspodes)
+
+if(OpenSSL_FOUND)
+	target_sources(openspodes_bench PRIVATE tests/real_crypto.c)
+	target_link_libraries(openspodes_bench PRIVATE OpenSSL::Crypto)
+	target_compile_definitions(openspodes_bench PRIVATE OSP_HAVE_OPENSSL_GCM=1)
+endif()
+
 if(ENABLE_COVERAGE)
 	find_package(Python3 COMPONENTS Interpreter REQUIRED)
 	add_custom_target(coverage
