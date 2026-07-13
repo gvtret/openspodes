@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(openspodes VERSION 1.7.0 LANGUAGES C)
+project(openspodes VERSION 1.8.0 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)

@@ -8,7 +8,7 @@ Portable **C11** implementation of **IEC 62056 DLMS/COSEM** (LN referencing), mo
 
 Designed for embedded and server use: **no heap allocation in the core library**, HAL crypto via function pointers, static buffers.
 
-**Version:** 1.7.0
+**Version:** 1.8.0
 **License:** GPL-3.0-or-later (see [LICENSE](LICENSE))
 
 ## Documentation
