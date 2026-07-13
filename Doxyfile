@@ -2,7 +2,7 @@
 # Generate with: doxygen Doxyfile
 
 PROJECT_NAME           = "OpenSPODES"
-PROJECT_NUMBER         = "1.6.0"
+PROJECT_NUMBER         = "1.7.0"
 PROJECT_BRIEF          = "Portable C11 DLMS/COSEM protocol stack (IEC 62056)"
 
 OUTPUT_DIRECTORY       = docs/pages
