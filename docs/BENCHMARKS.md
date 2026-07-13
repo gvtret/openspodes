@@ -94,6 +94,65 @@ cmake --build build-bench --target openspodes_bench -j$(nproc)
 ./build-bench/openspodes_bench
 ```
 
+## Memory Usage Analysis
+
+### Static RAM Budget (default configuration)
+
+| Component | Bytes | KB |
+|-----------|------:|---:|
+| `value_read_pool` (serialize.c) | 135,168 | 132 |
+| `osp_server_t` (1 instance) | ~31,000 | ~30 |
+| `osp_client_t` (1 instance) | ~5,400 | ~5.3 |
+| `profile_generic.c` cells | 135,168 | 132 |
+| Other IC static buffers | ~41,000 | ~40 |
+| **Total (estimated)** | **~348,000** | **~340** |
+
+### sizeof(osp_value_t) Impact
+
+The `osp_value_t` tagged union size depends on `OSP_MAX_OCTET_LEN`:
+
+| OSP_MAX_OCTET_LEN | sizeof(osp_value_t) | Pool (512 elements) | Savings |
+|-------------------|--------------------:|--------------------:|--------:|
+| 256 (default) | ~264 bytes | 132 KB | — |
+| 128 | ~136 bytes | 68 KB | 49% |
+| 64 | ~72 bytes | 36 KB | 73% |
+
+### Memory Configuration for Constrained MCUs
+
+For MCUs with < 32KB RAM, define these before including any OpenSPODES headers:
+
+```c
+/* Reduce value sizes for small payloads */
+#define OSP_MAX_OCTET_LEN 64
+#define OSP_MAX_STRING_LEN 64
+#define OSP_MAX_ARRAY_LEN 8
+#define OSP_MAX_STRUCT_LEN 4
+
+/* Reduce buffer sizes */
+#define OSP_SERVER_MAX_PDU 512
+#define OSP_SERVER_PENDING_MAX 1024
+#define OSP_CLIENT_MAX_PDU 512
+#define OSP_CLIENT_REASSEMBLE_MAX 1024
+#define OSP_HDLC_MAX_FRAME_SIZE 256
+
+/* Reduce IC limits */
+#define OSP_MAX_OBJECTS 16
+#define OSP_MAX_BUFFER_ROWS 8
+#define OSP_MAX_CAPTURE_OBJECTS 4
+```
+
+### Stack Usage
+
+Worst-case stack depth during request processing:
+
+| Path | Estimated |
+|------|-----------|
+| Server GET | ~14 KB |
+| Server ACTION | ~14 KB |
+| Client connect | ~10 KB |
+
+**Recommendation:** Allocate `osp_server_t` and `osp_client_t` as static/global variables, never on the stack.
+
 ## Adding New Benchmarks
 
 To add a new benchmark:

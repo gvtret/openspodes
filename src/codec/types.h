@@ -35,6 +35,21 @@ extern "C" {
 #define OSP_MAX_BITSTRING_LEN 32
 #endif
 
+/*
+ * Memory optimization notes:
+ *
+ * sizeof(osp_value_t) ≈ 4 + padding + max(octetstring, bitstring, visiblestring)
+ * With OSP_MAX_OCTET_LEN=256: sizeof(osp_value_t) ≈ 264 bytes
+ * With OSP_MAX_OCTET_LEN=128: sizeof(osp_value_t) ≈ 136 bytes (49% savings)
+ * With OSP_MAX_OCTET_LEN=64:  sizeof(osp_value_t) ≈ 72 bytes  (73% savings)
+ *
+ * For constrained MCUs (< 32KB RAM), define these before including types.h:
+ *   #define OSP_MAX_OCTET_LEN 64
+ *   #define OSP_MAX_STRING_LEN 64
+ *   #define OSP_MAX_ARRAY_LEN 8
+ *   #define OSP_MAX_STRUCT_LEN 4
+ */
+
 /* ── AXDR tags (IEC 62056-6-2 Table 3) ──────────────────────────────────── */
 
 typedef enum {

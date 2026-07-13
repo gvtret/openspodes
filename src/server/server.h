@@ -3,6 +3,16 @@
  *
  * Accepts incoming requests, performs AARQ/AARE association,
  * routes GET/SET/ACTION to registered IC objects.
+ *
+ * Memory configuration:
+ * - OSP_SERVER_MAX_PDU (default 1024): rx/tx buffer size
+ * - OSP_SERVER_PENDING_MAX (default 4096): block transfer reassembly
+ * - OSP_MAX_OBJECTS (default 32): registered IC objects
+ *
+ * For constrained MCUs (< 32KB RAM), define before including:
+ *   #define OSP_SERVER_MAX_PDU 512
+ *   #define OSP_SERVER_PENDING_MAX 1024
+ *   #define OSP_MAX_OBJECTS 16
  */
 
 #ifndef OSP_SERVER_H

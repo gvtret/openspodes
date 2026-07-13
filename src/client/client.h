@@ -4,7 +4,13 @@
  * Blocking request/response driver wrapping HAL transport + framing.
  * Performs AARQ→AARE→HLS handshake, then GET/SET/ACTION/release.
  *
- * Based on spodes-rs ClientSession architecture.
+ * Memory configuration:
+ * - OSP_CLIENT_MAX_PDU (default 1024): rx/tx buffer size
+ * - OSP_CLIENT_REASSEMBLE_MAX (default 4096): GBT reassembly buffer
+ *
+ * For constrained MCUs (< 32KB RAM), define before including:
+ *   #define OSP_CLIENT_MAX_PDU 512
+ *   #define OSP_CLIENT_REASSEMBLE_MAX 1024
  */
 
 #ifndef OSP_CLIENT_H
