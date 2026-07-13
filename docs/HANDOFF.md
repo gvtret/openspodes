@@ -39,7 +39,7 @@ ctest --test-dir build-linux --output-on-failure
 | Target | File | Tests | Purpose |
 |--------|------|-------|---------|
 | `openspodes_test` | `tests/test_core.c` | ~27 | Core codec, transport, IC, dispatcher |
-| `openspodes_test_golden` | `tests/test_codec_golden.c` | ~104 | Golden vectors, BER/ACSE/xDLMS, thirdparty cross-check |
+| `openspodes_test_golden` | `tests/test_codec_golden.c` | ~104 | Golden vectors, BER/ACSE/xDLMS,  |
 | `openspodes_test_errors` | `tests/test_errors.c` | 34 | Error paths |
 | `openspodes_test_ic` | `tests/test_ic_smoke.c` | 3 | All IC classes smoke |
 | `openspodes_test_integration` | `tests/test_integration.c` | 23 | Client↔server E2E loopback (+ HLS/GBT/ciphering) |

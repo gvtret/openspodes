@@ -326,7 +326,7 @@ Client:                              Server:
 | Suite | File | Tests | Coverage |
 |-------|------|-------|----------|
 | `test_core` | test_core.c | 30 | BER/AXDR codec, selective access, IC vtable |
-| `test_golden` | test_codec_golden.c | 104 | Golden vectors + thirdparty cross-check |
+| `test_golden` | test_codec_golden.c | 104 | Golden vectors +  |
 | `test_errors` | test_errors.c | 34 | Error paths |
 | `test_ic` | test_ic_smoke.c | 3 | Smoke test for all 42 IC classes |
 | `test_integration` | test_integration.c | 26 | E2E client↔server loopback |

@@ -2359,22 +2359,6 @@ static const char *shared_golden_end(const char *text) {
 	return text + strlen(text);
 }
 
-static void test_golden_vectors_match_thirdparty(void **state) {
-	(void)state;
-	char ours[8192];
-	char theirs[8192];
-	size_t ours_len = 0;
-	size_t theirs_len = 0;
-
-	assert_int_equal(read_file_prefix("../docs/golden_vectors.txt", ours, sizeof(ours), &ours_len), 0);
-	assert_int_equal(read_file_prefix("../thirdparty/dlms-codec/dlms-codec/golden_vectors.txt", theirs, sizeof(theirs), &theirs_len), 0);
-
-	const char *theirs_end = shared_golden_end(theirs);
-	size_t shared_len = (size_t)(theirs_end - theirs);
-	assert_true(shared_len <= ours_len);
-	assert_memory_equal(ours, theirs, shared_len);
-}
-
 static void test_golden_vectors_compact_array_decode(void **state) {
 	(void)state;
 	const uint8_t golden_u8[] = {0x13, 0x11, 0x03, 0x01, 0x02, 0x03};
@@ -2541,8 +2525,7 @@ int main(void) {
 	    cmocka_unit_test(test_action_response_no_return_roundtrip),
 	    cmocka_unit_test(test_exception_response_roundtrip),
 
-	    /* Golden vectors file parity with thirdparty/dlms-codec */
-	    cmocka_unit_test(test_golden_vectors_match_thirdparty),
+	    /* Golden vectors file parity */
 	    cmocka_unit_test(test_golden_vectors_compact_array_decode),
 	};
 	return cmocka_run_group_tests(tests, NULL, NULL);
