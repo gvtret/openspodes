@@ -272,6 +272,15 @@ if(OpenSSL_FOUND)
 	target_compile_definitions(openspodes_bench PRIVATE OSP_HAVE_OPENSSL_GCM=1)
 endif()
 
+add_executable(openspodes_benchmark
+	tests/test_benchmark_comparison.c
+	thirdparty/dlms-codec/dlms-codec/ber.c
+	thirdparty/dlms-codec/dlms-codec/axdr.c
+	thirdparty/dlms-codec/dlms-codec/xdlms.c
+)
+target_include_directories(openspodes_benchmark PRIVATE thirdparty/dlms-codec/dlms-codec)
+target_link_libraries(openspodes_benchmark PRIVATE openspodes)
+
 if(ENABLE_COVERAGE)
 	find_package(Python3 COMPONENTS Interpreter REQUIRED)
 	add_custom_target(coverage
