@@ -1,0 +1,1 @@
+/usr/bin/cc -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/openspodes_linux_demo.dir/link.d CMakeFiles/openspodes_linux_demo.dir/examples/linux_demo.c.o CMakeFiles/openspodes_linux_demo.dir/examples/linux_hal.c.o CMakeFiles/openspodes_linux_demo.dir/tests/mock_crypto.c.o -o openspodes_linux_demo  libopenspodes.a

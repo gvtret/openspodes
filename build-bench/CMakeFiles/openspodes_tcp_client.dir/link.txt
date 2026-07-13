@@ -1,0 +1,1 @@
+/usr/bin/cc -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/openspodes_tcp_client.dir/link.d CMakeFiles/openspodes_tcp_client.dir/examples/tcp_client.c.o CMakeFiles/openspodes_tcp_client.dir/examples/tcp_socket.c.o CMakeFiles/openspodes_tcp_client.dir/tests/mock_crypto.c.o -o openspodes_tcp_client  libopenspodes.a

@@ -1,0 +1,2 @@
+# Empty dependencies file for openspodes_spodus_demo.
+# This may be replaced when dependencies are built.

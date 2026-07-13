@@ -1,0 +1,1 @@
+/usr/bin/cc -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/openspodes_serial_server.dir/link.d CMakeFiles/openspodes_serial_server.dir/examples/serial_server.c.o CMakeFiles/openspodes_serial_server.dir/examples/serial_transport.c.o CMakeFiles/openspodes_serial_server.dir/tests/mock_crypto.c.o -o openspodes_serial_server  libopenspodes.a

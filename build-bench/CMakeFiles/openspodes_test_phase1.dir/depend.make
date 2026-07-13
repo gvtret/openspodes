@@ -1,0 +1,2 @@
+# Empty dependencies file for openspodes_test_phase1.
+# This may be replaced when dependencies are built.

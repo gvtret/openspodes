@@ -1,0 +1,1 @@
+/usr/bin/cc -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/openspodes_test_golden.dir/link.d CMakeFiles/openspodes_test_golden.dir/tests/test_codec_golden.c.o -o openspodes_test_golden  libopenspodes.a _deps/cmocka-build/src/libcmocka.a

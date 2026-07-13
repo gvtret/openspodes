@@ -1,0 +1,1 @@
+/usr/bin/cc -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/openspodes_test_framing.dir/link.d CMakeFiles/openspodes_test_framing.dir/tests/test_hdlc_wrapper_framing.c.o CMakeFiles/openspodes_test_framing.dir/tests/mock_transport.c.o CMakeFiles/openspodes_test_framing.dir/tests/mock_crypto.c.o -o openspodes_test_framing  libopenspodes.a _deps/cmocka-build/src/libcmocka.a

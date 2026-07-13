@@ -1,0 +1,1 @@
+/usr/bin/cc -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/openspodes_spodus_demo.dir/link.d CMakeFiles/openspodes_spodus_demo.dir/examples/spodus_demo.c.o CMakeFiles/openspodes_spodus_demo.dir/tests/mock_crypto.c.o -o openspodes_spodus_demo  libopenspodes.a

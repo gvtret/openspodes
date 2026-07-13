@@ -1,0 +1,1 @@
+/usr/bin/cc -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/openspodes_push_listener.dir/link.d CMakeFiles/openspodes_push_listener.dir/examples/push_listener.c.o CMakeFiles/openspodes_push_listener.dir/tests/mock_transport.c.o CMakeFiles/openspodes_push_listener.dir/tests/mock_crypto.c.o -o openspodes_push_listener  libopenspodes.a

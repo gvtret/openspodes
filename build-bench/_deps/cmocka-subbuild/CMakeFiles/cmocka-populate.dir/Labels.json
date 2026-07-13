@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/mnt/e/work/opendlms/openspodes/build-bench/_deps/cmocka-subbuild/CMakeFiles/cmocka-populate"
+		},
+		{
+			"file" : "/mnt/e/work/opendlms/openspodes/build-bench/_deps/cmocka-subbuild/CMakeFiles/cmocka-populate.rule"
+		},
+		{
+			"file" : "/mnt/e/work/opendlms/openspodes/build-bench/_deps/cmocka-subbuild/CMakeFiles/cmocka-populate-complete.rule"
+		},
+		{
+			"file" : "/mnt/e/work/opendlms/openspodes/build-bench/_deps/cmocka-subbuild/cmocka-populate-prefix/src/cmocka-populate-stamp/cmocka-populate-build.rule"
+		},
+		{
+			"file" : "/mnt/e/work/opendlms/openspodes/build-bench/_deps/cmocka-subbuild/cmocka-populate-prefix/src/cmocka-populate-stamp/cmocka-populate-configure.rule"
+		},
+		{
+			"file" : "/mnt/e/work/opendlms/openspodes/build-bench/_deps/cmocka-subbuild/cmocka-populate-prefix/src/cmocka-populate-stamp/cmocka-populate-download.rule"
+		},
+		{
+			"file" : "/mnt/e/work/opendlms/openspodes/build-bench/_deps/cmocka-subbuild/cmocka-populate-prefix/src/cmocka-populate-stamp/cmocka-populate-install.rule"
+		},
+		{
+			"file" : "/mnt/e/work/opendlms/openspodes/build-bench/_deps/cmocka-subbuild/cmocka-populate-prefix/src/cmocka-populate-stamp/cmocka-populate-mkdir.rule"
+		},
+		{
+			"file" : "/mnt/e/work/opendlms/openspodes/build-bench/_deps/cmocka-subbuild/cmocka-populate-prefix/src/cmocka-populate-stamp/cmocka-populate-patch.rule"
+		},
+		{
+			"file" : "/mnt/e/work/opendlms/openspodes/build-bench/_deps/cmocka-subbuild/cmocka-populate-prefix/src/cmocka-populate-stamp/cmocka-populate-test.rule"
+		},
+		{
+			"file" : "/mnt/e/work/opendlms/openspodes/build-bench/_deps/cmocka-subbuild/cmocka-populate-prefix/src/cmocka-populate-stamp/cmocka-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"cmocka-populate"
+		],
+		"name" : "cmocka-populate"
+	}
+}
