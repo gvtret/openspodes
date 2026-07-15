@@ -1251,6 +1251,42 @@ static osp_err_t osp_value_read_impl(osp_buf_t *buf, osp_value_t *val) {
 			return OSP_OK;
 		}
 
+		case OSP_TAG_BITSTRING: {
+			uint32_t blen;
+			r = osp_axdr_read_length(buf, &blen);
+			if (r != OSP_OK) return r;
+			if (blen == 0) {
+				val->as.bitstring.num_bits = 0;
+				return OSP_OK;
+			}
+			if (osp_buf_unread(buf) < blen) return OSP_ERR_INVALID;
+			uint8_t unused = buf->buf[buf->rd++];
+			blen--;
+			uint32_t total_bits = blen * 8;
+			if (total_bits > OSP_MAX_BITSTRING_LEN * 8) return OSP_ERR_NOMEM;
+			memcpy(val->as.bitstring.bits, &buf->buf[buf->rd], blen);
+			buf->rd += blen;
+			val->as.bitstring.num_bits = total_bits - unused;
+			return OSP_OK;
+		}
+
+		case OSP_TAG_UTF8STRING: {
+			uint32_t slen;
+			r = osp_axdr_read_length(buf, &slen);
+			if (r != OSP_OK) return r;
+			if (slen > OSP_MAX_STRING_LEN - 1) return OSP_ERR_NOMEM;
+			if (osp_buf_unread(buf) < slen) return OSP_ERR_INVALID;
+			memcpy(val->as.utf8string.data, &buf->buf[buf->rd], slen);
+			buf->rd += slen;
+			val->as.utf8string.data[slen] = '\0';
+			val->as.utf8string.len = slen;
+			return OSP_OK;
+		}
+
+		case OSP_TAG_BCD: {
+			return osp_axdr_read_u8(buf, &val->as.bcd.value);
+		}
+
 		case OSP_TAG_DATE:
 			return osp_date_read(buf, &val->as.date);
 
@@ -1363,6 +1399,34 @@ osp_err_t osp_value_write(osp_buf_t *buf, const osp_value_t *val) {
 			buf->wr += slen;
 			return OSP_OK;
 		}
+
+		case OSP_TAG_BITSTRING: {
+			uint32_t num_bits = val->as.bitstring.num_bits;
+			uint32_t num_bytes = (num_bits + 7) / 8;
+			uint8_t unused = (uint8_t)((num_bytes * 8) - num_bits);
+			r = osp_ber_write_length(buf, 1 + num_bytes);
+			if (r != OSP_OK) return r;
+			if (osp_buf_free(buf) < 1 + num_bytes) return OSP_ERR_NOMEM;
+			buf->buf[buf->wr++] = unused;
+			if (num_bytes > 0) {
+				memcpy(&buf->buf[buf->wr], val->as.bitstring.bits, num_bytes);
+				buf->wr += num_bytes;
+			}
+			return OSP_OK;
+		}
+
+		case OSP_TAG_UTF8STRING: {
+			uint32_t slen = val->as.utf8string.len;
+			r = osp_ber_write_length(buf, slen);
+			if (r != OSP_OK) return r;
+			if (osp_buf_free(buf) < slen) return OSP_ERR_NOMEM;
+			memcpy(&buf->buf[buf->wr], val->as.utf8string.data, slen);
+			buf->wr += slen;
+			return OSP_OK;
+		}
+
+		case OSP_TAG_BCD:
+			return osp_axdr_write_u8(buf, val->as.bcd.value);
 
 		case OSP_TAG_DATE:
 			return osp_date_write(buf, &val->as.date);
