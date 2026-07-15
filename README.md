@@ -331,7 +331,7 @@ OpenSPODES is a portable C11 implementation of the IEC 62056 DLMS/COSEM protocol
 
 - **Zero heap allocation** — all buffers are static, safe for bare-metal MCU
 - **HAL abstraction** — pluggable transport, crypto, timer — port to any platform
-- **Full GOST support** — Kuznyechik, Streebog, GOST 34.10 for Russian СПОДЭС deployments
+- **Full GOST support** — Kuznyechik, Streebog, GOST 34.10 for SPODES deployments
 - **Thread-safe** — optional HAL mutex for multi-threaded use
 - **42 COSEM IC classes** — all with working Set operations
 

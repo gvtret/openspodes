@@ -26,7 +26,7 @@ OpenSPODES implements the full IEC 62056-5-3 security model:
 - Networks with pre-provisioned symmetric keys
 - Meters behind a trusted gateway
 
-**Suite 8/9** (GOST) is required for Russian СПОДЭС deployments.
+**Suite 8/9** (GOST) is required for SPODES deployments.
 
 ## HLS Authentication (4-Pass Handshake)
 

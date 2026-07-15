@@ -1488,9 +1488,9 @@ osp_err_t osp_access_right_read(osp_buf_t *buf, osp_access_right_t *ar) {
 		if (r != OSP_OK) {
 			return r;
 		}
-		osp_axdr_read_i8(buf, &ar->method_items[i].method_id);
+		if ((r = osp_axdr_read_i8(buf, &ar->method_items[i].method_id)) != OSP_OK) return r;
 		uint8_t mm;
-		osp_axdr_read_u8(buf, &mm);
+		if ((r = osp_axdr_read_u8(buf, &mm)) != OSP_OK) return r;
 		ar->method_items[i].access_mode = (osp_method_access_t)mm;
 	}
 	return OSP_OK;
@@ -1565,93 +1565,103 @@ osp_err_t osp_object_list_element_write(osp_buf_t *buf, const osp_object_list_el
 
 /* Capture object definition */
 osp_err_t osp_capture_object_read(osp_buf_t *buf, osp_capture_object_t *co) {
+	osp_err_t r;
 	uint8_t nf;
-	osp_struct_begin_read(buf, &nf);
-	osp_axdr_read_u16(buf, &co->class_id);
-	osp_obis_read(buf, &co->logical_name);
-	osp_axdr_read_i8(buf, &co->attribute_index);
-	osp_axdr_read_u32(buf, &co->data_index);
+	if ((r = osp_struct_begin_read(buf, &nf)) != OSP_OK) return r;
+	if ((r = osp_axdr_read_u16(buf, &co->class_id)) != OSP_OK) return r;
+	if ((r = osp_obis_read(buf, &co->logical_name)) != OSP_OK) return r;
+	if ((r = osp_axdr_read_i8(buf, &co->attribute_index)) != OSP_OK) return r;
+	if ((r = osp_axdr_read_u32(buf, &co->data_index)) != OSP_OK) return r;
 	/* restriction_element: CHOICE — read as value */
-	osp_value_skip(buf);
+	if ((r = osp_value_skip(buf)) != OSP_OK) return r;
 	return OSP_OK;
 }
 
 osp_err_t osp_capture_object_write(osp_buf_t *buf, const osp_capture_object_t *co) {
-	osp_struct_begin(buf, 5);
-	osp_axdr_write_u16(buf, co->class_id);
-	osp_obis_write(buf, &co->logical_name);
-	osp_axdr_write_i8(buf, co->attribute_index);
-	osp_axdr_write_u32(buf, co->data_index);
-	osp_axdr_write_u8(buf, OSP_AXDR_NULL); /* restriction = none */
+	osp_err_t r;
+	if ((r = osp_struct_begin(buf, 5)) != OSP_OK) return r;
+	if ((r = osp_axdr_write_u16(buf, co->class_id)) != OSP_OK) return r;
+	if ((r = osp_obis_write(buf, &co->logical_name)) != OSP_OK) return r;
+	if ((r = osp_axdr_write_i8(buf, co->attribute_index)) != OSP_OK) return r;
+	if ((r = osp_axdr_write_u32(buf, co->data_index)) != OSP_OK) return r;
+	if ((r = osp_axdr_write_u8(buf, OSP_AXDR_NULL)) != OSP_OK) return r;
 	return OSP_OK;
 }
 
 /* Value definition: { class_id, logical_name, attribute_index } */
 osp_err_t osp_value_definition_read(osp_buf_t *buf, osp_value_definition_t *vd) {
+	osp_err_t r;
 	uint8_t nf;
-	osp_struct_begin_read(buf, &nf);
-	osp_axdr_read_u16(buf, &vd->class_id);
-	osp_obis_read(buf, &vd->logical_name);
-	osp_axdr_read_i8(buf, &vd->attribute_index);
+	if ((r = osp_struct_begin_read(buf, &nf)) != OSP_OK) return r;
+	if ((r = osp_axdr_read_u16(buf, &vd->class_id)) != OSP_OK) return r;
+	if ((r = osp_obis_read(buf, &vd->logical_name)) != OSP_OK) return r;
+	if ((r = osp_axdr_read_i8(buf, &vd->attribute_index)) != OSP_OK) return r;
 	return OSP_OK;
 }
 
 osp_err_t osp_value_definition_write(osp_buf_t *buf, const osp_value_definition_t *vd) {
-	osp_struct_begin(buf, 3);
-	osp_axdr_write_u16(buf, vd->class_id);
-	osp_obis_write(buf, &vd->logical_name);
-	osp_axdr_write_i8(buf, vd->attribute_index);
+	osp_err_t r;
+	if ((r = osp_struct_begin(buf, 3)) != OSP_OK) return r;
+	if ((r = osp_axdr_write_u16(buf, vd->class_id)) != OSP_OK) return r;
+	if ((r = osp_obis_write(buf, &vd->logical_name)) != OSP_OK) return r;
+	if ((r = osp_axdr_write_i8(buf, vd->attribute_index)) != OSP_OK) return r;
 	return OSP_OK;
 }
 
 /* Scaler unit: { scaler, unit } */
 osp_err_t osp_scaler_unit_read(osp_buf_t *buf, osp_scaler_unit_t *su) {
+	osp_err_t r;
 	uint8_t nf;
-	osp_struct_begin_read(buf, &nf);
-	osp_axdr_read_i8(buf, &su->scaler);
-	osp_axdr_read_u8(buf, &su->unit);
+	if ((r = osp_struct_begin_read(buf, &nf)) != OSP_OK) return r;
+	if ((r = osp_axdr_read_i8(buf, &su->scaler)) != OSP_OK) return r;
+	if ((r = osp_axdr_read_u8(buf, &su->unit)) != OSP_OK) return r;
 	return OSP_OK;
 }
 
 osp_err_t osp_scaler_unit_write(osp_buf_t *buf, const osp_scaler_unit_t *su) {
-	osp_struct_begin(buf, 2);
-	osp_axdr_write_i8(buf, su->scaler);
-	osp_axdr_write_u8(buf, su->unit);
+	osp_err_t r;
+	if ((r = osp_struct_begin(buf, 2)) != OSP_OK) return r;
+	if ((r = osp_axdr_write_i8(buf, su->scaler)) != OSP_OK) return r;
+	if ((r = osp_axdr_write_u8(buf, su->unit)) != OSP_OK) return r;
 	return OSP_OK;
 }
 
 /* User list item: { id, name } */
 osp_err_t osp_user_list_item_read(osp_buf_t *buf, osp_user_list_item_t *item) {
+	osp_err_t r;
 	uint8_t nf;
-	osp_struct_begin_read(buf, &nf);
-	osp_axdr_read_i8(buf, &item->id);
+	if ((r = osp_struct_begin_read(buf, &nf)) != OSP_OK) return r;
+	if ((r = osp_axdr_read_i8(buf, &item->id)) != OSP_OK) return r;
 	uint32_t len = 0;
-	osp_axdr_read_visible_string(buf, item->name, OSP_MAX_NAME_LEN, &len);
+	if ((r = osp_axdr_read_visible_string(buf, item->name, OSP_MAX_NAME_LEN, &len)) != OSP_OK) return r;
 	item->name_len = (uint8_t)len;
 	return OSP_OK;
 }
 
 osp_err_t osp_user_list_item_write(osp_buf_t *buf, const osp_user_list_item_t *item) {
-	osp_struct_begin(buf, 2);
-	osp_axdr_write_i8(buf, item->id);
-	osp_axdr_write_visible_string(buf, item->name, item->name_len);
+	osp_err_t r;
+	if ((r = osp_struct_begin(buf, 2)) != OSP_OK) return r;
+	if ((r = osp_axdr_write_i8(buf, item->id)) != OSP_OK) return r;
+	if ((r = osp_axdr_write_visible_string(buf, item->name, item->name_len)) != OSP_OK) return r;
 	return OSP_OK;
 }
 
 /* Attribute descriptor: { class_id, instance_id, attribute_id } */
 osp_err_t osp_attribute_descriptor_read(osp_buf_t *buf, osp_attribute_descriptor_t *ad) {
+	osp_err_t r;
 	uint8_t nf;
-	osp_struct_begin_read(buf, &nf);
-	osp_axdr_read_u16(buf, &ad->class_id);
-	osp_obis_read(buf, &ad->instance_id);
-	osp_axdr_read_i8(buf, &ad->attribute_id);
+	if ((r = osp_struct_begin_read(buf, &nf)) != OSP_OK) return r;
+	if ((r = osp_axdr_read_u16(buf, &ad->class_id)) != OSP_OK) return r;
+	if ((r = osp_obis_read(buf, &ad->instance_id)) != OSP_OK) return r;
+	if ((r = osp_axdr_read_i8(buf, &ad->attribute_id)) != OSP_OK) return r;
 	return OSP_OK;
 }
 
 osp_err_t osp_attribute_descriptor_write(osp_buf_t *buf, const osp_attribute_descriptor_t *ad) {
-	osp_struct_begin(buf, 3);
-	osp_axdr_write_u16(buf, ad->class_id);
-	osp_obis_write(buf, &ad->instance_id);
-	osp_axdr_write_i8(buf, ad->attribute_id);
+	osp_err_t r;
+	if ((r = osp_struct_begin(buf, 3)) != OSP_OK) return r;
+	if ((r = osp_axdr_write_u16(buf, ad->class_id)) != OSP_OK) return r;
+	if ((r = osp_obis_write(buf, &ad->instance_id)) != OSP_OK) return r;
+	if ((r = osp_axdr_write_i8(buf, ad->attribute_id)) != OSP_OK) return r;
 	return OSP_OK;
 }
