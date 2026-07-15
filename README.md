@@ -8,7 +8,7 @@ Portable **C11** implementation of **IEC 62056 DLMS/COSEM** (LN referencing), mo
 
 Designed for embedded and server use: **no heap allocation in the core library**, HAL crypto via function pointers, static buffers.
 
-**Version:** 1.9.0
+**Version:** 1.10.0
 **License:** GPL-3.0-or-later (see [LICENSE](LICENSE))
 
 ## Documentation
@@ -35,9 +35,9 @@ Designed for embedded and server use: **no heap allocation in the core library**
 | HLS mechanisms 0–10 (GMAC, MD5/SHA1/SHA256, GOST CMAC/Sig) | ✅ |
 | General ciphering / general-signing | ✅ |
 | Push + event notifications | ✅ |
-| 42 COSEM IC classes (all Set functional) | ✅ |
+| 42 COSEM IC classes (36 full + 6 stub) | ✅ |
 | GOST (Streebog, Kuznyechik, GOST 34.10, VKO/KDF) | ✅ |
-| Thread safety via HAL mutex | ✅ |
+| Thread safety via HAL mutex + TLS | ✅ |
 | Linux HAL (TCP, OpenSSL, timer, random) | ✅ |
 
 ## Build
@@ -462,7 +462,7 @@ See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for more.
 
 Yes. The library:
 - Passes ASAN + UBSan checks
-- Has 16 test suites with 300+ test functions
+- Has 17 test suites with 300+ test functions
 - Implements all HLS mechanisms 0-10
 - Has proper key zeroization (`osp_sec_context_destroy`)
 - Handles invocation counter overflow
@@ -548,8 +548,6 @@ Contributions are welcome! Please:
 3. Ensure all tests pass (`ctest --test-dir build`)
 4. Ensure ASAN passes (`ctest --test-dir build-san`)
 5. Submit a pull request
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ## Support
 

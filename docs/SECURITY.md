@@ -187,9 +187,11 @@ General ciphering provides a different envelope format for inter-device communic
 The library is safe for multi-threaded use when:
 1. Each thread uses its own `osp_client_t` / `osp_server_t`
 2. `osp_hal_mutex` is set to a platform-appropriate mutex implementation
-3. The value_read_pool is protected by the mutex (automatic when `osp_hal_mutex` is set)
+3. Internal crypto buffers and serialization pools use thread-local storage (`OSP_TLS`)
 
-For bare-metal single-threaded applications, leave `osp_hal_mutex = NULL` for zero overhead.
+**TLS buffers:** All non-reentrant static arrays (HMAC inner buffer, IC value constructors, value_read_pool) are declared with `OSP_TLS`, which resolves to `_Thread_local` (C11), `__thread` (GCC/Clang), or plain `static` on bare-metal. This eliminates data races without requiring locks.
+
+For bare-metal single-threaded applications, leave `osp_hal_mutex = NULL` for zero overhead. TLS falls back to static automatically.
 
 ## Debugging Failed Authentication
 

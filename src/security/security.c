@@ -73,15 +73,15 @@ void osp_sec_context_destroy(osp_sec_context_t *ctx) {
 		return;
 
 	/* Zeroize all key material before releasing the context */
-	memset(ctx->guek, 0, sizeof(ctx->guek));
-	memset(ctx->gak, 0, sizeof(ctx->gak));
-	memset(ctx->gbek, 0, sizeof(ctx->gbek));
-	memset(ctx->k_em, 0, sizeof(ctx->k_em));
-	memset(ctx->dedicated_key, 0, sizeof(ctx->dedicated_key));
-	memset(ctx->signing_key, 0, sizeof(ctx->signing_key));
-	memset(ctx->peer_public_key, 0, sizeof(ctx->peer_public_key));
-	memset(ctx->ctos, 0, sizeof(ctx->ctos));
-	memset(ctx->stoc, 0, sizeof(ctx->stoc));
+	osp_memzero(ctx->guek, sizeof(ctx->guek));
+	osp_memzero(ctx->gak, sizeof(ctx->gak));
+	osp_memzero(ctx->gbek, sizeof(ctx->gbek));
+	osp_memzero(ctx->k_em, sizeof(ctx->k_em));
+	osp_memzero(ctx->dedicated_key, sizeof(ctx->dedicated_key));
+	osp_memzero(ctx->signing_key, sizeof(ctx->signing_key));
+	osp_memzero(ctx->peer_public_key, sizeof(ctx->peer_public_key));
+	osp_memzero(ctx->ctos, sizeof(ctx->ctos));
+	osp_memzero(ctx->stoc, sizeof(ctx->stoc));
 }
 
 bool osp_sec_key_rotation_needed(const osp_sec_context_t *ctx) {
@@ -95,6 +95,10 @@ void osp_sec_rotate_keys(osp_sec_context_t *ctx, const uint8_t *new_guek, const 
 	if (!ctx || !new_guek || !new_gak)
 		return;
 
+	/* Zeroize old keys before overwriting */
+	osp_memzero(ctx->guek, sizeof(ctx->guek));
+	osp_memzero(ctx->gak, sizeof(ctx->gak));
+
 	/* Update keys (copy 16 bytes, the actual key size for AES-128) */
 	memcpy(ctx->guek, new_guek, 16);
 	memcpy(ctx->gak, new_gak, 16);
@@ -106,7 +110,7 @@ void osp_sec_rotate_keys(osp_sec_context_t *ctx, const uint8_t *new_guek, const 
 
 	/* Clear dedicated key (must be re-established after re-keying) */
 	ctx->use_dedicated_key = false;
-	memset(ctx->dedicated_key, 0, sizeof(ctx->dedicated_key));
+	osp_memzero(ctx->dedicated_key, sizeof(ctx->dedicated_key));
 	ctx->dedicated_key_len = 0;
 }
 
@@ -603,65 +607,70 @@ int osp_hls_pass4_verify(osp_sec_context_t *ctx, const uint8_t *f_ctos, uint32_t
 	if (!ctx || !f_ctos || len == 0) {
 		return -1;
 	}
+	/* Rate limiting: reject after 5 consecutive failures */
+	if (ctx->hls_failures >= 5) {
+		return -2;
+	}
+
+	bool ok = false;
 
 	if (ctx->mechanism == OSP_MECH_HLS_GMAC) {
-		if (len < 17) {
-			return -1;
+		if (len >= 17) {
+			uint32_t ic = ((uint32_t)f_ctos[1] << 24) | ((uint32_t)f_ctos[2] << 16) | ((uint32_t)f_ctos[3] << 8) | (uint32_t)f_ctos[4];
+			uint8_t expected_tag[OSP_SEC_TAG_SIZE];
+			if (osp_hls_gmac(ctx, ctx->system_title, ic, ctx->ctos, ctx->ctos_len, expected_tag) == 0) {
+				uint8_t diff = 0;
+				for (uint32_t i = 0; i < OSP_SEC_TAG_SIZE; i++) {
+					diff |= f_ctos[5 + i] ^ expected_tag[i];
+				}
+				ok = (diff == 0);
+			}
 		}
-		uint32_t ic = ((uint32_t)f_ctos[1] << 24) | ((uint32_t)f_ctos[2] << 16) | ((uint32_t)f_ctos[3] << 8) | (uint32_t)f_ctos[4];
-		uint8_t expected_tag[OSP_SEC_TAG_SIZE];
-		if (osp_hls_gmac(ctx, ctx->system_title, ic, ctx->ctos, ctx->ctos_len, expected_tag) != 0) {
-			return -1;
+	} else if (ctx->mechanism == OSP_MECH_HLS_GOST_CMAC) {
+		if (len >= 21) {
+			uint32_t ic = ((uint32_t)f_ctos[1] << 24) | ((uint32_t)f_ctos[2] << 16) | ((uint32_t)f_ctos[3] << 8) | (uint32_t)f_ctos[4];
+			uint8_t iv[12];
+			memcpy(iv, ctx->peer_system_title, 8);
+			iv[8] = (uint8_t)(ic >> 24);
+			iv[9] = (uint8_t)(ic >> 16);
+			iv[10] = (uint8_t)(ic >> 8);
+			iv[11] = (uint8_t)(ic);
+			uint8_t mac[OSP_SEC_GOST_CMAC_SIZE];
+			if (osp_hls_gost_cmac(ctx->k_em, iv, f_ctos[0], ctx->ctos, ctx->ctos_len, ctx->stoc, ctx->stoc_len, mac) == 0) {
+				uint8_t diff = 0;
+				for (uint32_t i = 0; i < OSP_SEC_GOST_CMAC_SIZE; i++) {
+					diff |= f_ctos[5 + i] ^ mac[i];
+				}
+				ok = (diff == 0);
+			}
 		}
-		uint8_t diff = 0;
-		for (uint32_t i = 0; i < OSP_SEC_TAG_SIZE; i++) {
-			diff |= f_ctos[5 + i] ^ expected_tag[i];
+	} else if (osp_hls_uses_signature(ctx->mechanism)) {
+		ok = (hls_pass4_sig_verify(ctx, f_ctos, len) == 0);
+	} else {
+		uint8_t expected[32];
+		uint32_t expected_len = 0;
+		bool hash_ok = false;
+		if (ctx->mechanism == OSP_MECH_HLS_SHA256 || ctx->mechanism == OSP_MECH_HLS_GOST_STREEBOG) {
+			hash_ok = (hls_hash_with_titles(ctx, ctx->peer_system_title, ctx->system_title, ctx->ctos, ctx->ctos_len, ctx->stoc, ctx->stoc_len,
+			                                expected, &expected_len) == 0);
+		} else {
+			hash_ok = (hls_hash_legacy(ctx, ctx->ctos, ctx->ctos_len, expected, &expected_len) == 0);
 		}
-		return (diff == 0) ? 0 : -1;
+		if (hash_ok && len == expected_len) {
+			uint8_t diff = 0;
+			for (uint32_t i = 0; i < expected_len; i++) {
+				diff |= f_ctos[i] ^ expected[i];
+			}
+			ok = (diff == 0);
+		}
 	}
 
-	uint8_t expected[32];
-	uint32_t expected_len = 0;
-	if (ctx->mechanism == OSP_MECH_HLS_GOST_CMAC) {
-		if (len < 21) {
-			return -1;
-		}
-		uint32_t ic = ((uint32_t)f_ctos[1] << 24) | ((uint32_t)f_ctos[2] << 16) | ((uint32_t)f_ctos[3] << 8) | (uint32_t)f_ctos[4];
-		uint8_t iv[12];
-		memcpy(iv, ctx->peer_system_title, 8);
-		iv[8] = (uint8_t)(ic >> 24);
-		iv[9] = (uint8_t)(ic >> 16);
-		iv[10] = (uint8_t)(ic >> 8);
-		iv[11] = (uint8_t)(ic);
-		uint8_t mac[OSP_SEC_GOST_CMAC_SIZE];
-		if (osp_hls_gost_cmac(ctx->k_em, iv, f_ctos[0], ctx->ctos, ctx->ctos_len, ctx->stoc, ctx->stoc_len, mac) != 0) {
-			return -1;
-		}
-		uint8_t diff = 0;
-		for (uint32_t i = 0; i < OSP_SEC_GOST_CMAC_SIZE; i++) {
-			diff |= f_ctos[5 + i] ^ mac[i];
-		}
-		return (diff == 0) ? 0 : -1;
+	if (ok) {
+		ctx->hls_failures = 0;
+		return 0;
 	}
-	if (osp_hls_uses_signature(ctx->mechanism)) {
-		return hls_pass4_sig_verify(ctx, f_ctos, len);
-	}
-	if (ctx->mechanism == OSP_MECH_HLS_SHA256 || ctx->mechanism == OSP_MECH_HLS_GOST_STREEBOG) {
-		if (hls_hash_with_titles(ctx, ctx->peer_system_title, ctx->system_title, ctx->ctos, ctx->ctos_len, ctx->stoc, ctx->stoc_len,
-		                         expected, &expected_len) != 0) {
-			return -1;
-		}
-	} else if (hls_hash_legacy(ctx, ctx->ctos, ctx->ctos_len, expected, &expected_len) != 0) {
-		return -1;
-	}
-	if (len != expected_len) {
-		return -1;
-	}
-	uint8_t diff = 0;
-	for (uint32_t i = 0; i < expected_len; i++) {
-		diff |= f_ctos[i] ^ expected[i];
-	}
-	return (diff == 0) ? 0 : -1;
+	ctx->hls_failures++;
+	return -1;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -741,6 +750,7 @@ int osp_sec_cipher_apply_dedicated_key(osp_sec_context_t *ctx, const uint8_t *ke
 	if (!ctx || !key || key_len == 0 || key_len > OSP_SEC_KEY_MAX) {
 		return -1;
 	}
+	osp_memzero(ctx->dedicated_key, sizeof(ctx->dedicated_key));
 	memcpy(ctx->dedicated_key, key, key_len);
 	ctx->dedicated_key_len = key_len;
 	ctx->use_dedicated_key = true;

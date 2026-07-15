@@ -17,7 +17,7 @@ static osp_err_t rt_get(const void *inst, uint8_t attr_id, osp_value_t *result) 
 			return OSP_OK;
 		}
 		case 3: {
-			static osp_value_t fields[4];
+			OSP_TLS osp_value_t fields[4];
 			const osp_table_cell_t *tc = &i->table_cell_definition;
 			fields[0] = osp_val_u16(tc->class_id);
 			fields[1].tag = OSP_TAG_OCTETSTRING;

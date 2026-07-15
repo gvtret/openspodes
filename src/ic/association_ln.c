@@ -102,7 +102,7 @@ bool osp_ic_association_ln_can_invoke(const osp_ic_association_ln_t *a, uint16_t
 static const uint8_t aln_attrs[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
 
 static osp_value_t aln_context_name_value(const osp_context_name_t *cn) {
-	static osp_value_t fields[7];
+	OSP_TLS osp_value_t fields[7];
 	osp_value_t v = {0};
 	if (cn && cn->is_structure) {
 		const osp_context_name_structure_t *s = &cn->as.structure;
@@ -156,7 +156,7 @@ static osp_err_t aln_read_context_name(const osp_value_t *value, osp_context_nam
 }
 
 static osp_value_t aln_user_list_value(const osp_ic_association_ln_t *a) {
-	static osp_value_t items[16];
+	OSP_TLS osp_value_t items[16];
 	osp_value_t v = {0};
 	for (uint8_t i = 0; i < a->user_count && i < 16; i++) {
 		items[i] = osp_ic_val_user_list_item(&a->user_list[i]);

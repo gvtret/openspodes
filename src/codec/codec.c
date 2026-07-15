@@ -137,8 +137,14 @@ osp_err_t osp_ber_read_uint(osp_buf_t *buf, uint32_t *val) {
 		return OSP_ERR_INVALID;
 	}
 
+	/* Limit to 4 bytes to prevent uint32 overflow */
+	uint32_t unread = osp_buf_unread(buf);
+	if (unread > 4) {
+		return OSP_ERR_UNSUPPORTED;
+	}
+
 	*val = 0;
-	while (osp_buf_unread(buf) > 0) {
+	while (unread-- > 0) {
 		*val = (*val << 8) | buf->buf[buf->rd++];
 	}
 	return OSP_OK;

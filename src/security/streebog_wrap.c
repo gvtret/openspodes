@@ -21,9 +21,12 @@ int osp_gost_hmac_streebog256(const uint8_t *key, uint32_t key_len, const uint8_
 	if (!key || !msg || !mac) {
 		return -1;
 	}
+
+	/* Phase 1: prepare keyed block */
 	uint8_t k_block[STREEBOG_BLOCK];
 	if (key_len > STREEBOG_BLOCK) {
 		if (osp_gost_streebog256(key, key_len, k_block) != 0) {
+			osp_memzero(k_block, sizeof(k_block));
 			return -1;
 		}
 		memset(k_block + 32, 0, STREEBOG_BLOCK - 32);
@@ -34,6 +37,7 @@ int osp_gost_hmac_streebog256(const uint8_t *key, uint32_t key_len, const uint8_
 		}
 	}
 
+	/* Phase 2: compute HMAC = H((K ^ opad) || H((K ^ ipad) || msg)) */
 	uint8_t ipad[STREEBOG_BLOCK];
 	uint8_t opad[STREEBOG_BLOCK];
 	for (uint32_t i = 0; i < STREEBOG_BLOCK; i++) {
@@ -41,21 +45,27 @@ int osp_gost_hmac_streebog256(const uint8_t *key, uint32_t key_len, const uint8_
 		opad[i] = (uint8_t)(k_block[i] ^ 0x5C);
 	}
 
-	uint8_t inner[STREEBOG_BLOCK + 65536];
-	if (msg_len > sizeof(inner) - STREEBOG_BLOCK) {
-		return -1;
-	}
-	memcpy(inner, ipad, STREEBOG_BLOCK);
-	memcpy(inner + STREEBOG_BLOCK, msg, msg_len);
-	uint8_t inner_hash[32];
-	if (osp_gost_streebog256(inner, STREEBOG_BLOCK + msg_len, inner_hash) != 0) {
-		return -1;
+	/* Thread-local buffer to avoid 65KB stack allocation.
+	 * Per-thread on Linux/FreeRTOS/Zephyr; plain static on bare-metal. */
+	OSP_TLS uint8_t inner[STREEBOG_BLOCK + 65536];
+	int rc = -1;
+	if (msg_len <= sizeof(inner) - STREEBOG_BLOCK) {
+		memcpy(inner, ipad, STREEBOG_BLOCK);
+		memcpy(inner + STREEBOG_BLOCK, msg, msg_len);
+		uint8_t inner_hash[32];
+		if (osp_gost_streebog256(inner, STREEBOG_BLOCK + msg_len, inner_hash) == 0) {
+			uint8_t outer[STREEBOG_BLOCK + 32];
+			memcpy(outer, opad, STREEBOG_BLOCK);
+			memcpy(outer + STREEBOG_BLOCK, inner_hash, 32);
+			rc = osp_gost_streebog256(outer, STREEBOG_BLOCK + 32, mac);
+		}
 	}
 
-	uint8_t outer[STREEBOG_BLOCK + 32];
-	memcpy(outer, opad, STREEBOG_BLOCK);
-	memcpy(outer + STREEBOG_BLOCK, inner_hash, 32);
-	return osp_gost_streebog256(outer, STREEBOG_BLOCK + 32, mac);
+	/* Phase 3: zeroize all intermediate key material */
+	osp_memzero(k_block, sizeof(k_block));
+	osp_memzero(ipad, sizeof(ipad));
+	osp_memzero(opad, sizeof(opad));
+	return rc;
 }
 
 int osp_gost_kdf_tree(const uint8_t *key, uint32_t key_len, const uint8_t *label, uint32_t label_len, const uint8_t *seed,

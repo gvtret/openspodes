@@ -80,7 +80,7 @@ static osp_err_t project_row(const osp_ic_profile_data_filter_t *f, const osp_va
 	out->as.structure.elements.capacity = OSP_MAX_STRUCT_LEN;
 	out->as.structure.elements.items = out->as.structure.elements.items;
 
-	static osp_value_t proj_fields[OSP_MAX_STRUCT_LEN];
+	OSP_TLS osp_value_t proj_fields[OSP_MAX_STRUCT_LEN];
 	uint8_t n = 0;
 
 	if (selected_count == 0) {

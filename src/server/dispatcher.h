@@ -15,7 +15,7 @@
 extern "C" {
 #endif
 
-#define OSP_MAX_OBJECTS 32
+#define OSP_MAX_OBJECTS 64
 
 typedef struct {
 	const osp_ic_class_t *class_def;

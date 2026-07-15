@@ -1,10 +1,10 @@
 /**
  * openspodes.h — Main include for the OpenSPODES DLMS/COSEM library
  *
- * A portable C99 implementation following IEC 62056, based on the architecture
+ * A portable C11 implementation following IEC 62056, based on the architecture
  * of spodes-rs (Rust) with HAL abstractions for MCU portability.
  *
- * Copyright (c) 2025 OpenSPODES contributors
+ * Copyright (c) 2025-2026 OpenSPODES contributors
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
@@ -23,9 +23,9 @@ extern "C" {
 /* ── Version ─────────────────────────────────────────────────────────────── */
 
 #define OPENSPODES_VERSION_MAJOR 1
-#define OPENSPODES_VERSION_MINOR 0
+#define OPENSPODES_VERSION_MINOR 10
 #define OPENSPODES_VERSION_PATCH 0
-#define OPENSPODES_VERSION_STRING "1.0.0"
+#define OPENSPODES_VERSION_STRING "1.10.0"
 
 /* ── Error codes ─────────────────────────────────────────────────────────── */
 
@@ -82,6 +82,48 @@ static inline uint32_t osp_buf_unread(const osp_buf_t *b) {
 static inline uint32_t osp_buf_free(const osp_buf_t *b) {
 	return b->size - b->wr;
 }
+
+/* ── Secure memory zeroization (prevents dead-store elimination) ─────────── */
+
+#ifdef __STDC_LIB_EXT1__
+#include <string.h>
+static inline void osp_memzero(void *p, size_t n) {
+	if (p && n > 0) {
+		memset_s(p, n, 0, n);
+	}
+}
+#elif defined(__GNUC__) || defined(__clang__)
+static inline void osp_memzero(void *p, size_t n) {
+	if (p && n > 0) {
+		/* volatile function pointer prevents compiler from optimizing away the memset */
+		void *(*volatile memset_func)(void *, int, size_t) = memset;
+		memset_func(p, 0, n);
+	}
+}
+#else
+static inline void osp_memzero(void *p, size_t n) {
+	if (p && n > 0) {
+		volatile uint8_t *vp = (volatile uint8_t *)p;
+		for (size_t i = 0; i < n; i++) {
+			vp[i] = 0;
+		}
+	}
+}
+#endif
+
+/* ── Thread-local storage (for reentrant crypto buffers) ────────────────────
+ * C11 _Thread_local requires `static` for block-scope variables.
+ * On bare-metal (no threads), falls back to plain static.
+ */
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+#define OSP_TLS static _Thread_local
+#elif defined(__GNUC__) || defined(__clang__)
+#define OSP_TLS static __thread
+#elif defined(_MSC_VER)
+#define OSP_TLS static __declspec(thread)
+#else
+#define OSP_TLS static
+#endif
 
 /* ── Include types ───────────────────────────────────────────────────────── */
 

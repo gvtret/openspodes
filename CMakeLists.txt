@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(openspodes VERSION 1.9.0 LANGUAGES C)
+project(openspodes VERSION 1.10.0 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -111,8 +111,8 @@ set(UNIT_TESTING OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(cmocka)
 
 enable_testing()
-add_executable(openspodes_test tests/test_core.c)
-target_include_directories(openspodes_test PRIVATE ${cmocka_SOURCE_DIR}/include)
+add_executable(openspodes_test tests/test_core.c tests/mock_crypto.c)
+target_include_directories(openspodes_test PRIVATE ${cmocka_SOURCE_DIR}/include tests)
 target_link_libraries(openspodes_test PRIVATE openspodes cmocka)
 add_test(NAME openspodes_test COMMAND openspodes_test)
 
@@ -192,6 +192,10 @@ if(OpenSSL_FOUND)
 	target_compile_definitions(openspodes_test_errors PRIVATE OSP_HAVE_OPENSSL_GCM=1)
 
 	# ECDSA HLS (mech 7) uses OpenSSL via mock_crypto_init_real_gost_ecdsa in tests
+
+	target_sources(openspodes_test PRIVATE tests/real_crypto.c)
+	target_link_libraries(openspodes_test PRIVATE OpenSSL::Crypto)
+	target_compile_definitions(openspodes_test PRIVATE OSP_HAVE_OPENSSL_GCM=1)
 endif()
 
 add_executable(openspodes_loopback_cli

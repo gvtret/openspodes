@@ -141,7 +141,7 @@ typedef struct {
 /* ── Individual type structs ─────────────────────────────────────────────── */
 
 typedef struct {
-	/* tag = 0 */
+	uint8_t _pad; /* empty by design (tag = 0), pad for strict C compliance */
 } osp_null_t;
 
 typedef struct {

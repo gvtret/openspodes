@@ -146,7 +146,7 @@ int osp_gost_kuznyechik_cmac(const uint8_t key[32], const uint8_t *data, uint32_
 	kuz_xor(state, last);
 	kuz_encrypt_block(keys, state);
 	memcpy(mac, state, 16);
-	memset(keys, 0, sizeof(keys));
+	osp_memzero(keys, sizeof(keys));
 	return 0;
 }
 
@@ -180,7 +180,7 @@ int osp_gost_kuznyechik_ctr(const uint8_t key[32], const uint8_t iv[12], const u
 		offset += chunk;
 		counter++;
 	}
-	memset(keys, 0, sizeof(keys));
+	osp_memzero(keys, sizeof(keys));
 	return 0;
 }
 

@@ -19,7 +19,7 @@ static osp_err_t ipv4_get(const void *inst, uint8_t attr_id, osp_value_t *result
 			*result = osp_val_u32(s->ip_address);
 			return OSP_OK;
 		case 4: {
-			static osp_value_t items[OSP_MAX_IP_MULTICAST];
+			OSP_TLS osp_value_t items[OSP_MAX_IP_MULTICAST];
 			osp_value_t v = {0};
 			uint8_t n = s->multicast_count;
 			if (n > OSP_MAX_IP_MULTICAST) {

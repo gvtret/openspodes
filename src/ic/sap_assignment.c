@@ -5,8 +5,8 @@
 static const uint8_t sap_attrs[] = {1, 2};
 
 static osp_value_t sap_list_value(const osp_ic_sap_assignment_t *s) {
-	static osp_value_t row_fields[16][2];
-	static osp_value_t rows[16];
+	OSP_TLS osp_value_t row_fields[16][2];
+	OSP_TLS osp_value_t rows[16];
 	osp_value_t v = {0};
 	for (uint8_t i = 0; i < s->sap_list.count && i < 16; i++) {
 		row_fields[i][0] = osp_val_u16(s->sap_list.items[i].sap);

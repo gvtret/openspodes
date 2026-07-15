@@ -6,8 +6,8 @@
 static const uint8_t pg_attrs[] = {1, 2, 3, 4, 5, 6, 7, 8};
 
 static osp_value_t pg_val_buffer(const osp_profile_buffer_t *buf) {
-	static osp_value_t rows[OSP_MAX_BUFFER_ROWS];
-	static osp_value_t cells[OSP_MAX_BUFFER_ROWS][OSP_MAX_CAPTURE_OBJECTS];
+	OSP_TLS osp_value_t rows[OSP_MAX_BUFFER_ROWS];
+	OSP_TLS osp_value_t cells[OSP_MAX_BUFFER_ROWS][OSP_MAX_CAPTURE_OBJECTS];
 	osp_value_t v = {0};
 	if (!buf || buf->row_count == 0) {
 		return osp_ic_val_empty_array();

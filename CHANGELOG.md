@@ -49,30 +49,42 @@ Format is based on [Keep a Changelog](https://keepachangelog.com/), project foll
 ### Changed
 - License changed from MIT/Apache-2.0 to GPL-3.0-or-later
 
-## [1.1.0] - Unreleased
+## [1.10.0] - 2026-07-15
 
 ### Fixed (Security Audit)
 
-- **CRITICAL**: Server challenge (stoc) was hardcoded as `ABCDEFGH`, defeating HLS challenge-response. Now uses `osp_hal_random_fill` for random bytes.
-- **HIGH**: GMAC AAD buffer could read uninitialized stack memory when `data_len > 256`. Now clamped to 256.
-- **HIGH**: No key zeroization anywhere. Added `osp_sec_context_destroy()` and zeroization of `kuz_round_keys`.
-- **HIGH**: `ber_backpatch_length` memmove without bounds check. Added buffer size validation.
-- **HIGH**: `bitstring_read` integer overflow on `len * 8` for large lengths. Added overflow check.
-- **MEDIUM**: `skip_type_description` unbounded recursion. Added `OSP_MAX_TYPE_DEPTH` limit (16).
-- **MEDIUM**: `osp_aarq_decode` unchecked `ber_read_oid` returns. Added error propagation.
-- **MEDIUM**: `field_start + field_len` overflow in AARQ field skip. Added overflow check.
-- **MEDIUM**: Duplicate `#define` in security.h removed.
+- **CRITICAL**: Server challenge (stoc) was hardcoded as `ABCDEFGH`, defeating HLS challenge-response. Now requires `osp_hal_random_fill` — rejects association without RNG.
+- **HIGH**: No key zeroization anywhere. Added `osp_memzero()` with `memset_s`/`volatile` fallback. All key material now zeroized in `osp_sec_context_destroy`, `osp_sec_rotate_keys`, `osp_sec_cipher_apply_dedicated_key`, `osp_gost3410_sign`, `osp_gost_kuznyechik_cmac`, `osp_gost_hmac_streebog256`.
+- **HIGH**: 65KB stack buffer in `streebog_wrap.c` HMAC. Moved to thread-local storage (`OSP_TLS`).
+- **HIGH**: `ber_read_uint` had no overflow check — read all remaining buffer bytes. Added 4-byte limit.
+- **HIGH**: `osp_ber_read_uint` overflow check prevents uint32 overflow on crafted input.
 
-### Changed (Build Hardening)
+### Changed (Reentrancy)
 
-- Added `-Wall -Wextra -Werror -fstack-protector-strong` to library build.
-- Added `_FORTIFY_SOURCE=2` compile definition.
-- Removed dead `fe_add_raw` function from gost3410.c.
+- Added `OSP_TLS` macro (C11 `_Thread_local` / GCC `__thread` / bare-metal `static`).
+- All mutable static buffers in crypto and IC modules converted to `OSP_TLS`.
+- Library is now thread-safe: each thread can use its own `osp_client_t`/`osp_server_t` without data races.
 
-### Added (Documentation)
+### Changed (Portability)
 
-- Doxyfile for API reference generation.
-- `@param`/`@return` doxygen for 15+ key public API functions.
-- `@file` headers for security.h, gbt.h, notification.h.
-- CHANGELOG translated to English.
-- Removed `README_CN.md` (all documentation now in English only).
+- `gost3410.c`: Replaced `__uint128_t` (GCC extension) with portable `OSP_U128_MUL`/`OSP_U128_ADD3` macros. Fallback path works on MSVC and embedded compilers.
+- `types.h`: Fixed empty struct `osp_null_t` for `-Wpedantic` compliance.
+- Version constant `OPENSPODES_VERSION` aligned to 1.9.0 across `openspodes.h`, `CMakeLists.txt`, `README.md`.
+
+### Changed (Code Quality)
+
+- Removed all `goto` statements from codebase (`streebog_wrap.c`, `server.c`, `security.c`).
+- `OSP_MAX_OBJECTS` increased from 32 to 64 to match documentation.
+- Coverage script fixed: `build-cov` → `build-coverage`, added "Fully Covered" section.
+
+### Added (Tests)
+
+- 108 unit tests in `test_core.c` (was 33): selective access, SPODUS tasks/helpers/server, initiate, general ciphering, script table, SAP assignment, status mapping.
+- `openspodes_test` now links `mock_crypto.c` + `real_crypto.c` (OpenSSL) for GCM testing.
+- Coverage: **80.4% lines, 92.0% branches** (was 76.4% / 85.7%).
+
+### Documentation
+
+- `docs/HAL.md`: Added "Thread Safety" section with TLS explanation.
+- `docs/SECURITY.md`: Updated thread safety section.
+- `README.md`: Removed nonexistent `CONTRIBUTING.md` reference, fixed IC class count (36 full + 6 stub), updated test count (17 suites).

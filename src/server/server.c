@@ -218,33 +218,30 @@ static osp_err_t handle_aarq(osp_server_t *s, const osp_aarq_t *aarq) {
 		aare.result = OSP_RESULT_ACCEPTED;
 		s->associated = true;
 	} else if (osp_hls_requires_handshake((osp_auth_mechanism_t)aarq->mechanism)) {
-		s->security.mechanism = (osp_auth_mechanism_t)aarq->mechanism;
-
-		/* Store CtoS challenge and client system title for pass 3/4 */
-		memcpy(s->security.ctos, aarq->calling_auth_value, aarq->calling_auth_value_len);
-		s->security.ctos_len = aarq->calling_auth_value_len;
-		if (aarq->calling_ap_title_len >= OSP_SEC_SYSTEM_TITLE_SIZE) {
-			memcpy(s->security.peer_system_title, aarq->calling_ap_title, OSP_SEC_SYSTEM_TITLE_SIZE);
-		}
-
-		/* Generate StoC challenge */
-		s->security.stoc_len = 8;
-		if (osp_hal_random_fill) {
-			osp_hal_random_fill(s->security.stoc, 8);
+		/* HLS requires RNG for secure challenge generation */
+		if (!osp_hal_random_fill) {
+			aare.result = OSP_RESULT_REJECTED_PERMANENT;
 		} else {
-			/* Fallback: deterministic but unique per system title (not secure) */
-			for (uint8_t i = 0; i < 8; i++) {
-				s->security.stoc[i] = (uint8_t)(s->security.system_title[i % OSP_SEC_SYSTEM_TITLE_SIZE] + i);
+			s->security.mechanism = (osp_auth_mechanism_t)aarq->mechanism;
+
+			/* Store CtoS challenge and client system title for pass 3/4 */
+			memcpy(s->security.ctos, aarq->calling_auth_value, aarq->calling_auth_value_len);
+			s->security.ctos_len = aarq->calling_auth_value_len;
+			if (aarq->calling_ap_title_len >= OSP_SEC_SYSTEM_TITLE_SIZE) {
+				memcpy(s->security.peer_system_title, aarq->calling_ap_title, OSP_SEC_SYSTEM_TITLE_SIZE);
 			}
+
+			/* Generate StoC challenge */
+			s->security.stoc_len = 8;
+			osp_hal_random_fill(s->security.stoc, 8);
+			memcpy(aare.responding_auth_value, s->security.stoc, 8);
+			aare.responding_auth_value_len = 8;
+			aare.result = OSP_RESULT_ACCEPTED;
+			s->associated = true;
 		}
-		memcpy(aare.responding_auth_value, s->security.stoc, 8);
-		aare.responding_auth_value_len = 8;
-		aare.result = OSP_RESULT_ACCEPTED;
-		s->associated = true;
 	} else {
 		aare.result = OSP_RESULT_REJECTED_PERMANENT;
 	}
-
 	aare.mechanism = aarq->mechanism;
 	aare.responding_ap_title_len = OSP_SEC_SYSTEM_TITLE_SIZE;
 	memcpy(aare.responding_ap_title, s->security.system_title, OSP_SEC_SYSTEM_TITLE_SIZE);
@@ -829,7 +826,7 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 		if (!s->gbt_enabled) {
 			return OSP_ERR_UNSUPPORTED;
 		}
-		uint8_t apdu[OSP_GBT_MAX_APDU];
+		static uint8_t apdu[OSP_GBT_MAX_APDU];
 		uint32_t apdu_len = 0;
 		osp_err_t gr = osp_gbt_transport_recv(s->transport, s->framing, s->rx_buf, sizeof(s->rx_buf), apdu, sizeof(apdu), &apdu_len,
 		                                        s->tx_buf, sizeof(s->tx_buf), timeout_ms, s->rx_buf, rx_len);
@@ -845,7 +842,7 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 	}
 
 	if (s->ciphering_enabled && osp_svc_is_ciphered_tag(tag)) {
-		uint8_t plain[OSP_GBT_MAX_APDU];
+		static uint8_t plain[OSP_GBT_MAX_APDU];
 		uint32_t plain_len = 0;
 		int ur = osp_glo_unprotect(&s->cipher_rx, s->rx_buf, rx_len, plain, &plain_len);
 		if (ur == -2) {

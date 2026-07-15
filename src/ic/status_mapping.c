@@ -10,8 +10,8 @@ static osp_err_t sm_get(const void *inst, uint8_t attr_id, osp_value_t *result) 
 		case 1:
 			return osp_ic_get_logical_name(result, &i->logical_name);
 		case 2: {
-			static osp_value_t rows[OSP_MAX_STATUS_MAPPINGS];
-			static osp_value_t fields[OSP_MAX_STATUS_MAPPINGS][2];
+			OSP_TLS osp_value_t rows[OSP_MAX_STATUS_MAPPINGS];
+			OSP_TLS osp_value_t fields[OSP_MAX_STATUS_MAPPINGS][2];
 			uint8_t n = i->entry_count;
 			if (n > OSP_MAX_STATUS_MAPPINGS) {
 				n = OSP_MAX_STATUS_MAPPINGS;

@@ -5,7 +5,7 @@ import subprocess
 import sys
 
 root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-build = os.path.join(root, os.environ.get("COVERAGE_BUILD_DIR", "build-cov"))
+build = os.path.join(root, os.environ.get("COVERAGE_BUILD_DIR", "build-coverage"))
 src_root = os.path.join(root, "src")
 
 
@@ -150,6 +150,15 @@ def main():
     for r in sorted(results, key=lambda x: pct(x["le"], x["lt"])):
         if r["lt"] and pct(r["le"], r["lt"]) < 20:
             print(f"{pct(r['le'], r['lt']):5.1f}% | {r['rel']}")
+
+    print()
+    print("=== FULLY COVERED (100% lines) ===")
+    full = [r for r in results if r["lt"] > 0 and pct(r["le"], r["lt"]) == 100.0]
+    if full:
+        for r in sorted(full, key=lambda x: x["rel"]):
+            print(f"  {r['le']}/{r['lt']} lines | {r['be']}/{r['bt']} branches | {r['rel']}")
+    else:
+        print("  (none)")
 
     print()
     print("=== UNCOVERED LINES (sample, first 30) ===")

@@ -25,7 +25,7 @@ osp_err_t osp_ic_set_logical_name(osp_obis_t *ln, const osp_value_t *value) {
 }
 
 osp_value_t osp_ic_val_scaler_unit(const osp_scaler_unit_t *su) {
-	static osp_value_t fields[2];
+	OSP_TLS osp_value_t fields[2];
 	osp_value_t v = {0};
 	fields[0] = osp_val_i8(su ? su->scaler : 0);
 	fields[1] = osp_val_enum(su ? su->unit : 0);
@@ -46,7 +46,7 @@ osp_err_t osp_ic_read_scaler_unit(const osp_value_t *val, osp_scaler_unit_t *su)
 }
 
 osp_value_t osp_ic_val_value_definition(const osp_value_definition_t *vd) {
-	static osp_value_t fields[3];
+	OSP_TLS osp_value_t fields[3];
 	osp_value_t v = {0};
 	fields[0] = osp_val_u16(vd ? vd->class_id : 0);
 	fields[1].tag = OSP_TAG_OCTETSTRING;
@@ -77,7 +77,7 @@ osp_err_t osp_ic_read_value_definition(const osp_value_t *val, osp_value_definit
 }
 
 osp_value_t osp_ic_val_empty_array(void) {
-	static osp_value_t items[1];
+	OSP_TLS osp_value_t items[1];
 	osp_value_t v = {0};
 	v.tag = OSP_TAG_ARRAY;
 	v.as.array.elements.items = items;
@@ -87,7 +87,7 @@ osp_value_t osp_ic_val_empty_array(void) {
 }
 
 osp_value_t osp_ic_val_xdms_context(const osp_xdms_context_t *ctx) {
-	static osp_value_t fields[6];
+	OSP_TLS osp_value_t fields[6];
 	osp_value_t v = {0};
 	fields[0] = osp_val_u32(ctx ? ctx->conformance : 0);
 	fields[1] = osp_val_u16(ctx ? ctx->max_receive_pdu_size : 0);
@@ -133,7 +133,7 @@ osp_err_t osp_ic_read_xdms_context(const osp_value_t *val, osp_xdms_context_t *c
 }
 
 osp_value_t osp_ic_val_associated_partners(const osp_associated_partners_t *p) {
-	static osp_value_t fields[2];
+	OSP_TLS osp_value_t fields[2];
 	osp_value_t v = {0};
 	fields[0] = osp_val_i8(p ? p->client_sap : 0);
 	fields[1] = osp_val_u16(p ? p->server_sap : 0);
@@ -154,7 +154,7 @@ osp_err_t osp_ic_read_associated_partners(const osp_value_t *val, osp_associated
 }
 
 osp_value_t osp_ic_val_threshold(const osp_threshold_t *t) {
-	static osp_value_t fields[5];
+	OSP_TLS osp_value_t fields[5];
 	osp_value_t v = {0};
 	fields[0] = t ? t->normal_value : osp_val_null();
 	fields[1] = t ? t->threshold_value : osp_val_null();
@@ -187,7 +187,7 @@ osp_err_t osp_ic_read_threshold(const osp_value_t *val, osp_threshold_t *t) {
 }
 
 osp_value_t osp_ic_val_emergency_profile(const osp_emergency_profile_t *ep) {
-	static osp_value_t fields[3];
+	OSP_TLS osp_value_t fields[3];
 	osp_value_t v = {0};
 	fields[0] = osp_val_i32(ep ? ep->id : 0);
 	fields[1] = osp_val_bool(ep ? ep->active : false);
@@ -218,7 +218,7 @@ osp_err_t osp_ic_read_emergency_profile(const osp_value_t *val, osp_emergency_pr
 }
 
 osp_value_t osp_ic_val_capture_object(const osp_capture_object_t *co) {
-	static osp_value_t fields[5];
+	OSP_TLS osp_value_t fields[5];
 	osp_value_t v = {0};
 	fields[0] = osp_val_u16(co ? co->class_id : 0);
 	fields[1].tag = OSP_TAG_OCTETSTRING;
@@ -252,8 +252,8 @@ osp_err_t osp_ic_read_capture_object(const osp_value_t *val, osp_capture_object_
 }
 
 osp_value_t osp_ic_val_threshold_list(const osp_threshold_list_t *tl) {
-	static osp_value_t items[16];
-	static osp_value_t fields[16][2];
+	OSP_TLS osp_value_t items[16];
+	OSP_TLS osp_value_t fields[16][2];
 	osp_value_t v = {0};
 	uint8_t n = tl ? tl->count : 0;
 	if (n > 16) {
@@ -292,10 +292,10 @@ osp_err_t osp_ic_read_threshold_list(const osp_value_t *val, osp_threshold_list_
 }
 
 static osp_value_t ic_val_access_right(const osp_access_right_t *ar) {
-	static osp_value_t attr_rows[OSP_MAX_ACCESS_ITEMS];
-	static osp_value_t method_rows[OSP_MAX_ACCESS_ITEMS];
-	static osp_value_t attr_fields[OSP_MAX_ACCESS_ITEMS][3];
-	static osp_value_t method_fields[OSP_MAX_ACCESS_ITEMS][2];
+	OSP_TLS osp_value_t attr_rows[OSP_MAX_ACCESS_ITEMS];
+	OSP_TLS osp_value_t method_rows[OSP_MAX_ACCESS_ITEMS];
+	OSP_TLS osp_value_t attr_fields[OSP_MAX_ACCESS_ITEMS][3];
+	OSP_TLS osp_value_t method_fields[OSP_MAX_ACCESS_ITEMS][2];
 	osp_value_t outer[2];
 	osp_value_t v = {0};
 	uint8_t ac = ar ? ar->attr_count : 0;
@@ -339,8 +339,8 @@ static osp_value_t ic_val_access_right(const osp_access_right_t *ar) {
 }
 
 osp_value_t osp_ic_val_object_list(const osp_object_list_t *ol) {
-	static osp_value_t rows[OSP_MAX_OBJECT_LIST];
-	static osp_value_t fields[OSP_MAX_OBJECT_LIST][4];
+	OSP_TLS osp_value_t rows[OSP_MAX_OBJECT_LIST];
+	OSP_TLS osp_value_t fields[OSP_MAX_OBJECT_LIST][4];
 	osp_value_t v = {0};
 	uint8_t n = ol ? ol->count : 0;
 	if (n > OSP_MAX_OBJECT_LIST) {
@@ -391,7 +391,7 @@ osp_err_t osp_ic_read_object_list(const osp_value_t *val, osp_object_list_t *ol)
 }
 
 osp_value_t osp_ic_val_user_list_item(const osp_user_list_item_t *item) {
-	static osp_value_t fields[2];
+	OSP_TLS osp_value_t fields[2];
 	osp_value_t v = {0};
 	fields[0] = osp_val_i8(item ? item->id : 0);
 	fields[1].tag = OSP_TAG_VISIBLESTRING;
@@ -499,7 +499,7 @@ osp_value_t osp_ic_val_context_name(const osp_context_name_t *cn) {
 	if (!cn) return v;
 
 	if (cn->is_structure) {
-		static osp_value_t fields[7];
+		OSP_TLS osp_value_t fields[7];
 		fields[0] = osp_val_u8(cn->as.structure.joint_iso_ctt);
 		fields[1] = osp_val_u8(cn->as.structure.country);
 		fields[2] = osp_val_u16(cn->as.structure.country_name);
@@ -550,7 +550,7 @@ osp_err_t osp_ic_read_context_name(const osp_value_t *val, osp_context_name_t *c
 osp_value_t osp_ic_val_season(const osp_season_t *s) {
 	osp_value_t v = {0};
 	if (!s) return v;
-	static osp_value_t fields[3];
+	OSP_TLS osp_value_t fields[3];
 	fields[0].tag = OSP_TAG_OCTETSTRING;
 	fields[0].as.octetstring.len = s->name_len;
 	memcpy(fields[0].as.octetstring.data, s->name, s->name_len);
@@ -592,7 +592,7 @@ osp_err_t osp_ic_read_season(const osp_value_t *val, osp_season_t *s) {
 osp_value_t osp_ic_val_week_profile(const osp_week_profile_t *wp) {
 	osp_value_t v = {0};
 	if (!wp) return v;
-	static osp_value_t fields[8];
+	OSP_TLS osp_value_t fields[8];
 	fields[0].tag = OSP_TAG_OCTETSTRING;
 	fields[0].as.octetstring.len = wp->name_len;
 	memcpy(fields[0].as.octetstring.data, wp->name, wp->name_len);
@@ -625,7 +625,7 @@ osp_err_t osp_ic_read_week_profile(const osp_value_t *val, osp_week_profile_t *w
 osp_value_t osp_ic_val_day_profile(const osp_day_profile_t *dp) {
 	osp_value_t v = {0};
 	if (!dp) return v;
-	static osp_value_t fields[2];
+	OSP_TLS osp_value_t fields[2];
 	fields[0].tag = OSP_TAG_OCTETSTRING;
 	fields[0].as.octetstring.len = dp->name_len;
 	memcpy(fields[0].as.octetstring.data, dp->name, dp->name_len);

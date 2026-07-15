@@ -361,6 +361,22 @@ On Linux/desktop, stack allocation is fine (8 MB default stack).
 
 ---
 
+## Thread Safety
+
+The library is safe for multi-threaded use when:
+1. Each thread uses its own `osp_client_t` / `osp_server_t`
+2. `osp_hal_mutex` is set to a platform-appropriate mutex implementation
+3. The `value_read_pool` and crypto buffers use thread-local storage (automatic via `OSP_TLS`)
+
+**How it works:**
+- `OSP_TLS` (defined in `openspodes.h`) resolves to `_Thread_local` (C11), `__thread` (GCC/Clang), or `static` (bare-metal)
+- All internal crypto and serialization buffers are TLS-allocated — no data races between threads
+- On bare-metal (no OS), TLS falls back to plain `static`, which is safe for single-threaded use
+
+**For bare-metal MCU:** Leave `osp_hal_mutex = NULL`. TLS becomes static — zero overhead, no threads to worry about.
+
+---
+
 ## Porting Checklist
 
 ### Step 1: Transport

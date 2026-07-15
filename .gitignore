@@ -18,3 +18,4 @@ docs/api/
 *.gcov
 files.zip
 build-bench/
+scripts/__pycache__/

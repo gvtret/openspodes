@@ -5,6 +5,64 @@
 #include "gost_crypto.h"
 #include <string.h>
 
+/* ── Portable 128-bit arithmetic ────────────────────────────────────────────
+ * GCC/Clang provide __uint128_t natively. For MSVC and other compilers,
+ * we define software fallbacks for 64x64→128 multiply and add-with-carry.
+ */
+
+#if defined(__SIZEOF_INT128__)
+typedef unsigned __int128 osp_uint128_t;
+#define OSP_U128_MUL(a, b, hi, lo) do { \
+	osp_uint128_t _p = (osp_uint128_t)(a) * (b); \
+	*(hi) = (uint64_t)(_p >> 64); \
+	*(lo) = (uint64_t)(_p); \
+} while (0)
+#define OSP_U128_ADD3(a, b, c, result, carry_out) do { \
+	osp_uint128_t _s = (osp_uint128_t)(a) + (b) + (c); \
+	*(result) = (uint64_t)(_s); \
+	*(carry_out) = (uint64_t)(_s >> 64); \
+} while (0)
+#define OSP_U128_ADD2(a, b, result, carry_out) do { \
+	osp_uint128_t _s = (osp_uint128_t)(a) + (b); \
+	*(result) = (uint64_t)(_s); \
+	*(carry_out) = (uint64_t)(_s >> 64); \
+} while (0)
+#else
+static inline void osp_u128_mul(uint64_t a, uint64_t b, uint64_t *hi, uint64_t *lo) {
+	uint32_t a_lo = (uint32_t)a, a_hi = (uint32_t)(a >> 32);
+	uint32_t b_lo = (uint32_t)b, b_hi = (uint32_t)(b >> 32);
+	uint64_t ll = (uint64_t)a_lo * b_lo;
+	uint64_t lh = (uint64_t)a_lo * b_hi;
+	uint64_t hl = (uint64_t)a_hi * b_lo;
+	uint64_t hh = (uint64_t)a_hi * b_hi;
+	uint64_t mid = lh + hl;
+	uint64_t mid_carry = (mid < lh) ? 1ULL : 0;
+	*lo = ll + (mid << 32);
+	uint64_t lo_carry = (*lo < ll) ? 1ULL : 0;
+	*hi = hh + (mid >> 32) + (mid_carry << 32) + lo_carry;
+}
+static inline uint64_t osp_u128_add3(uint64_t a, uint64_t b, uint64_t c, uint64_t *carry) {
+	uint64_t s1 = a + b;
+	uint64_t c1 = (s1 < a) ? 1 : 0;
+	uint64_t s2 = s1 + c;
+	uint64_t c2 = (s2 < s1) ? 1 : 0;
+	*carry = c1 + c2;
+	return s2;
+}
+static inline uint64_t osp_u128_add2(uint64_t a, uint64_t b, uint64_t *carry) {
+	uint64_t s = a + b;
+	*carry = (s < a) ? 1 : 0;
+	return s;
+}
+#define OSP_U128_MUL(a, b, hi, lo) osp_u128_mul((a), (b), (hi), (lo))
+#define OSP_U128_ADD3(a, b, c, result, carry_out) do { \
+	*(result) = osp_u128_add3((a), (b), (c), (carry_out)); \
+} while (0)
+#define OSP_U128_ADD2(a, b, result, carry_out) do { \
+	*(result) = osp_u128_add2((a), (b), (carry_out)); \
+} while (0)
+#endif
+
 typedef struct {
 	uint64_t w[4]; /* little-endian */
 } fe;
@@ -85,16 +143,12 @@ static void fe_mod_q(fe *r) {
 static void sc_add(fe *r, const fe *a, const fe *b) {
 	uint64_t carry = 0;
 	for (int i = 0; i < 4; i++) {
-		__uint128_t sum = (__uint128_t)a->w[i] + b->w[i] + carry;
-		r->w[i] = (uint64_t)sum;
-		carry = (uint64_t)(sum >> 64);
+		OSP_U128_ADD3(a->w[i], b->w[i], carry, &r->w[i], &carry);
 	}
 	if (carry) {
 		carry = 0;
 		for (int i = 0; i < 4; i++) {
-			__uint128_t sum = (__uint128_t)r->w[i] + FE_2_256_MOD_Q.w[i] + carry;
-			r->w[i] = (uint64_t)sum;
-			carry = (uint64_t)(sum >> 64);
+			OSP_U128_ADD3(r->w[i], FE_2_256_MOD_Q.w[i], carry, &r->w[i], &carry);
 		}
 	}
 	fe_mod_q(r);
@@ -125,9 +179,10 @@ static void mul512(uint64_t t[8], const fe *a, const fe *b) {
 	for (int i = 0; i < 4; i++) {
 		uint64_t carry = 0;
 		for (int j = 0; j < 4; j++) {
-			__uint128_t p = (__uint128_t)a->w[i] * b->w[j] + t[i + j] + carry;
-			t[i + j] = (uint64_t)p;
-			carry = (uint64_t)(p >> 64);
+			uint64_t hi, lo;
+			OSP_U128_MUL(a->w[i], b->w[j], &hi, &lo);
+			OSP_U128_ADD3(lo, t[i + j], carry, &t[i + j], &carry);
+			carry += hi;
 		}
 		t[i + 4] += carry;
 	}
@@ -144,9 +199,7 @@ static void reduce512(fe *r, uint64_t t[8], const fe *r256) {
 		t[4] = t[5] = t[6] = t[7] = 0;
 		uint64_t carry = 0;
 		for (int i = 0; i < 8; i++) {
-			__uint128_t sum = (__uint128_t)t[i] + fold[i] + carry;
-			t[i] = (uint64_t)sum;
-			carry = (uint64_t)(sum >> 64);
+			OSP_U128_ADD3(t[i], fold[i], carry, &t[i], &carry);
 		}
 		if (carry) {
 			t[4] += carry;
@@ -188,16 +241,12 @@ static void sc_inv(fe *r, const fe *a) {
 static void fe_add(fe *r, const fe *a, const fe *b) {
 	uint64_t carry = 0;
 	for (int i = 0; i < 4; i++) {
-		__uint128_t sum = (__uint128_t)a->w[i] + b->w[i] + carry;
-		r->w[i] = (uint64_t)sum;
-		carry = (uint64_t)(sum >> 64);
+		OSP_U128_ADD3(a->w[i], b->w[i], carry, &r->w[i], &carry);
 	}
 	if (carry) {
 		carry = FE_2_256_MOD_P.w[0];
 		for (int i = 0; i < 4 && carry; i++) {
-			__uint128_t sum = (__uint128_t)r->w[i] + carry;
-			r->w[i] = (uint64_t)sum;
-			carry = (uint64_t)(sum >> 64);
+			OSP_U128_ADD2(r->w[i], carry, &r->w[i], &carry);
 		}
 	}
 	fe_mod_p(r);
@@ -441,7 +490,9 @@ int osp_gost3410_sign(const uint8_t d[32], const uint8_t *msg, uint32_t msg_len,
 		memcpy(kb + 32, msg, msg_len);
 		osp_gost_streebog256(kb, 32 + msg_len, kb + 32);
 	}
-	return osp_gost3410_sign_with_k(d, msg, msg_len, kb + 32, sig);
+	int rc = osp_gost3410_sign_with_k(d, msg, msg_len, kb + 32, sig);
+	osp_memzero(kb, sizeof(kb));
+	return rc;
 }
 
 int osp_gost3410_verify(const uint8_t pk[64], const uint8_t *msg, uint32_t msg_len, const uint8_t sig[64]) {
