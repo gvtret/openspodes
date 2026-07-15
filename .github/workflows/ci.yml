@@ -51,16 +51,16 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y cmake build-essential libssl-dev gcovr python3
 
       - name: Configure with coverage
-        run: cmake -S . -B build-cov -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE=ON
+        run: cmake -S . -B build-coverage -DCMAKE_BUILD_TYPE=Debug -DENABLE_COVERAGE=ON
 
       - name: Build
-        run: cmake --build build-cov -j$(nproc)
+        run: cmake --build build-coverage -j$(nproc)
 
       - name: Run tests
-        run: ctest --test-dir build-cov --output-on-failure
+        run: ctest --test-dir build-coverage --output-on-failure
 
       - name: Generate coverage report
-        run: cmake --build build-cov --target coverage
+        run: cmake --build build-coverage --target coverage
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
