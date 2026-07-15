@@ -8,7 +8,7 @@ Portable **C11** implementation of **IEC 62056 DLMS/COSEM** (LN referencing), mo
 
 Designed for embedded and server use: **no heap allocation in the core library**, HAL crypto via function pointers, static buffers.
 
-**Version:** 1.8.0
+**Version:** 1.9.0
 **License:** GPL-3.0-or-later (see [LICENSE](LICENSE))
 
 ## Documentation
@@ -77,7 +77,7 @@ Full client↔server demo running in-process — zero configuration needed:
 ```
 
 This performs a complete DLMS/COSEM session:
-1. Server registers 2 Data IC objects (OBIS `0.0.1.0.0.255` = 42, `1.0.1.8.0.255` = 123456)
+1. Server registers 2 Data IC objects (OBIS `0.0.1.0.0.255` = 42, `1.0.1.9.0.255` = 123456)
 2. Client connects (AARQ → AARE)
 3. GET attribute 1 from both objects
 4. SET attribute 1 to 999, verify with GET
@@ -155,7 +155,7 @@ osp_client_enable_gbt(&client, 64);
 osp_err_t r = osp_client_connect(&client, 5000);
 if (r != OSP_OK) { /* handle error */ }
 
-/* 6. GET attribute 1 from Data IC (OBIS 0.0.1.8.0.255) */
+/* 6. GET attribute 1 from Data IC (OBIS 0.0.1.9.0.255) */
 osp_value_t result;
 osp_obis_t obis = {0, 0, 1, 8, 0, 255};
 r = osp_client_get(&client, 1, &obis, 1, &result);
