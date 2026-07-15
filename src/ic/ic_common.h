@@ -47,6 +47,18 @@ osp_err_t osp_ic_read_object_list(const osp_value_t *val, osp_object_list_t *ol)
 osp_value_t osp_ic_val_user_list_item(const osp_user_list_item_t *item);
 osp_err_t osp_ic_read_user_list_item(const osp_value_t *val, osp_user_list_item_t *item);
 
+osp_value_t osp_ic_val_context_name(const osp_context_name_t *cn);
+osp_err_t osp_ic_read_context_name(const osp_value_t *val, osp_context_name_t *cn);
+
+osp_value_t osp_ic_val_season(const osp_season_t *s);
+osp_err_t osp_ic_read_season(const osp_value_t *val, osp_season_t *s);
+
+osp_value_t osp_ic_val_week_profile(const osp_week_profile_t *wp);
+osp_err_t osp_ic_read_week_profile(const osp_value_t *val, osp_week_profile_t *wp);
+
+osp_value_t osp_ic_val_day_profile(const osp_day_profile_t *dp);
+osp_err_t osp_ic_read_day_profile(const osp_value_t *val, osp_day_profile_t *dp);
+
 osp_err_t osp_ic_ln_only_get_attr(const void *inst, uint8_t attr_id, osp_value_t *result);
 
 osp_err_t osp_ic_serialize_attrs(const osp_ic_class_t *cls, const void *inst, osp_buf_t *buf, const uint8_t *attr_ids, uint8_t attr_count);

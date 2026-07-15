@@ -491,3 +491,163 @@ osp_err_t osp_ic_deserialize_attrs(const osp_ic_class_t *cls, void *inst, osp_bu
 	}
 	return OSP_OK;
 }
+
+/* ── context_name serialization ─────────────────────────────────────────── */
+
+osp_value_t osp_ic_val_context_name(const osp_context_name_t *cn) {
+	osp_value_t v = {0};
+	if (!cn) return v;
+
+	if (cn->is_structure) {
+		static osp_value_t fields[7];
+		fields[0] = osp_val_u8(cn->as.structure.joint_iso_ctt);
+		fields[1] = osp_val_u8(cn->as.structure.country);
+		fields[2] = osp_val_u16(cn->as.structure.country_name);
+		fields[3] = osp_val_u8(cn->as.structure.identified_organization);
+		fields[4] = osp_val_u8(cn->as.structure.dlms_ua);
+		fields[5] = osp_val_u8(cn->as.structure.application_context);
+		fields[6] = osp_val_u8(cn->as.structure.context_id);
+		v.tag = OSP_TAG_STRUCTURE;
+		v.as.structure.elements.items = fields;
+		v.as.structure.elements.count = 7;
+		v.as.structure.elements.capacity = 7;
+	} else {
+		v.tag = OSP_TAG_OCTETSTRING;
+		v.as.octetstring.len = cn->as.oid.len;
+		memcpy(v.as.octetstring.data, cn->as.oid.data, cn->as.oid.len);
+	}
+	return v;
+}
+
+osp_err_t osp_ic_read_context_name(const osp_value_t *val, osp_context_name_t *cn) {
+	if (!val || !cn) return OSP_ERR_INVALID;
+
+	if (val->tag == OSP_TAG_STRUCTURE) {
+		cn->is_structure = true;
+		if (val->as.structure.elements.count >= 7) {
+			const osp_value_t *items = val->as.structure.elements.items;
+			cn->as.structure.joint_iso_ctt = osp_get_u8(&items[0]);
+			cn->as.structure.country = osp_get_u8(&items[1]);
+			cn->as.structure.country_name = osp_get_u16(&items[2]);
+			cn->as.structure.identified_organization = osp_get_u8(&items[3]);
+			cn->as.structure.dlms_ua = osp_get_u8(&items[4]);
+			cn->as.structure.application_context = osp_get_u8(&items[5]);
+			cn->as.structure.context_id = osp_get_u8(&items[6]);
+		}
+	} else if (val->tag == OSP_TAG_OCTETSTRING) {
+		cn->is_structure = false;
+		cn->as.oid.len = val->as.octetstring.len;
+		if (cn->as.oid.len > sizeof(cn->as.oid.data)) cn->as.oid.len = sizeof(cn->as.oid.data);
+		memcpy(cn->as.oid.data, val->as.octetstring.data, cn->as.oid.len);
+	} else {
+		return OSP_ERR_INVALID;
+	}
+	return OSP_OK;
+}
+
+/* ── Activity Calendar types serialization ──────────────────────────────── */
+
+osp_value_t osp_ic_val_season(const osp_season_t *s) {
+	osp_value_t v = {0};
+	if (!s) return v;
+	static osp_value_t fields[3];
+	fields[0].tag = OSP_TAG_OCTETSTRING;
+	fields[0].as.octetstring.len = s->name_len;
+	memcpy(fields[0].as.octetstring.data, s->name, s->name_len);
+	fields[1].tag = OSP_TAG_OCTETSTRING;
+	uint8_t dt[12];
+	memcpy(dt, &s->start, sizeof(osp_datetime_t));
+	fields[1].as.octetstring.len = 12;
+	memcpy(fields[1].as.octetstring.data, dt, 12);
+	fields[2].tag = OSP_TAG_OCTETSTRING;
+	fields[2].as.octetstring.len = s->week_name_len;
+	memcpy(fields[2].as.octetstring.data, s->week_name, s->week_name_len);
+	v.tag = OSP_TAG_STRUCTURE;
+	v.as.structure.elements.items = fields;
+	v.as.structure.elements.count = 3;
+	v.as.structure.elements.capacity = 3;
+	return v;
+}
+
+osp_err_t osp_ic_read_season(const osp_value_t *val, osp_season_t *s) {
+	if (!val || !s) return OSP_ERR_INVALID;
+	if (val->tag != OSP_TAG_STRUCTURE || val->as.structure.elements.count < 3) return OSP_ERR_INVALID;
+	const osp_value_t *items = val->as.structure.elements.items;
+	if (items[0].tag == OSP_TAG_OCTETSTRING) {
+		s->name_len = items[0].as.octetstring.len;
+		if (s->name_len > OSP_MAX_NAME_LEN) s->name_len = OSP_MAX_NAME_LEN;
+		memcpy(s->name, items[0].as.octetstring.data, s->name_len);
+	}
+	if (items[1].tag == OSP_TAG_OCTETSTRING && items[1].as.octetstring.len >= sizeof(osp_datetime_t)) {
+		memcpy(&s->start, items[1].as.octetstring.data, sizeof(osp_datetime_t));
+	}
+	if (items[2].tag == OSP_TAG_OCTETSTRING) {
+		s->week_name_len = items[2].as.octetstring.len;
+		if (s->week_name_len > OSP_MAX_NAME_LEN) s->week_name_len = OSP_MAX_NAME_LEN;
+		memcpy(s->week_name, items[2].as.octetstring.data, s->week_name_len);
+	}
+	return OSP_OK;
+}
+
+osp_value_t osp_ic_val_week_profile(const osp_week_profile_t *wp) {
+	osp_value_t v = {0};
+	if (!wp) return v;
+	static osp_value_t fields[8];
+	fields[0].tag = OSP_TAG_OCTETSTRING;
+	fields[0].as.octetstring.len = wp->name_len;
+	memcpy(fields[0].as.octetstring.data, wp->name, wp->name_len);
+	for (int d = 0; d < 7; d++) {
+		fields[1 + d] = osp_val_u8(wp->day_names[d][0]);
+	}
+	v.tag = OSP_TAG_STRUCTURE;
+	v.as.structure.elements.items = fields;
+	v.as.structure.elements.count = 8;
+	v.as.structure.elements.capacity = 8;
+	return v;
+}
+
+osp_err_t osp_ic_read_week_profile(const osp_value_t *val, osp_week_profile_t *wp) {
+	if (!val || !wp) return OSP_ERR_INVALID;
+	if (val->tag != OSP_TAG_STRUCTURE || val->as.structure.elements.count < 8) return OSP_ERR_INVALID;
+	const osp_value_t *items = val->as.structure.elements.items;
+	if (items[0].tag == OSP_TAG_OCTETSTRING) {
+		wp->name_len = items[0].as.octetstring.len;
+		if (wp->name_len > OSP_MAX_NAME_LEN) wp->name_len = OSP_MAX_NAME_LEN;
+		memcpy(wp->name, items[0].as.octetstring.data, wp->name_len);
+	}
+	for (int d = 0; d < 7; d++) {
+		wp->day_names[d][0] = osp_get_u8(&items[1 + d]);
+		wp->day_name_lens[d] = 1;
+	}
+	return OSP_OK;
+}
+
+osp_value_t osp_ic_val_day_profile(const osp_day_profile_t *dp) {
+	osp_value_t v = {0};
+	if (!dp) return v;
+	static osp_value_t fields[2];
+	fields[0].tag = OSP_TAG_OCTETSTRING;
+	fields[0].as.octetstring.len = dp->name_len;
+	memcpy(fields[0].as.octetstring.data, dp->name, dp->name_len);
+	fields[1].tag = OSP_TAG_UNSIGNED;
+	fields[1].as.uint8.value = dp->action_count;
+	v.tag = OSP_TAG_STRUCTURE;
+	v.as.structure.elements.items = fields;
+	v.as.structure.elements.count = 2;
+	v.as.structure.elements.capacity = 2;
+	return v;
+}
+
+osp_err_t osp_ic_read_day_profile(const osp_value_t *val, osp_day_profile_t *dp) {
+	if (!val || !dp) return OSP_ERR_INVALID;
+	if (val->tag != OSP_TAG_STRUCTURE || val->as.structure.elements.count < 2) return OSP_ERR_INVALID;
+	const osp_value_t *items = val->as.structure.elements.items;
+	if (items[0].tag == OSP_TAG_OCTETSTRING) {
+		dp->name_len = items[0].as.octetstring.len;
+		if (dp->name_len > OSP_MAX_NAME_LEN) dp->name_len = OSP_MAX_NAME_LEN;
+		memcpy(dp->name, items[0].as.octetstring.data, dp->name_len);
+	}
+	dp->action_count = osp_get_u8(&items[1]);
+	if (dp->action_count > OSP_MAX_DAY_ACTION) dp->action_count = OSP_MAX_DAY_ACTION;
+	return OSP_OK;
+}
