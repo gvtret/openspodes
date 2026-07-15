@@ -243,6 +243,13 @@ add_executable(openspodes_spodus_demo
 target_include_directories(openspodes_spodus_demo PRIVATE tests examples)
 target_link_libraries(openspodes_spodus_demo PRIVATE openspodes)
 
+add_executable(openspodes_test_types
+	tests/test_types.c
+)
+target_include_directories(openspodes_test_types PRIVATE tests)
+target_link_libraries(openspodes_test_types PRIVATE openspodes cmocka)
+add_test(NAME openspodes_test_types COMMAND openspodes_test_types)
+
 add_executable(openspodes_serial_client
 	examples/serial_client.c
 	examples/serial_transport.c
