@@ -19,6 +19,10 @@
 #include "../openspodes.h"
 #include "../codec/structures.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * @brief Register object structure
  *
@@ -28,7 +32,7 @@
 typedef struct {
 	osp_obis_t logical_name;   /**< OBIS logical name of the register */
 	osp_value_t value;         /**< Current value of the register */
-	osp_scaler_unit_t scaler_unit; /**< Scaler and unit information */
+	osp_scaler_unit_t scaler_unit; /**< Scaler and unit information for the value */
 } osp_ic_register_t;
 
 /**
@@ -44,4 +48,9 @@ void osp_ic_register_init(osp_ic_register_t *r, osp_obis_t ln, osp_value_t val);
  * @return Pointer to the class descriptor structure
  */
 const osp_ic_class_t *osp_ic_register_class(void);
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif
