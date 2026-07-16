@@ -22,10 +22,10 @@ extern "C" {
 
 /* ── Version ─────────────────────────────────────────────────────────────── */
 
-#define OPENSPODES_VERSION_MAJOR 1
-#define OPENSPODES_VERSION_MINOR 10
+#define OPENSPODES_VERSION_MAJOR 2
+#define OPENSPODES_VERSION_MINOR 0
 #define OPENSPODES_VERSION_PATCH 0
-#define OPENSPODES_VERSION_STRING "1.10.0"
+#define OPENSPODES_VERSION_STRING "2.0.0"
 
 /* ── Error codes ─────────────────────────────────────────────────────────── */
 

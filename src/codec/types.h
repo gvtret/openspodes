@@ -90,36 +90,40 @@ typedef enum {
 static inline uint8_t osp_axdr_type_size(uint8_t tag) {
 	/* Lookup table indexed by AXDR tag value (max tag = 33) */
 	static const uint8_t size_table[34] = {
-	    [OSP_TAG_NULL] = 0,
-	    [OSP_TAG_ARRAY] = 0,
-	    [OSP_TAG_STRUCTURE] = 0,
-	    [OSP_TAG_BOOLEAN] = 1,
-	    [OSP_TAG_BITSTRING] = 0,
-	    [OSP_TAG_DOUBLE_LONG] = 4,
-	    [OSP_TAG_DOUBLE_LONG_UNS] = 4,
-	    [OSP_TAG_OCTETSTRING] = 0,
-	    [OSP_TAG_VISIBLESTRING] = 0,
-	    [OSP_TAG_UTF8STRING] = 0,
-	    [OSP_TAG_BCD] = 1,
-	    [OSP_TAG_INTEGER] = 1,
-	    [OSP_TAG_LONG] = 2,
-	    [OSP_TAG_UNSIGNED] = 1,
-	    [OSP_TAG_LONG_UNSIGNED] = 2,
-	    [OSP_TAG_COMPACT_ARRAY] = 0,
-	    [OSP_TAG_LONG64] = 8,
-	    [OSP_TAG_LONG64_UNSIGNED] = 8,
-	    [OSP_TAG_ENUM] = 1,
-	    [OSP_TAG_FLOAT32] = 4,
-	    [OSP_TAG_FLOAT64] = 8,
-	    [OSP_TAG_DATETIME] = 12,
-	    [OSP_TAG_DATE] = 5,
-	    [OSP_TAG_TIME] = 4,
-	    [OSP_TAG_DELTA_INTEGER] = 1,
-	    [OSP_TAG_DELTA_LONG] = 2,
-	    [OSP_TAG_DELTA_DLONG] = 4,
-	    [OSP_TAG_DELTA_UNSIGNED] = 1,
-	    [OSP_TAG_DELTA_LUNSIGNED] = 2,
-	    [OSP_TAG_DELTA_DLONG_UNS] = 4,
+	    0,  /* 0: OSP_TAG_NULL */
+	    0,  /* 1: OSP_TAG_ARRAY */
+	    0,  /* 2: OSP_TAG_STRUCTURE */
+	    1,  /* 3: OSP_TAG_BOOLEAN */
+	    0,  /* 4: OSP_TAG_BITSTRING */
+	    4,  /* 5: OSP_TAG_DOUBLE_LONG */
+	    4,  /* 6: OSP_TAG_DOUBLE_LONG_UNS */
+	    0,  /* 7: reserved */
+	    0,  /* 8: reserved */
+	    0,  /* 9: OSP_TAG_OCTETSTRING */
+	    0,  /* 10: OSP_TAG_VISIBLESTRING */
+	    0,  /* 11: reserved */
+	    0,  /* 12: OSP_TAG_UTF8STRING */
+	    1,  /* 13: OSP_TAG_BCD */
+	    0,  /* 14: reserved */
+	    1,  /* 15: OSP_TAG_INTEGER */
+	    2,  /* 16: OSP_TAG_LONG */
+	    1,  /* 17: OSP_TAG_UNSIGNED */
+	    2,  /* 18: OSP_TAG_LONG_UNSIGNED */
+	    0,  /* 19: OSP_TAG_COMPACT_ARRAY */
+	    8,  /* 20: OSP_TAG_LONG64 */
+	    8,  /* 21: OSP_TAG_LONG64_UNSIGNED */
+	    1,  /* 22: OSP_TAG_ENUM */
+	    4,  /* 23: OSP_TAG_FLOAT32 */
+	    8,  /* 24: OSP_TAG_FLOAT64 */
+	    12, /* 25: OSP_TAG_DATETIME */
+	    5,  /* 26: OSP_TAG_DATE */
+	    4,  /* 27: OSP_TAG_TIME */
+	    1,  /* 28: OSP_TAG_DELTA_INTEGER */
+	    2,  /* 29: OSP_TAG_DELTA_LONG */
+	    4,  /* 30: OSP_TAG_DELTA_DLONG */
+	    1,  /* 31: OSP_TAG_DELTA_UNSIGNED */
+	    2,  /* 32: OSP_TAG_DELTA_LUNSIGNED */
+	    4,  /* 33: OSP_TAG_DELTA_DLONG_UNS */
 	};
 
 	if (tag < sizeof(size_table)) {
