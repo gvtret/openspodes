@@ -183,3 +183,31 @@ TableManager(8200) ProfileDataFilter(8201)
 - GXDLMSDirector uses non-standard U-frame encoding (SNRM=0x61 instead of ISO standard 0x93). The Director's I-frame and S-frame encoding is standard. Only U-frame modifier bits differ.
 - spodes-rs uses ISO standard encoding (SNRM=0x83). Our codec matches spodes-rs.
 - LLC constants: command=`E6 E6 00`, response=`E6 E7 00` (IEC 62056-47)
+
+---
+
+## 2026-07-15 — Security audit, reentrancy, portability, coverage, v2.0.0 release
+
+**Done:**
+- Full code audit: security, codec, transport, server, tests, documentation
+- P0 fixes: deterministic HLS challenge fallback removed, 65KB stack buffer → TLS, version conflict fixed
+- P1 fixes: `osp_memzero()` for key zeroization, `OSP_MAX_OBJECTS` 32→64, `ber_read_uint` overflow check, `osp_sec_rotate_keys` old key zeroization
+- P2 fixes: portable `OSP_U128_MUL`/`ADD3` macros in gost3410.c, rate limiting for `hls_pass4_verify`
+- Reentrancy: `OSP_TLS` macro (C11 `_Thread_local` / GCC `__thread` / bare-metal `static`), all mutable static buffers converted
+- Removed all `goto` statements from codebase
+- Coverage improved: 76.4% → 80.4% lines, 85.7% → 92.0% branches
+- 108 unit tests in test_core.c (was 33): selective access, SPODUS, initiate, general ciphering, script table, SAP assignment, status mapping
+- CI fixed: `build-cov` → `build-coverage` in coverage job
+- Documentation: HAL.md Thread Security, SECURITY.md TLS, README fixes
+- Version bumped to v2.0.0, tagged, pushed to master, GitHub Release created
+
+**State:** `master` @ `eb60b15`, tracking `origin/master`. CI: 4/4 jobs passing (build-test, coverage, sanitizers, docs). v2.0.0 tag on remote. All 17 CTest suites pass locally (108 tests in test_core).
+
+**Next:** Continue improving coverage for remaining <80% files: `serialize.c` (63%), `notification.c` (64%), `ic_serialize.c` (68%), `server.c` (69%), `client.c` (70%).
+
+**Notes:**
+- `openspodes_test` now links `mock_crypto.c` + `real_crypto.c` (OpenSSL) for GCM testing
+- `real_crypto.c` requires OpenSSL — conditional in CMakeLists.txt
+- Coverage script default: `build-coverage` (not `build-cov`)
+- Branch: `master` (not `main` — remote had both, `main` was deleted)
+- Tags: v1.0.0–v1.9.0 existed as dev bumps, v2.0.0 is the first "real" release since v1.4.0
