@@ -28,7 +28,7 @@ void yb_setup_loopback(mock_transport_pair_t *pair, osp_server_t *server) {
 
 void yb_setup_server(osp_server_t *server, mock_transport_pair_t *pair, uint32_t initial_value) {
 	osp_server_init(server, &pair->server_transport, OSP_FRAMING_NONE);
-	osp_ic_data_t data_obj;
+	static osp_ic_data_t data_obj;
 	osp_ic_data_init(&data_obj, YB_TEST_OBIS);
 	data_obj.value = osp_val_u32(initial_value);
 	osp_server_register(server, osp_ic_data_class(), &data_obj);

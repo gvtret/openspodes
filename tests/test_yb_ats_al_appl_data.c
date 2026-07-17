@@ -141,7 +141,7 @@ static void test_data_unassociated_request(void **state) {
 
 	/* Init but don't connect */
 	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
-	osp_ic_data_t data_obj;
+	static osp_ic_data_t data_obj;
 	osp_ic_data_init(&data_obj, (osp_obis_t){0, 0, 1, 0, 0, 255});
 	data_obj.value = osp_val_u32(42);
 	osp_server_register(&server, osp_ic_data_class(), &data_obj);
