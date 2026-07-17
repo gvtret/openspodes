@@ -462,7 +462,7 @@ See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for more.
 
 Yes. The library:
 - Passes ASAN + UBSan checks
-- Has 17 test suites with 300+ test functions
+- Has 28 test suites with 350+ test functions
 - Implements all HLS mechanisms 0-10
 - Has proper key zeroization (`osp_sec_context_destroy`)
 - Handles invocation counter overflow
@@ -517,7 +517,7 @@ src/client/      Session client
 src/server/      Dispatcher + accept loop
 src/ic/          42 interface classes
 src/spodus/      SPODUS concentrator runtime
-tests/           CMocka suites (16 CTest targets, 300+ test functions)
+tests/           CMocka suites (28 CTest targets, 350+ test functions)
 examples/        loopback, push listener, serial, TCP, Linux HAL demo
 docs/            Architecture, Security, HAL porting, Troubleshooting
 ```

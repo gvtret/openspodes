@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(openspodes VERSION 1.10.0 LANGUAGES C)
+project(openspodes VERSION 2.1.0 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -290,6 +290,8 @@ if(ENABLE_COVERAGE)
 		COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/coverage_report.py
 		WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
 		DEPENDS openspodes_test openspodes_test_golden openspodes_test_ic openspodes_test_errors openspodes_test_integration openspodes_test_phase0 openspodes_test_phase1 openspodes_test_spodus openspodes_test_gost openspodes_test_hdlc openspodes_test_framing openspodes_test_security
+		yb_test_hdlc_frame yb_test_hdlc_address yb_test_hdlc_ndm2nrm yb_test_hdlc_info yb_test_hdlc_ndmop
+		yb_test_appl_open yb_test_appl_data yb_test_appl_rel yb_test_appl_sec yb_test_cosem_objs yb_test_symsec_0
 		COMMENT "Run tests and print gcov coverage report"
 	)
 endif()
@@ -300,3 +302,37 @@ add_executable(openspodes_test_thread
 target_include_directories(openspodes_test_thread PRIVATE tests)
 target_link_libraries(openspodes_test_thread PRIVATE openspodes cmocka pthread)
 add_test(NAME openspodes_test_thread COMMAND openspodes_test_thread)
+
+# ── Yellow Book Conformance Tests ──────────────────────────────────────────
+set(YB_SOURCES tests/yb_helpers.c tests/mock_transport.c tests/mock_crypto.c)
+set(YB_INCLUDES ${cmocka_SOURCE_DIR}/include tests)
+
+# ATS_DL V5: Data Link Layer (5 targets)
+foreach(name hdlc_frame hdlc_address hdlc_ndm2nrm hdlc_info hdlc_ndmop)
+	add_executable(yb_test_${name} tests/test_yb_ats_dl_${name}.c tests/mock_transport.c tests/mock_crypto.c)
+	target_include_directories(yb_test_${name} PRIVATE ${YB_INCLUDES})
+	target_link_libraries(yb_test_${name} PRIVATE openspodes cmocka)
+	add_test(NAME yb_test_${name} COMMAND yb_test_${name})
+endforeach()
+
+# ATS_AL: Application Layer (6 targets, 5 need yb_helpers)
+foreach(name appl_open appl_data appl_rel appl_sec cosem_objs)
+	add_executable(yb_test_${name} tests/test_yb_ats_al_${name}.c ${YB_SOURCES})
+	target_include_directories(yb_test_${name} PRIVATE ${YB_INCLUDES})
+	target_link_libraries(yb_test_${name} PRIVATE openspodes cmocka)
+	add_test(NAME yb_test_${name} COMMAND yb_test_${name})
+endforeach()
+
+add_executable(yb_test_symsec_0 tests/test_yb_ats_al_symsec_0.c ${YB_SOURCES})
+target_include_directories(yb_test_symsec_0 PRIVATE ${YB_INCLUDES})
+target_link_libraries(yb_test_symsec_0 PRIVATE openspodes cmocka)
+add_test(NAME yb_test_symsec_0 COMMAND yb_test_symsec_0)
+
+# OpenSSL-dependent Yellow Book targets
+if(OpenSSL_FOUND)
+	foreach(name appl_open appl_rel appl_sec symsec_0)
+		target_sources(yb_test_${name} PRIVATE tests/real_crypto.c)
+		target_link_libraries(yb_test_${name} PRIVATE OpenSSL::Crypto)
+		target_compile_definitions(yb_test_${name} PRIVATE OSP_HAVE_OPENSSL_GCM=1)
+	endforeach()
+endif()

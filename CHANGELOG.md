@@ -4,6 +4,41 @@ All notable changes to this project are documented in this file.
 
 Format is based on [Keep a Changelog](https://keepachangelog.com/), project follows [Semantic Versioning](https://semver.org/).
 
+## [2.1.0] - 2026-07-17
+
+### Added (Yellow Book Conformance Tests)
+
+**ATS_DL V5 — Data Link Layer (HDLC):**
+- `test_yb_ats_dl_hdlc_frame.c` — 13 tests: RR/RNR/REJ/FRMR/UI/XID codec roundtrips, bit-stuffing, escape sequences, HCS/FCS verification, N(S)/N(R) ranges
+- `test_yb_ats_dl_hdlc_address.c` — 6 tests: 1–4 byte address encoding, broadcast, extension bit, multi-byte in full frames
+- `test_yb_ats_dl_hdlc_ndm2nrm.c` — 5 tests: SNRM/UA exchange, XID parameter negotiation, connect timeout, reconnect cycle
+- `test_yb_ats_dl_hdlc_info.c` — 8 tests: sequential I-frames, N(S)/N(R) mod-8 wrapping, windowed I-frames, RR/REJ handling, P/F bit
+- `test_yb_ats_dl_hdlc_ndmop.c` — 5 tests: DISC in NDM, XID in disconnected mode, FRMR (skipped), UI rejection
+
+**ATS_AL_COSEM_SYMSEC_0 V1.3 — Application Layer:**
+- `test_yb_ats_al_appl_open.c` — 6 tests: AARQ/AARE with lowest/HLS mechanisms, unknown mechanism rejection, reconnect, wrong key
+- `test_yb_ats_al_appl_data.c` — 6 tests: GET on non-existent OBIS/attr/method, SET on non-existent attr, with-list partial failure, unassociated request
+- `test_yb_ats_al_appl_rel.c` — 4 tests: normal RLRQ/RLRE, GET after release, immediate DISC, reconnect cycle
+- `test_yb_ats_al_appl_sec.c` — 4 tests: HLS GMAC handshake, wrong key (skipped), wrong system title, no shared secret
+- `test_yb_ats_al_cosem_objs.c` — 2 tests: Data IC read/write
+- `test_yb_ats_al_symsec_0.c` — 4 tests: GLO GET/SET with Suite 0, IC monotonic increment, IC overflow
+
+**Infrastructure:**
+- `tests/yb_helpers.c/h` — shared loopback setup boilerplate for all Yellow Book tests
+- CMakeLists.txt: 11 new CTest targets (`yb_test_*`), OpenSSL-dependent targets gated behind `OSP_HAVE_OPENSSL_GCM`
+
+**Notes:**
+- FRMR generation/handling tests skipped pending implementation in `hdlc_session.c`
+- RNR flow control test skipped pending implementation
+- HLS key-verification tests skipped with mock crypto (require real OpenSSL)
+
+## [2.0.1] - 2026-07-16
+
+### Fixed
+
+- Replaced C99 designated initializers with C11-compatible code for GCC 15 C++ compatibility (PR #1)
+- Updated HANDOFF.md for v2.0.0 session
+
 ## [1.0.0] - 2026-07-11
 
 ### Added
