@@ -21,6 +21,7 @@ typedef struct {
 	uint32_t msg_starts[64];
 	uint32_t msg_count;
 	uint32_t msg_index;
+	uint32_t delay_ms; /* artificial delay before returning data (for timeout tests) */
 } mock_buf_t;
 
 typedef struct {
@@ -48,5 +49,11 @@ void mock_buf_trace_dump(const mock_buf_t *buf, const char *label);
 
 /* Trace: dump all pending messages in the transport pair */
 void mock_transport_trace_dump(const mock_transport_pair_t *p);
+
+/* Delay: simulate real-time delays for timeout tests.
+ * Set delay_ms on a buffer; recv_from_peer will sleep before returning.
+ * Use mock_transport_set_recv_delay() to set delay on server_rx or client_rx. */
+void mock_buf_set_delay(mock_buf_t *buf, uint32_t delay_ms);
+void mock_transport_set_recv_delay(mock_transport_pair_t *p, bool server_rx_delay, uint32_t delay_ms);
 
 #endif

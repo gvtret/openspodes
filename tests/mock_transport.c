@@ -82,6 +82,15 @@ osp_err_t mock_send_to_peer(mock_buf_t *dst, const uint8_t *data, uint32_t len) 
 osp_err_t mock_recv_from_peer(mock_buf_t *src, uint8_t *buf, uint32_t size, uint32_t *out_len, uint32_t timeout_ms) {
 	(void)timeout_ms;
 	if (src->msg_index >= src->msg_count) {
+		/* If delay is set and no messages, sleep to simulate real timeout */
+		if (src->delay_ms > 0) {
+			/* Simple busy-wait for delay (not thread-safe, fine for tests) */
+			uint32_t start = 0;
+			for (volatile uint32_t i = 0; i < src->delay_ms * 1000; i++) {
+				start = i; /* prevent optimization */
+			}
+			(void)start;
+		}
 		return OSP_ERR_TIMEOUT;
 	}
 	uint32_t start = src->msg_starts[src->msg_index];
@@ -136,6 +145,23 @@ static osp_err_t mock_gbt_ack_pump(mock_transport_pair_t *p) {
 void mock_transport_enable_gbt_ack_pump(mock_transport_pair_t *p, bool enable) {
 	if (p) {
 		p->gbt_ack_pump = enable;
+	}
+}
+
+/* ── Delay for timeout tests ──────────────────────────────────────────── */
+
+void mock_buf_set_delay(mock_buf_t *buf, uint32_t delay_ms) {
+	if (buf) {
+		buf->delay_ms = delay_ms;
+	}
+}
+
+void mock_transport_set_recv_delay(mock_transport_pair_t *p, bool server_rx_delay, uint32_t delay_ms) {
+	if (!p) return;
+	if (server_rx_delay) {
+		mock_buf_set_delay(&p->server_rx, delay_ms);
+	} else {
+		mock_buf_set_delay(&p->client_rx, delay_ms);
 	}
 }
 
