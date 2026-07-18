@@ -15,7 +15,9 @@
 extern "C" {
 #endif
 
+#ifndef OSP_MAX_OBJECTS
 #define OSP_MAX_OBJECTS 64
+#endif
 
 typedef struct {
 	const osp_ic_class_t *class_def;
@@ -24,7 +26,7 @@ typedef struct {
 
 typedef struct {
 	osp_object_entry_t objects[OSP_MAX_OBJECTS];
-	uint8_t count;
+	uint16_t count;
 	osp_ic_association_ln_t *association;
 } osp_dispatcher_t;
 

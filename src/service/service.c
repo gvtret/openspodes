@@ -91,15 +91,13 @@ int osp_aarq_encode(osp_aarq_t *aarq, osp_buf_t *buf) {
 	osp_axdr_write_u8(buf, 7);    /* unused bits */
 	osp_axdr_write_u8(buf, 0x80); /* auth required */
 
-	/* [11] mechanism-name: IMPLICIT OID */
+	/* [11] mechanism-name: IMPLICIT OID (no universal 06 tag) */
 	osp_ber_write_tag(buf, 2, false, 11);
-	uint32_t mech_len_pos = buf->wr;
-	if (osp_buf_free(buf) < 1)
-		return -1;
-	buf->buf[buf->wr++] = 0x00; /* placeholder */
-	ber_write_oid(buf, OID_PREFIX_MECH, 6, aarq->mechanism);
-	if (ber_backpatch_length(buf, mech_len_pos) != 0)
-		return -1;
+	osp_ber_write_length(buf, sizeof(OID_PREFIX_MECH) + 1);
+	for (uint8_t i = 0; i < sizeof(OID_PREFIX_MECH); i++) {
+		osp_axdr_write_u8(buf, OID_PREFIX_MECH[i]);
+	}
+	osp_axdr_write_u8(buf, aarq->mechanism);
 
 	/* [6] calling-AP-title: EXPLICIT wraps OCTET STRING (system title)
 	 * Per Rust spodes-rs: 0xA6 <len> 04 <datalen> <data> */
@@ -198,9 +196,15 @@ int osp_aarq_decode(osp_buf_t *buf, osp_aarq_t *aarq) {
 				case 10: /* [10] sender-acse-requirements: skip */
 					break;
 
-				case 11: /* [11] mechanism-name: IMPLICIT OID */
-					if (ber_read_oid(buf, &aarq->mechanism) != 0)
+				case 11: /* [11] mechanism-name: IMPLICIT OID (no 06 tag prefix) */
+				{
+					/* IMPLICIT OID: field_len bytes of raw OID content */
+					if (field_len < 7)
 						return -1;
+					buf->rd += 6;
+					if (osp_axdr_read_u8(buf, &aarq->mechanism) != OSP_OK)
+						return -1;
+				}
 					break;
 
 				case 12: /* [12] calling-authentication-value: EXPLICIT wraps Authentication-value */
@@ -306,15 +310,13 @@ int osp_aare_encode(osp_aare_t *aare, osp_buf_t *buf) {
 	osp_axdr_write_u8(buf, 7);
 	osp_axdr_write_u8(buf, 0x80);
 
-	/* [9] mechanism-name: IMPLICIT OID */
+	/* [9] mechanism-name: IMPLICIT OID (no universal 06 tag) */
 	osp_ber_write_tag(buf, 2, false, 9);
-	uint32_t mech_len_pos = buf->wr;
-	if (osp_buf_free(buf) < 1)
-		return -1;
-	buf->buf[buf->wr++] = 0x00; /* placeholder */
-	ber_write_oid(buf, OID_PREFIX_MECH, 6, aare->mechanism);
-	if (ber_backpatch_length(buf, mech_len_pos) != 0)
-		return -1;
+	osp_ber_write_length(buf, sizeof(OID_PREFIX_MECH) + 1);
+	for (uint8_t i = 0; i < sizeof(OID_PREFIX_MECH); i++) {
+		osp_axdr_write_u8(buf, OID_PREFIX_MECH[i]);
+	}
+	osp_axdr_write_u8(buf, aare->mechanism);
 
 	/* [10] responding-authentication-value: EXPLICIT Authentication-value
 	 * Per Green Book: AA <len> 80 <datalen> <data> */
@@ -419,8 +421,15 @@ int osp_aare_decode(osp_buf_t *buf, osp_aare_t *aare) {
 				case 8: /* [8] responder-acse-requirements: skip */
 					break;
 
-				case 9: /* [9] mechanism-name: IMPLICIT OID */
-					ber_read_oid(buf, &aare->mechanism);
+				case 9: /* [9] mechanism-name: IMPLICIT OID (no 06 tag prefix) */
+				{
+					/* IMPLICIT OID: field_len bytes of raw OID content */
+					if (field_len < 7)
+						return -1;
+					buf->rd += 6;
+					if (osp_axdr_read_u8(buf, &aare->mechanism) != OSP_OK)
+						return -1;
+				}
 					break;
 
 				case 10: /* [10] responding-authentication-value: EXPLICIT wraps Authentication-value */

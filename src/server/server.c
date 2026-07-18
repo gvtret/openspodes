@@ -118,6 +118,15 @@ void osp_server_set_association(osp_server_t *s, osp_ic_association_ln_t *associ
 	}
 }
 
+uint8_t osp_server_get_client_sap(osp_server_t *s) {
+	if (!s || !s->hdlc_active)
+		return 0;
+	/* received_client_addr stores the actual client address from SNRM source.
+	 * For 1-byte HDLC addressing: value is directly the SAP (e.g. 0x10, 0x20, 0x30).
+	 * For 2-byte addressing: value = (logical << 7) | physical; we use the full value. */
+	return (uint8_t)osp_hdlc_address_value(&s->hdlc.received_client_addr);
+}
+
 /* ── Send response ───────────────────────────────────────────────────────── */
 
 static osp_err_t server_send(osp_server_t *s, const uint8_t *data, uint32_t len) {

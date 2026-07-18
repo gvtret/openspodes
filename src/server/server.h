@@ -155,6 +155,18 @@ void osp_server_set_hdlc_addresses(osp_server_t *s, uint32_t server_addr, uint8_
 void osp_server_set_association(osp_server_t *s, osp_ic_association_ln_t *association);
 
 /**
+ * @brief Get the actual client SAP after SNRM/UA exchange.
+ *
+ * Returns the client address value from the SNRM source field.
+ * For HDLC: 1-byte address (e.g. 0x10=public, 0x20=reader, 0x30=configurator).
+ * For WRAPPER: returns 0 (not applicable).
+ *
+ * @param s Server context (must have completed SNRM/UA via osp_server_accept).
+ * @return Client SAP value, or 0 if not available.
+ */
+uint8_t osp_server_get_client_sap(osp_server_t *s);
+
+/**
  * @brief Accept and process one incoming request (blocking).
  *
  * Dispatches based on current association state:

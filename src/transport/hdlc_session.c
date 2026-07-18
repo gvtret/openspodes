@@ -50,6 +50,10 @@ static uint16_t encode_xid_params(const osp_hdlc_xid_params_t *p, uint8_t *out) 
 	out[idx++] = 0x81;
 	out[idx++] = 0x80;
 
+	/* Group length placeholder — filled after parameters */
+	uint16_t group_len_pos = idx++;
+	out[group_len_pos] = 0; /* placeholder */
+
 	/* Parameter 5: max info field length tx (1 byte) */
 	out[idx++] = 0x05;
 	out[idx++] = 0x01;
@@ -76,15 +80,18 @@ static uint16_t encode_xid_params(const osp_hdlc_xid_params_t *p, uint8_t *out) 
 	out[idx++] = 0x00;
 	out[idx++] = (uint8_t)(p->window_rx & 0xFF);
 
+	/* Fill group length */
+	out[group_len_pos] = (uint8_t)(idx - group_len_pos - 1);
+
 	return idx;
 }
 
 static void decode_xid_params(const uint8_t *data, uint16_t len, osp_hdlc_xid_params_t *p) {
 	uint16_t idx = 0;
 
-	/* Skip format ID + group ID (81 80) */
-	if (len >= 2 && data[0] == 0x81 && data[1] == 0x80) {
-		idx = 2;
+	/* Skip format ID (81) + group ID (80) + group length */
+	if (len >= 3 && data[0] == 0x81 && data[1] == 0x80) {
+		idx = 3; /* skip 81 80 + group_length byte */
 	}
 
 	while (idx + 2 <= len) {
@@ -96,21 +103,25 @@ static void decode_xid_params(const uint8_t *data, uint16_t len, osp_hdlc_xid_pa
 			break;
 
 		switch (param_id) {
-			case 0x05: /* max info tx */
-				if (param_len >= 1)
+			case 0x05: /* max info tx — 1 or 2 bytes, big-endian */
+				if (param_len == 2)
+					p->max_info_tx = ((uint16_t)data[idx] << 8) | data[idx + 1];
+				else if (param_len >= 1)
 					p->max_info_tx = data[idx];
 				break;
-			case 0x06: /* max info rx */
-				if (param_len >= 1)
+			case 0x06: /* max info rx — 1 or 2 bytes, big-endian */
+				if (param_len == 2)
+					p->max_info_rx = ((uint16_t)data[idx] << 8) | data[idx + 1];
+				else if (param_len >= 1)
 					p->max_info_rx = data[idx];
 				break;
-			case 0x07: /* window tx */
+			case 0x07: /* window tx — 4 bytes */
 				if (param_len >= 4)
-					p->window_tx = data[idx + 3];
+					p->window_tx = ((uint32_t)data[idx] << 24) | ((uint32_t)data[idx + 1] << 16) | ((uint32_t)data[idx + 2] << 8) | data[idx + 3];
 				break;
-			case 0x08: /* window rx */
+			case 0x08: /* window rx — 4 bytes */
 				if (param_len >= 4)
-					p->window_rx = data[idx + 3];
+					p->window_rx = ((uint32_t)data[idx] << 24) | ((uint32_t)data[idx + 1] << 16) | ((uint32_t)data[idx + 2] << 8) | data[idx + 3];
 				break;
 		}
 
@@ -234,6 +245,11 @@ osp_err_t osp_hdlc_session_connect(osp_hdlc_session_t *s, uint32_t timeout_ms) {
 		if (snrm.control.type != OSP_HDLC_TYPE_SNRM) {
 			return OSP_ERR_INVALID;
 		}
+
+		/* Store actual client address from SNRM */
+		s->received_client_addr = snrm.source;
+		/* Update server address to match SNRM destination (for I-frame responses) */
+		s->server_addr = snrm.destination;
 
 		/* Decode client XID parameters */
 		if (snrm.info_len > 0) {
@@ -382,6 +398,29 @@ osp_err_t osp_hdlc_session_recv_apdu(osp_hdlc_session_t *s, uint8_t *buf, uint32
 		return r;
 
 	if (frame.control.type != OSP_HDLC_TYPE_I) {
+		/* Handle retransmitted SNRM — re-send UA */
+		if (frame.control.type == OSP_HDLC_TYPE_SNRM) {
+			osp_hdlc_frame_t ua;
+			memset(&ua, 0, sizeof(ua));
+			ua.destination = frame.source;
+			ua.source = frame.destination;
+			ua.control.type = OSP_HDLC_TYPE_UA;
+			ua.control.poll_final = true;
+			session_send_frame(s, &ua);
+			return OSP_ERR_TIMEOUT; /* Re-wait for APDU */
+		}
+		/* Handle DISC — send UA, then signal disconnect */
+		if (frame.control.type == OSP_HDLC_TYPE_DISC) {
+			osp_hdlc_frame_t ua;
+			memset(&ua, 0, sizeof(ua));
+			ua.destination = frame.source;
+			ua.source = frame.destination;
+			ua.control.type = OSP_HDLC_TYPE_UA;
+			ua.control.poll_final = true;
+			session_send_frame(s, &ua);
+			s->state = OSP_HDLC_STATE_IDLE;
+			return OSP_ERR_DISCONNECTED;
+		}
 		/* Handle S-frames (RR/RNR/REJ) */
 		if (frame.control.type == OSP_HDLC_TYPE_RR) {
 			/* Acknowledgment — clear retransmission buffer */
