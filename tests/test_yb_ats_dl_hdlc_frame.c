@@ -285,7 +285,7 @@ static void test_frame_hcs_fcs_correct(void **state) {
 	/* Frame structure for 1-byte addresses, no info:
 	 * [0] = 0x7E (flag)
 	 * [1] = 0xA0 (format byte 1)
-	 * [2] = flen_lo (format byte 2)
+	 * [2] = flen_lo (format byte 2) — includes format(2)+dest+src+ctrl+FCS
 	 * [3] = dest addr
 	 * [4] = src addr
 	 * [5] = control byte
@@ -294,9 +294,9 @@ static void test_frame_hcs_fcs_correct(void **state) {
 	assert_int_equal(encoded[0], OSP_HDLC_FLAG);
 	assert_int_equal(encoded[encoded_len - 1], OSP_HDLC_FLAG);
 
-	/* For 1-byte addresses, no info: flen = 1+1+1+2 = 5 */
+	/* For 1-byte addresses, no info: flen = 2(format)+1+1+1+2(FCS) = 7 */
 	assert_int_equal(encoded[1], 0xA0);
-	assert_int_equal(encoded[2], 0x05);
+	assert_int_equal(encoded[2], 0x07);
 
 	/* Verify FCS: CRC-16 over format + addr + ctrl (everything from [1] to [5]) */
 	uint16_t fcs = osp_hdlc_fcs16(encoded + 1, 5);
