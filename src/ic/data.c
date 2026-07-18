@@ -10,7 +10,7 @@
 #include "../codec/serialize.h"
 #include <string.h>
 
-/* Attribute: value (get/set) */
+/* Attribute: value (get/set) — attr_id=1 returns value per implementation convention */
 static osp_err_t data_get_attr(const void *inst, uint8_t attr_id, osp_value_t *result) {
 	const osp_ic_data_t *d = (const osp_ic_data_t *)inst;
 	if (attr_id != 1 || !result) {

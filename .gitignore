@@ -19,3 +19,4 @@ docs/api/
 files.zip
 build-bench/
 scripts/__pycache__/
+*.log

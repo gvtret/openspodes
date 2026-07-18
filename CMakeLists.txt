@@ -319,7 +319,18 @@ add_executable(openspodes_test_thread
 )
 target_include_directories(openspodes_test_thread PRIVATE tests)
 target_link_libraries(openspodes_test_thread PRIVATE openspodes cmocka pthread)
+target_compile_definitions(openspodes_test_thread PRIVATE ${YB_OSP_MAX_OBJECTS})
 add_test(NAME openspodes_test_thread COMMAND openspodes_test_thread)
+
+add_executable(openspodes_test_yellowbook_e2e
+    tests/test_yellowbook_e2e.c
+    tests/mock_transport.c
+    tests/mock_crypto.c
+)
+target_include_directories(openspodes_test_yellowbook_e2e PRIVATE ${cmocka_SOURCE_DIR}/include tests)
+target_link_libraries(openspodes_test_yellowbook_e2e PRIVATE openspodes cmocka)
+target_compile_definitions(openspodes_test_yellowbook_e2e PRIVATE ${YB_OSP_MAX_OBJECTS})
+add_test(NAME openspodes_test_yellowbook_e2e COMMAND openspodes_test_yellowbook_e2e)
 
 # ── Yellow Book Conformance Tests ──────────────────────────────────────────
 set(YB_SOURCES tests/yb_helpers.c tests/mock_transport.c tests/mock_crypto.c)
