@@ -344,6 +344,17 @@ target_link_libraries(openspodes_test_yellowbook_hdlc PRIVATE openspodes cmocka)
 target_compile_definitions(openspodes_test_yellowbook_hdlc PRIVATE ${YB_OSP_MAX_OBJECTS})
 add_test(NAME openspodes_test_yellowbook_hdlc COMMAND openspodes_test_yellowbook_hdlc)
 
+add_executable(openspodes_test_yellowbook_appl
+    tests/test_yellowbook_appl.c
+    tests/mock_transport.c
+    tests/mock_crypto.c
+    tests/yb_helpers.c
+)
+target_include_directories(openspodes_test_yellowbook_appl PRIVATE ${cmocka_SOURCE_DIR}/include tests)
+target_link_libraries(openspodes_test_yellowbook_appl PRIVATE openspodes cmocka)
+target_compile_definitions(openspodes_test_yellowbook_appl PRIVATE ${YB_OSP_MAX_OBJECTS})
+add_test(NAME openspodes_test_yellowbook_appl COMMAND openspodes_test_yellowbook_appl)
+
 # ── Yellow Book Conformance Tests ──────────────────────────────────────────
 set(YB_SOURCES tests/yb_helpers.c tests/mock_transport.c tests/mock_crypto.c)
 set(YB_INCLUDES ${cmocka_SOURCE_DIR}/include tests)
