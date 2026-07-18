@@ -43,4 +43,10 @@ osp_err_t mock_loopback_send(mock_transport_pair_t *pair, osp_server_t *server, 
 /* Auto-send GBT acks while server blocks waiting for client confirmation (loopback only) */
 void mock_transport_enable_gbt_ack_pump(mock_transport_pair_t *p, bool enable);
 
+/* Trace: dump raw hex of all queued messages in a buffer */
+void mock_buf_trace_dump(const mock_buf_t *buf, const char *label);
+
+/* Trace: dump all pending messages in the transport pair */
+void mock_transport_trace_dump(const mock_transport_pair_t *p);
+
 #endif

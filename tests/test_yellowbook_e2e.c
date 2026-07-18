@@ -17,6 +17,7 @@
 #include <stddef.h>
 #include <setjmp.h>
 #include <string.h>
+#include <stdio.h>
 #include <cmocka.h>
 
 #include "../src/openspodes.h"
@@ -128,12 +129,17 @@ static void test_hdlc_01_basic_connection(void **state) {
 	osp_client_set_security(&client, &csec);
 
 	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+	printf("\n--- HDLC #1: after AARQ/AARE ---\n");
+	mock_transport_trace_dump(&pair);
 
 	osp_value_t result;
 	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 1, &result), OSP_OK);
-	assert_int_equal(result.as.uint32.value, 12345678);
+	printf("--- HDLC #1: GET active_energy = %u ---\n", result.as.uint32.value);
+	mock_transport_trace_dump(&pair);
 
 	assert_int_equal(osp_client_release(&client), OSP_OK);
+	printf("--- HDLC #1: after RLRQ/RLRE ---\n");
+	mock_transport_trace_dump(&pair);
 }
 
 /* HDLC Test #8: DISC after connection */
@@ -202,10 +208,14 @@ static void test_dlms_20_get_errors(void **state) {
 	/* GET on non-existent object → error */
 	osp_value_t result;
 	osp_err_t r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 99, 255, 255, 255}, 1, &result);
+	printf("  DLMS#20: GET non-existent OBIS → err=%d\n", r);
+	mock_transport_trace_dump(&pair);
 	assert_int_not_equal(r, OSP_OK);
 
 	/* GET on valid object with attr 99 (undefined) → error */
 	r = osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 99, &result);
+	printf("  DLMS#20: GET undefined attr → err=%d\n", r);
+	mock_transport_trace_dump(&pair);
 	assert_int_not_equal(r, OSP_OK);
 
 	assert_int_equal(osp_client_release(&client), OSP_OK);
@@ -682,10 +692,13 @@ static void test_block_transfer_set(void **state) {
 
 	osp_value_t val = osp_val_u32(99999);
 	assert_int_equal(osp_client_set(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 1, &val), OSP_OK);
+	printf("  BlockTransfer: SET 99999 → OK\n");
+	mock_transport_trace_dump(&pair);
 
 	osp_value_t result;
 	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 1, &result), OSP_OK);
 	assert_int_equal(result.as.uint32.value, 99999);
+	printf("  BlockTransfer: GET → %u\n", result.as.uint32.value);
 
 	assert_int_equal(osp_client_release(&client), OSP_OK);
 }

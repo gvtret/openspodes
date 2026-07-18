@@ -3,6 +3,38 @@
 #include "../src/service/gbt.h"
 #include "../src/codec/codec.h"
 #include <string.h>
+#include <stdio.h>
+
+/* ── Trace dump ──────────────────────────────────────────────────────── */
+
+void mock_buf_trace_dump(const mock_buf_t *buf, const char *label) {
+	if (!buf || !label) return;
+	if (buf->msg_count == 0) {
+		printf("  [%s] (no messages)\n", label);
+		return;
+	}
+	for (uint32_t i = 0; i < buf->msg_count; i++) {
+		uint32_t start = buf->msg_starts[i];
+		uint32_t end = (i + 1 < buf->msg_count) ? buf->msg_starts[i + 1] : buf->len;
+		uint32_t msg_len = end - start;
+		if (msg_len == 0) continue;
+		printf("  [%s] msg %u (%u bytes): ", label, i, msg_len);
+		for (uint32_t j = 0; j < msg_len && j < 64; j++) {
+			printf("%02X", buf->data[start + j]);
+			if (j + 1 < msg_len && j + 1 < 64) printf("-");
+		}
+		if (msg_len > 64) printf("... (%u more)", msg_len - 64);
+		printf("\n");
+	}
+}
+
+void mock_transport_trace_dump(const mock_transport_pair_t *p) {
+	if (!p) return;
+	printf("=== Transport trace ===\n");
+	mock_buf_trace_dump(&p->server_rx, "TX(client->server)");
+	mock_buf_trace_dump(&p->client_rx, "RX(server->client)");
+	printf("=== End trace ===\n");
+}
 
 osp_err_t mock_loopback_send(mock_transport_pair_t *pair, osp_server_t *server, const uint8_t *data, uint32_t len) {
 	if (!pair) {
