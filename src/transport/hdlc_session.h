@@ -42,6 +42,7 @@ typedef struct {
 	/* Addresses */
 	osp_hdlc_address_t client_addr;
 	osp_hdlc_address_t server_addr;
+	osp_hdlc_address_t received_client_addr; /* Actual client addr from SNRM (server side) */
 	bool is_client; /* true = client side, false = server side */
 
 	/* State */

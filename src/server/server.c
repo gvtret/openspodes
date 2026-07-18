@@ -3,6 +3,7 @@
  */
 
 #include "server.h"
+#include <stdio.h>
 #include "../service/initiate.h"
 #include "../service/notification.h"
 #include "../service/gbt.h"
@@ -116,6 +117,15 @@ void osp_server_set_association(osp_server_t *s, osp_ic_association_ln_t *associ
 	if (s) {
 		osp_dispatcher_set_association(&s->dispatcher, association);
 	}
+}
+
+uint8_t osp_server_get_client_sap(osp_server_t *s) {
+	if (!s || !s->hdlc_active)
+		return 0;
+	/* received_client_addr stores the actual client address from SNRM source.
+	 * For 1-byte HDLC addressing: value is directly the SAP (e.g. 0x10, 0x20, 0x30).
+	 * For 2-byte addressing: value = (logical << 7) | physical; we use the full value. */
+	return (uint8_t)osp_hdlc_address_value(&s->hdlc.received_client_addr);
 }
 
 /* ── Send response ───────────────────────────────────────────────────────── */
@@ -790,10 +800,13 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 		osp_buf_init(&buf, s->rx_buf, rx_len);
 		buf.wr = rx_len; /* data already received */
 
-		if (osp_aarq_decode(&buf, &aarq) != 0) {
+		int aarq_result = osp_aarq_decode(&buf, &aarq);
+		if (aarq_result != 0) {
+			fprintf(stderr, "AARQ decode failed: %d, tag=0x%02X, len=%u\n", aarq_result, tag, rx_len);
 			return OSP_ERR_INVALID;
 		}
-		return handle_aarq(s, &aarq);
+		osp_err_t hresult = handle_aarq(s, &aarq);
+		return hresult;
 	}
 
 	if (tag == OSP_ACSE_RLRQ_TAG) {

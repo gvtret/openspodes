@@ -95,7 +95,7 @@ target_include_directories(openspodes PRIVATE src/security/streebog)
 
 # Hardening flags
 target_compile_options(openspodes PRIVATE -Wall -Wextra -Werror -fstack-protector-strong)
-target_compile_definitions(openspodes PRIVATE _FORTIFY_SOURCE=2)
+target_compile_definitions(openspodes PRIVATE _FORTIFY_SOURCE=2 OSP_MAX_OBJECTS=320)
 
 # Tests
 include(FetchContent)

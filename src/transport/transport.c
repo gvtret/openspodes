@@ -197,12 +197,14 @@ osp_err_t osp_hdlc_control_decode(uint8_t byte, osp_hdlc_control_t *ctrl) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static uint16_t make_frame_length(const osp_hdlc_frame_t *f) {
-	/* Length = dest_addr + src_addr + control + [HCS(2) + info] + FCS(2) */
+	/* СТО / IEC 62056-46: Length includes ALL fields except flags (0x7E).
+	 * That means: format(2) + dest + src + control + [HCS(2) + info] + FCS(2) */
 	uint16_t len = f->destination.length + f->source.length + 1;
 	if (f->info_len > 0) {
 		len += 2 + f->info_len; /* HCS + info */
 	}
 	len += 2; /* FCS */
+	len += 2; /* Frame format field (2 bytes) */
 	return len;
 }
 

@@ -9,6 +9,7 @@
 #include "../codec/codec.h"
 #include "../codec/serialize.h"
 #include <string.h>
+#include <stdio.h>
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  BER helpers for ACSE
@@ -91,15 +92,13 @@ int osp_aarq_encode(osp_aarq_t *aarq, osp_buf_t *buf) {
 	osp_axdr_write_u8(buf, 7);    /* unused bits */
 	osp_axdr_write_u8(buf, 0x80); /* auth required */
 
-	/* [11] mechanism-name: IMPLICIT OID */
+	/* [11] mechanism-name: IMPLICIT OID (no universal 06 tag) */
 	osp_ber_write_tag(buf, 2, false, 11);
-	uint32_t mech_len_pos = buf->wr;
-	if (osp_buf_free(buf) < 1)
-		return -1;
-	buf->buf[buf->wr++] = 0x00; /* placeholder */
-	ber_write_oid(buf, OID_PREFIX_MECH, 6, aarq->mechanism);
-	if (ber_backpatch_length(buf, mech_len_pos) != 0)
-		return -1;
+	osp_ber_write_length(buf, sizeof(OID_PREFIX_MECH) + 1);
+	for (uint8_t i = 0; i < sizeof(OID_PREFIX_MECH); i++) {
+		osp_axdr_write_u8(buf, OID_PREFIX_MECH[i]);
+	}
+	osp_axdr_write_u8(buf, aarq->mechanism);
 
 	/* [6] calling-AP-title: EXPLICIT wraps OCTET STRING (system title)
 	 * Per Rust spodes-rs: 0xA6 <len> 04 <datalen> <data> */
@@ -148,6 +147,7 @@ int osp_aarq_decode(osp_buf_t *buf, osp_aarq_t *aarq) {
 
 	osp_ber_tag_t tag;
 	if (osp_ber_read_tag(buf, &tag) != OSP_OK || tag.tag_number != 0 || !tag.tag_constructed) {
+		fprintf(stderr, "AARQ decode: bad outer tag number=%u constructed=%u pos=%u\n", tag.tag_number, tag.tag_constructed, buf->rd);
 		return -1;
 	}
 
@@ -175,8 +175,10 @@ int osp_aarq_decode(osp_buf_t *buf, osp_aarq_t *aarq) {
 					break;
 
 				case 1: /* [1] application-context-name: EXPLICIT wraps OID */
-					if (ber_read_oid(buf, &aarq->application_context) != 0)
+					if (ber_read_oid(buf, &aarq->application_context) != 0) {
+						fprintf(stderr, "AARQ: fail reading OID tag=%u pos=%u\n", ftag.tag_number, buf->rd);
 						return -1;
+					}
 					break;
 
 				case 6: /* [6] calling-AP-title: EXPLICIT wraps OCTET STRING */
@@ -198,9 +200,15 @@ int osp_aarq_decode(osp_buf_t *buf, osp_aarq_t *aarq) {
 				case 10: /* [10] sender-acse-requirements: skip */
 					break;
 
-				case 11: /* [11] mechanism-name: IMPLICIT OID */
-					if (ber_read_oid(buf, &aarq->mechanism) != 0)
+				case 11: /* [11] mechanism-name: IMPLICIT OID (no 06 tag prefix) */
+				{
+					/* IMPLICIT OID: field_len bytes of raw OID content */
+					if (field_len < 7)
 						return -1;
+					buf->rd += 6;
+					if (osp_axdr_read_u8(buf, &aarq->mechanism) != OSP_OK)
+						return -1;
+				}
 					break;
 
 				case 12: /* [12] calling-authentication-value: EXPLICIT wraps Authentication-value */
@@ -243,6 +251,7 @@ int osp_aarq_decode(osp_buf_t *buf, osp_aarq_t *aarq) {
 		/* Ensure we consume exactly field_len bytes */
 		uint32_t field_end = field_start + field_len;
 		if (field_end < field_start || field_end > buf->wr) {
+			fprintf(stderr, "AARQ decode: field overflow tag=%u field_len=%u\n", ftag.tag_number, field_len);
 			return -1; /* overflow or read past buffer */
 		}
 		if (buf->rd < field_end) {
@@ -306,15 +315,13 @@ int osp_aare_encode(osp_aare_t *aare, osp_buf_t *buf) {
 	osp_axdr_write_u8(buf, 7);
 	osp_axdr_write_u8(buf, 0x80);
 
-	/* [9] mechanism-name: IMPLICIT OID */
+	/* [9] mechanism-name: IMPLICIT OID (no universal 06 tag) */
 	osp_ber_write_tag(buf, 2, false, 9);
-	uint32_t mech_len_pos = buf->wr;
-	if (osp_buf_free(buf) < 1)
-		return -1;
-	buf->buf[buf->wr++] = 0x00; /* placeholder */
-	ber_write_oid(buf, OID_PREFIX_MECH, 6, aare->mechanism);
-	if (ber_backpatch_length(buf, mech_len_pos) != 0)
-		return -1;
+	osp_ber_write_length(buf, sizeof(OID_PREFIX_MECH) + 1);
+	for (uint8_t i = 0; i < sizeof(OID_PREFIX_MECH); i++) {
+		osp_axdr_write_u8(buf, OID_PREFIX_MECH[i]);
+	}
+	osp_axdr_write_u8(buf, aare->mechanism);
 
 	/* [10] responding-authentication-value: EXPLICIT Authentication-value
 	 * Per Green Book: AA <len> 80 <datalen> <data> */

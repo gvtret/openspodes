@@ -38,6 +38,7 @@ typedef enum {
 	OSP_ERR_TIMEOUT = -5,
 	OSP_ERR_SECURITY = -6,
 	OSP_ERR_NOT_FOUND = -7,
+	OSP_ERR_DISCONNECTED = -8,
 } osp_err_t;
 
 /* ── OBIS code ───────────────────────────────────────────────────────────── */
