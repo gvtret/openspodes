@@ -111,34 +111,43 @@ set(UNIT_TESTING OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(cmocka)
 
 enable_testing()
+# All tests must agree with the library on OSP_MAX_OBJECTS to avoid ABI mismatch
+set(YB_OSP_MAX_OBJECTS OSP_MAX_OBJECTS=320)
+
 add_executable(openspodes_test tests/test_core.c tests/mock_crypto.c)
 target_include_directories(openspodes_test PRIVATE ${cmocka_SOURCE_DIR}/include tests)
 target_link_libraries(openspodes_test PRIVATE openspodes cmocka)
+target_compile_definitions(openspodes_test PRIVATE ${YB_OSP_MAX_OBJECTS})
 add_test(NAME openspodes_test COMMAND openspodes_test)
 
 add_executable(openspodes_test_golden tests/test_codec_golden.c)
 target_include_directories(openspodes_test_golden PRIVATE ${cmocka_SOURCE_DIR}/include)
 target_link_libraries(openspodes_test_golden PRIVATE openspodes cmocka)
+target_compile_definitions(openspodes_test_golden PRIVATE ${YB_OSP_MAX_OBJECTS})
 add_test(NAME openspodes_test_golden COMMAND openspodes_test_golden)
 
 add_executable(openspodes_test_errors tests/test_errors.c tests/mock_transport.c tests/mock_crypto.c)
 target_include_directories(openspodes_test_errors PRIVATE ${cmocka_SOURCE_DIR}/include)
 target_link_libraries(openspodes_test_errors PRIVATE openspodes cmocka)
+target_compile_definitions(openspodes_test_errors PRIVATE ${YB_OSP_MAX_OBJECTS})
 add_test(NAME openspodes_test_errors COMMAND openspodes_test_errors)
 
 add_executable(openspodes_test_ic tests/test_ic_smoke.c)
 target_include_directories(openspodes_test_ic PRIVATE ${cmocka_SOURCE_DIR}/include)
 target_link_libraries(openspodes_test_ic PRIVATE openspodes cmocka)
+target_compile_definitions(openspodes_test_ic PRIVATE ${YB_OSP_MAX_OBJECTS})
 add_test(NAME openspodes_test_ic COMMAND openspodes_test_ic)
 
 add_executable(openspodes_test_integration tests/test_integration.c tests/mock_transport.c tests/mock_crypto.c)
 target_include_directories(openspodes_test_integration PRIVATE ${cmocka_SOURCE_DIR}/include)
 target_link_libraries(openspodes_test_integration PRIVATE openspodes cmocka)
+target_compile_definitions(openspodes_test_integration PRIVATE ${YB_OSP_MAX_OBJECTS})
 add_test(NAME openspodes_test_integration COMMAND openspodes_test_integration)
 
 add_executable(openspodes_test_phase0 tests/test_phase0.c)
 target_include_directories(openspodes_test_phase0 PRIVATE ${cmocka_SOURCE_DIR}/include)
 target_link_libraries(openspodes_test_phase0 PRIVATE openspodes cmocka)
+target_compile_definitions(openspodes_test_phase0 PRIVATE ${YB_OSP_MAX_OBJECTS})
 add_test(NAME openspodes_test_phase0 COMMAND openspodes_test_phase0)
 
 add_executable(gen_ic_golden_vectors tools/gen_ic_golden_vectors.c tests/fixtures/ic_spodes_fixtures.c)
@@ -148,31 +157,37 @@ target_link_libraries(gen_ic_golden_vectors PRIVATE openspodes)
 add_executable(openspodes_test_phase1 tests/test_phase1.c tests/fixtures/ic_spodes_fixtures.c)
 target_include_directories(openspodes_test_phase1 PRIVATE tests tests/fixtures ${cmocka_SOURCE_DIR}/include)
 target_link_libraries(openspodes_test_phase1 PRIVATE openspodes cmocka)
+target_compile_definitions(openspodes_test_phase1 PRIVATE ${YB_OSP_MAX_OBJECTS})
 add_test(NAME openspodes_test_phase1 COMMAND openspodes_test_phase1)
 
 add_executable(openspodes_test_phase2 tests/test_phase2.c tests/mock_transport.c)
 target_include_directories(openspodes_test_phase2 PRIVATE ${cmocka_SOURCE_DIR}/include)
 target_link_libraries(openspodes_test_phase2 PRIVATE openspodes cmocka)
+target_compile_definitions(openspodes_test_phase2 PRIVATE ${YB_OSP_MAX_OBJECTS})
 add_test(NAME openspodes_test_phase2 COMMAND openspodes_test_phase2)
 
 add_executable(openspodes_test_spodus tests/test_spodus_concentrator.c tests/mock_transport.c tests/mock_crypto.c)
 target_include_directories(openspodes_test_spodus PRIVATE ${cmocka_SOURCE_DIR}/include tests)
 target_link_libraries(openspodes_test_spodus PRIVATE openspodes cmocka)
+target_compile_definitions(openspodes_test_spodus PRIVATE ${YB_OSP_MAX_OBJECTS})
 add_test(NAME openspodes_test_spodus COMMAND openspodes_test_spodus)
 
 add_executable(openspodes_test_gost tests/test_gost_crypto.c)
 target_include_directories(openspodes_test_gost PRIVATE ${cmocka_SOURCE_DIR}/include tests)
 target_link_libraries(openspodes_test_gost PRIVATE openspodes cmocka)
+target_compile_definitions(openspodes_test_gost PRIVATE ${YB_OSP_MAX_OBJECTS})
 add_test(NAME openspodes_test_gost COMMAND openspodes_test_gost)
 
 add_executable(openspodes_test_hdlc tests/test_hdlc_session.c tests/mock_transport.c)
 target_include_directories(openspodes_test_hdlc PRIVATE ${cmocka_SOURCE_DIR}/include tests)
 target_link_libraries(openspodes_test_hdlc PRIVATE openspodes cmocka)
+target_compile_definitions(openspodes_test_hdlc PRIVATE ${YB_OSP_MAX_OBJECTS})
 add_test(NAME openspodes_test_hdlc COMMAND openspodes_test_hdlc)
 
 add_executable(openspodes_test_framing tests/test_hdlc_wrapper_framing.c tests/mock_transport.c tests/mock_crypto.c)
 target_include_directories(openspodes_test_framing PRIVATE ${cmocka_SOURCE_DIR}/include tests)
 target_link_libraries(openspodes_test_framing PRIVATE openspodes cmocka)
+target_compile_definitions(openspodes_test_framing PRIVATE ${YB_OSP_MAX_OBJECTS})
 add_test(NAME openspodes_test_framing COMMAND openspodes_test_framing)
 
 find_package(OpenSSL QUIET)
@@ -180,7 +195,7 @@ if(OpenSSL_FOUND)
 	add_executable(openspodes_test_security tests/test_security_glo.c tests/mock_crypto.c tests/real_crypto.c)
 	target_include_directories(openspodes_test_security PRIVATE ${cmocka_SOURCE_DIR}/include tests)
 	target_link_libraries(openspodes_test_security PRIVATE openspodes cmocka OpenSSL::Crypto)
-	target_compile_definitions(openspodes_test_security PRIVATE OSP_HAVE_OPENSSL_GCM=1)
+	target_compile_definitions(openspodes_test_security PRIVATE OSP_HAVE_OPENSSL_GCM=1 ${YB_OSP_MAX_OBJECTS})
 	add_test(NAME openspodes_test_security COMMAND openspodes_test_security)
 
 	target_sources(openspodes_test_integration PRIVATE tests/real_crypto.c)
@@ -205,6 +220,7 @@ add_executable(openspodes_loopback_cli
 )
 target_include_directories(openspodes_loopback_cli PRIVATE tests)
 target_link_libraries(openspodes_loopback_cli PRIVATE openspodes)
+target_compile_definitions(openspodes_loopback_cli PRIVATE ${YB_OSP_MAX_OBJECTS})
 add_test(NAME openspodes_loopback_cli_demo COMMAND openspodes_loopback_cli demo)
 
 add_executable(openspodes_push_listener
@@ -214,6 +230,7 @@ add_executable(openspodes_push_listener
 )
 target_include_directories(openspodes_push_listener PRIVATE tests)
 target_link_libraries(openspodes_push_listener PRIVATE openspodes)
+target_compile_definitions(openspodes_push_listener PRIVATE ${YB_OSP_MAX_OBJECTS})
 add_test(NAME openspodes_push_listener_demo COMMAND openspodes_push_listener)
 
 add_executable(openspodes_tcp_server
@@ -252,6 +269,7 @@ add_executable(openspodes_test_types
 )
 target_include_directories(openspodes_test_types PRIVATE tests)
 target_link_libraries(openspodes_test_types PRIVATE openspodes cmocka)
+target_compile_definitions(openspodes_test_types PRIVATE ${YB_OSP_MAX_OBJECTS})
 add_test(NAME openspodes_test_types COMMAND openspodes_test_types)
 
 add_executable(openspodes_serial_client

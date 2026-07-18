@@ -9,7 +9,6 @@
 #include "../codec/codec.h"
 #include "../codec/serialize.h"
 #include <string.h>
-#include <stdio.h>
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  BER helpers for ACSE
@@ -147,7 +146,6 @@ int osp_aarq_decode(osp_buf_t *buf, osp_aarq_t *aarq) {
 
 	osp_ber_tag_t tag;
 	if (osp_ber_read_tag(buf, &tag) != OSP_OK || tag.tag_number != 0 || !tag.tag_constructed) {
-		fprintf(stderr, "AARQ decode: bad outer tag number=%u constructed=%u pos=%u\n", tag.tag_number, tag.tag_constructed, buf->rd);
 		return -1;
 	}
 
@@ -175,10 +173,8 @@ int osp_aarq_decode(osp_buf_t *buf, osp_aarq_t *aarq) {
 					break;
 
 				case 1: /* [1] application-context-name: EXPLICIT wraps OID */
-					if (ber_read_oid(buf, &aarq->application_context) != 0) {
-						fprintf(stderr, "AARQ: fail reading OID tag=%u pos=%u\n", ftag.tag_number, buf->rd);
+					if (ber_read_oid(buf, &aarq->application_context) != 0)
 						return -1;
-					}
 					break;
 
 				case 6: /* [6] calling-AP-title: EXPLICIT wraps OCTET STRING */
@@ -251,7 +247,6 @@ int osp_aarq_decode(osp_buf_t *buf, osp_aarq_t *aarq) {
 		/* Ensure we consume exactly field_len bytes */
 		uint32_t field_end = field_start + field_len;
 		if (field_end < field_start || field_end > buf->wr) {
-			fprintf(stderr, "AARQ decode: field overflow tag=%u field_len=%u\n", ftag.tag_number, field_len);
 			return -1; /* overflow or read past buffer */
 		}
 		if (buf->rd < field_end) {
@@ -426,8 +421,15 @@ int osp_aare_decode(osp_buf_t *buf, osp_aare_t *aare) {
 				case 8: /* [8] responder-acse-requirements: skip */
 					break;
 
-				case 9: /* [9] mechanism-name: IMPLICIT OID */
-					ber_read_oid(buf, &aare->mechanism);
+				case 9: /* [9] mechanism-name: IMPLICIT OID (no 06 tag prefix) */
+				{
+					/* IMPLICIT OID: field_len bytes of raw OID content */
+					if (field_len < 7)
+						return -1;
+					buf->rd += 6;
+					if (osp_axdr_read_u8(buf, &aare->mechanism) != OSP_OK)
+						return -1;
+				}
 					break;
 
 				case 10: /* [10] responding-authentication-value: EXPLICIT wraps Authentication-value */

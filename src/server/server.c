@@ -3,7 +3,6 @@
  */
 
 #include "server.h"
-#include <stdio.h>
 #include "../service/initiate.h"
 #include "../service/notification.h"
 #include "../service/gbt.h"
@@ -800,13 +799,10 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 		osp_buf_init(&buf, s->rx_buf, rx_len);
 		buf.wr = rx_len; /* data already received */
 
-		int aarq_result = osp_aarq_decode(&buf, &aarq);
-		if (aarq_result != 0) {
-			fprintf(stderr, "AARQ decode failed: %d, tag=0x%02X, len=%u\n", aarq_result, tag, rx_len);
+		if (osp_aarq_decode(&buf, &aarq) != 0) {
 			return OSP_ERR_INVALID;
 		}
-		osp_err_t hresult = handle_aarq(s, &aarq);
-		return hresult;
+		return handle_aarq(s, &aarq);
 	}
 
 	if (tag == OSP_ACSE_RLRQ_TAG) {
