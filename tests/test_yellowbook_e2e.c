@@ -34,6 +34,7 @@
 #include "../src/codec/serialize.h"
 #include "mock_transport.h"
 #include "mock_crypto.h"
+#include "yb_helpers.h"
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  Loopback infrastructure
@@ -777,13 +778,14 @@ static void test_block_transfer_set(void **state) {
 	assert_int_equal(osp_client_release(&client), OSP_OK);
 }
 
+
 /* ═══════════════════════════════════════════════════════════════════════════
  *  Test suite
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 int main(void) {
 	const struct CMUnitTest tests[] = {
-		/* Group 1: HDLC Connection */
+		/* Group 1: HDLC Connection (FRAMING_NONE — APDU level) */
 		cmocka_unit_test(test_hdlc_01_basic_connection),
 		cmocka_unit_test(test_hdlc_08_disc_after_connect),
 		cmocka_unit_test(test_hdlc_10_disc_when_disconnected),
