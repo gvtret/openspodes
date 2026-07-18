@@ -330,6 +330,7 @@ foreach(name hdlc_frame hdlc_address hdlc_ndm2nrm hdlc_info hdlc_ndmop)
 	add_executable(yb_test_${name} tests/test_yb_ats_dl_${name}.c tests/mock_transport.c tests/mock_crypto.c)
 	target_include_directories(yb_test_${name} PRIVATE ${YB_INCLUDES})
 	target_link_libraries(yb_test_${name} PRIVATE openspodes cmocka)
+	target_compile_definitions(yb_test_${name} PRIVATE ${YB_OSP_MAX_OBJECTS})
 	add_test(NAME yb_test_${name} COMMAND yb_test_${name})
 endforeach()
 
@@ -338,12 +339,14 @@ foreach(name appl_open appl_data appl_rel appl_sec cosem_objs)
 	add_executable(yb_test_${name} tests/test_yb_ats_al_${name}.c ${YB_SOURCES})
 	target_include_directories(yb_test_${name} PRIVATE ${YB_INCLUDES})
 	target_link_libraries(yb_test_${name} PRIVATE openspodes cmocka)
+	target_compile_definitions(yb_test_${name} PRIVATE ${YB_OSP_MAX_OBJECTS})
 	add_test(NAME yb_test_${name} COMMAND yb_test_${name})
 endforeach()
 
 add_executable(yb_test_symsec_0 tests/test_yb_ats_al_symsec_0.c ${YB_SOURCES})
 target_include_directories(yb_test_symsec_0 PRIVATE ${YB_INCLUDES})
 target_link_libraries(yb_test_symsec_0 PRIVATE openspodes cmocka)
+target_compile_definitions(yb_test_symsec_0 PRIVATE ${YB_OSP_MAX_OBJECTS})
 add_test(NAME yb_test_symsec_0 COMMAND yb_test_symsec_0)
 
 # OpenSSL-dependent Yellow Book targets
