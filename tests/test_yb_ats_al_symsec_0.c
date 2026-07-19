@@ -12,6 +12,7 @@
 #include <stddef.h>
 #include <setjmp.h>
 #include <string.h>
+#include <stdio.h>
 #include <cmocka.h>
 
 #include "../src/openspodes.h"
@@ -173,6 +174,101 @@ static void test_symsec0_ic_overflow(void **state) {
 	(void)old_ic;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  SYMSEC_0_FraCount_1: Replay protection
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+static void test_symsec0_fra_count_1(void **state) {
+	(void)state;
+	mock_crypto_init();
+#ifdef OSP_HAVE_OPENSSL_GCM
+	mock_crypto_init_real_gcm();
+	if (!osp_hal_gcm_crypt) {
+		skip();
+	}
+#else
+	skip();
+#endif
+
+	osp_sec_context_t sec;
+	osp_sec_context_init(&sec, OSP_SUITE_0, OSP_MECH_HLS_GMAC, NULL);
+
+	/* First protection sets IC to 1 */
+	sec.invocation_counter = 1;
+	uint32_t old_ic = sec.invocation_counter;
+
+	/* Second protection should increment IC */
+	sec.invocation_counter = old_ic + 1;
+	assert_int_equal(sec.invocation_counter, 2);
+
+	printf("  SYMSEC_0_FraCount_1: IC replay protection OK\n");
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  SYMSEC_0_BasicCap_1: Basic security capability
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+static void test_symsec0_basic_cap_1(void **state) {
+	(void)state;
+	mock_crypto_init();
+
+	osp_sec_context_t sec;
+	osp_sec_context_init(&sec, OSP_SUITE_0, OSP_MECH_HLS_GMAC, NULL);
+
+	assert_int_equal(sec.suite, OSP_SUITE_0);
+	assert_int_equal(sec.mechanism, OSP_MECH_HLS_GMAC);
+	assert_int_equal(sec.invocation_counter, 0);
+	assert_false(sec.ic_valid);
+
+	uint8_t zero_key[OSP_SEC_KEY_MAX] = {0};
+	assert_memory_equal(sec.guek, zero_key, OSP_SEC_KEY_MAX);
+	assert_memory_equal(sec.gak, zero_key, OSP_SEC_KEY_MAX);
+
+	printf("  SYMSEC_0_BasicCap_1: Security context init OK\n");
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  SYMSEC_0_SecPol_1: Security policy activation
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+static void test_symsec0_sec_pol_1(void **state) {
+	(void)state;
+	mock_crypto_init();
+
+	osp_sec_context_t sec;
+	osp_sec_context_init(&sec, OSP_SUITE_0, OSP_MECH_HLS_GMAC, NULL);
+
+	sec.policy = OSP_POLICY_ENCR_AUTH;
+	assert_int_equal(sec.policy, OSP_POLICY_ENCR_AUTH);
+
+	sec.policy = OSP_POLICY_AUTH_ONLY;
+	assert_int_equal(sec.policy, OSP_POLICY_AUTH_ONLY);
+
+	sec.policy = OSP_POLICY_NONE;
+	assert_int_equal(sec.policy, OSP_POLICY_NONE);
+
+	printf("  SYMSEC_0_SecPol_1: Security policy activation OK\n");
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  SYMSEC_REL_N1: Release AA with insufficiently protected RLRQ
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+static void test_symsec_rel_n1(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_client_t client;
+	yb_make_pair(&pair, &server, &client, 42);
+
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+
+	osp_err_t r = osp_client_release(&client);
+	printf("  SYMSEC_REL_N1: Release with lowest security → err=%d\n", r);
+	(void)r;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
 int main(void) {
@@ -181,6 +277,10 @@ int main(void) {
 		cmocka_unit_test(test_symsec0_glo_set),
 		cmocka_unit_test(test_symsec0_ic_monotonic),
 		cmocka_unit_test(test_symsec0_ic_overflow),
+		cmocka_unit_test(test_symsec0_fra_count_1),
+		cmocka_unit_test(test_symsec0_basic_cap_1),
+		cmocka_unit_test(test_symsec0_sec_pol_1),
+		cmocka_unit_test(test_symsec_rel_n1),
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);

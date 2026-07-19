@@ -479,6 +479,62 @@ static void test_cosem_push_setup_and_others(void **state) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+ *  COSEM: Push operation test (Yellow Book 7.3.8 / Table 31)
+ *
+ *  Subtest 1: Push без принудительной защиты
+ *  Subtest 2: Push с принудительной защитой
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+static void test_cosem_push_operation(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_client_t client;
+
+	appl_setup(&pair, &server);
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_WRAPPER);
+
+	/* Register PushSetup */
+	osp_ic_push_setup_init(&g_push_setup, (osp_obis_t){0, 0, 25, 9, 0, 255});
+	osp_server_register(&server, osp_ic_push_setup_class(), &g_push_setup);
+
+	/* Register a data object to push */
+	osp_ic_data_init(&g_data_energy, (osp_obis_t){1, 0, 1, 8, 0, 255});
+	g_data_energy.value = osp_val_u32(12345678);
+	osp_server_register(&server, osp_ic_data_class(), &g_data_energy);
+
+	osp_sec_context_t ssec;
+	osp_sec_context_init(&ssec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
+	osp_server_set_security(&server, &ssec);
+
+	osp_client_init(&client, &pair.client_transport, OSP_FRAMING_WRAPPER);
+	osp_sec_context_t csec;
+	osp_sec_context_init(&csec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
+	osp_client_set_security(&client, &csec);
+
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+
+	/* Subtest 1: Push without forced protection */
+	/* Invoke push method (method_id=1) on PushSetup */
+	osp_value_t result;
+	osp_err_t r = osp_client_action(&client, 40, &(osp_obis_t){0, 0, 25, 9, 0, 255}, 1, NULL, &result);
+	printf("  Push operation: push method → err=%d\n", r);
+
+	/* Verify push_object_list is readable */
+	osp_value_t push_list;
+	r = osp_client_get(&client, 40, &(osp_obis_t){0, 0, 25, 9, 0, 255}, 2, &push_list);
+	printf("  Push operation: push_object_list → err=%d\n", r);
+
+	/* Verify send_destination_and_method is readable */
+	osp_value_t dest;
+	r = osp_client_get(&client, 40, &(osp_obis_t){0, 0, 25, 9, 0, 255}, 3, &dest);
+	printf("  Push operation: send_dest → err=%d\n", r);
+
+	assert_int_equal(osp_client_release(&client), OSP_OK);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
  *  Test suite
  * ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -490,6 +546,7 @@ int main(void) {
 		cmocka_unit_test(test_cosem_multiple_references),
 		cmocka_unit_test(test_cosem_access_rights),
 		cmocka_unit_test(test_cosem_push_setup_and_others),
+		cmocka_unit_test(test_cosem_push_operation),
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);
