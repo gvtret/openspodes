@@ -905,6 +905,11 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 		}
 
 		default:
+			/* Unknown APDU tag (e.g. SN-referencing ReadRequest/WriteRequest):
+			 * send ExceptionResponse per IEC 62056-6-2 §9.1.2 */
+			if (s->associated) {
+				return server_send_exception(s, OSP_EXC_STATE_SERVICE_NOT_ALLOWED, OSP_EXC_SVC_OPERATION_NOT_POSSIBLE);
+			}
 			return OSP_ERR_UNSUPPORTED;
 	}
 }

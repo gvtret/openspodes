@@ -379,9 +379,10 @@ static void test_loopback_send_propagates_server_error(void **state) {
 	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_NONE);
 	server.associated = true;
 
+	/* Unknown tag 0xD0 when associated: server sends ExceptionResponse */
 	const uint8_t bad_svc[] = {0xD0, 0x01, 0x41};
-	assert_int_equal(mock_loopback_send(&pair, &server, bad_svc, sizeof(bad_svc)), OSP_ERR_UNSUPPORTED);
-	assert_int_equal(pair.client_rx.len, 0);
+	assert_int_equal(mock_loopback_send(&pair, &server, bad_svc, sizeof(bad_svc)), OSP_OK);
+	assert_int_not_equal(pair.client_rx.len, 0);
 }
 
 static void test_transport_hdlc_framing(void **state) {
@@ -950,10 +951,10 @@ static void test_server_invalid_and_unsupported(void **state) {
 	/* Associate first */
 	server.associated = true;
 
-	/* Unsupported service tag */
+	/* Unsupported service tag — server sends ExceptionResponse */
 	const uint8_t bad_svc[] = {0xD0, 0x01, 0x41};
 	mock_send_to_peer(&pair.server_rx, bad_svc, sizeof(bad_svc));
-	assert_int_equal(osp_server_accept(&server, 5000), OSP_ERR_UNSUPPORTED);
+	assert_int_equal(osp_server_accept(&server, 5000), OSP_OK);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

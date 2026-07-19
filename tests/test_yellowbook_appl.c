@@ -416,6 +416,168 @@ static void test_appl_data_ln_n4(void **state) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+ *  APPL_DATA_SN: SN-referencing data service tests (Tables 26-28)
+ *
+ *  Verify IUT rejects SN-referencing ReadRequest (0x01) /
+ *  WriteRequest (0x02) / ActionRequest (0x03) with ExceptionResponse.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Send raw SN APDU to the server (no framing) and trigger osp_server_accept */
+static void sn_send_apdu(mock_transport_pair_t *pair, osp_server_t *server,
+			 const uint8_t *apdu, uint32_t apdu_len) {
+	mock_send_to_peer(&pair->server_rx, apdu, apdu_len);
+	osp_server_accept(server, 0);
+}
+
+/* APPL_DATA_SN_N1: ReadRequest with errors (Table 26) */
+static void test_appl_data_sn_n1(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_client_t client;
+	appl_make_pair(&pair, &server, &client, 42);
+
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+
+	/* After connect, switch server to FRAMING_NONE for raw SN APDU injection.
+	 * The server has already processed AARQ/AARE, so WRAPPER framing is no
+	 * longer needed for manual SN APDU tests. */
+	server.framing = OSP_FRAMING_NONE;
+
+	uint8_t resp[32];
+	uint32_t resp_len = 0;
+
+	/* Subtest 1: ReadRequest with unknown VariableAccessSpecification tag. */
+	{
+		uint8_t apdu[] = {0x01, 0x41, 0x09, 0x02, 0x00};
+		sn_send_apdu(&pair, &server, apdu, sizeof(apdu));
+		resp_len = 0;
+		osp_err_t rr = mock_recv_from_peer(&pair.client_rx, resp, sizeof(resp), &resp_len, 0);
+		printf("  APPL_DATA_SN_N1 Subtest 1: recv err=%d resp_len=%u resp[0]=0x%02x\n",
+		       rr, resp_len, resp_len > 0 ? resp[0] : 0);
+		assert_int_equal(rr, OSP_OK);
+		assert_int_equal(resp[0], OSP_TAG_EXCEPTION_RESPONSE);
+		printf("  APPL_DATA_SN_N1 Subtest 1: ExceptionResponse for unknown VAR_ACCESS tag OK\n");
+	}
+
+	/* Subtest 2: ReadRequest with missing elements (truncated). */
+	{
+		uint8_t apdu[] = {0x01, 0x42};
+		sn_send_apdu(&pair, &server, apdu, sizeof(apdu));
+		printf("  APPL_DATA_SN_N1 Subtest 2: Handled truncated SN ReadRequest\n");
+	}
+
+	/* Subtest 3: ReadRequest for non-existing variable-name (SN=0xFA01). */
+	{
+		uint8_t apdu[] = {0x01, 0x43, 0x02, 0x00, 0xFA, 0x01};
+		sn_send_apdu(&pair, &server, apdu, sizeof(apdu));
+		resp_len = 0;
+		assert_int_equal(mock_recv_from_peer(&pair.client_rx, resp, sizeof(resp), &resp_len, 0), OSP_OK);
+		assert_int_equal(resp[0], OSP_TAG_EXCEPTION_RESPONSE);
+		printf("  APPL_DATA_SN_N1 Subtest 3: ExceptionResponse for SN=0xFA01 OK\n");
+	}
+
+	/* Release without assert — client framing is WRAPPER but server is NONE */
+	osp_client_release(&client);
+}
+
+/* APPL_DATA_SN_N2: WriteRequest with errors (Table 27) */
+static void test_appl_data_sn_n2(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_client_t client;
+	appl_make_pair(&pair, &server, &client, 42);
+
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+	server.framing = OSP_FRAMING_NONE;
+
+	uint8_t resp[32];
+	uint32_t resp_len = 0;
+
+	/* Subtest 1: WriteRequest with unknown VariableAccessSpecification tag. */
+	{
+		uint8_t apdu[] = {0x02, 0x41, 0x09, 0x02, 0x00};
+		sn_send_apdu(&pair, &server, apdu, sizeof(apdu));
+		resp_len = 0;
+		assert_int_equal(mock_recv_from_peer(&pair.client_rx, resp, sizeof(resp), &resp_len, 0), OSP_OK);
+		assert_int_equal(resp[0], OSP_TAG_EXCEPTION_RESPONSE);
+		printf("  APPL_DATA_SN_N2 Subtest 1: ExceptionResponse for unknown VAR_ACCESS tag OK\n");
+	}
+
+	/* Subtest 2: WriteRequest with missing elements (truncated). */
+	{
+		uint8_t apdu[] = {0x02, 0x42};
+		sn_send_apdu(&pair, &server, apdu, sizeof(apdu));
+		printf("  APPL_DATA_SN_N2 Subtest 2: Truncated SN WriteRequest handled\n");
+	}
+
+	/* Subtest 3: WriteRequest for non-existing variable-name (SN=0xFA01). */
+	{
+		uint8_t apdu[] = {0x02, 0x43, 0x02, 0x00, 0xFA, 0x01, 0x0F, 0x00, 0x00, 0x00};
+		sn_send_apdu(&pair, &server, apdu, sizeof(apdu));
+		resp_len = 0;
+		assert_int_equal(mock_recv_from_peer(&pair.client_rx, resp, sizeof(resp), &resp_len, 0), OSP_OK);
+		assert_int_equal(resp[0], OSP_TAG_EXCEPTION_RESPONSE);
+		printf("  APPL_DATA_SN_N2 Subtest 3: ExceptionResponse for SN=0xFA01 OK\n");
+	}
+
+	/* Release without assert — client framing is WRAPPER but server is NONE */
+	osp_client_release(&client);
+}
+
+/* APPL_DATA_SN_N3: Unsupported SN service (Table 28) */
+static void test_appl_data_sn_n3(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_client_t client;
+	appl_make_pair(&pair, &server, &client, 42);
+
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+	server.framing = OSP_FRAMING_NONE;
+
+	uint8_t resp[32];
+	uint32_t resp_len = 0;
+
+	/* Subtest 1: ReadRequest (SN 0x01) — not supported. */
+	{
+		uint8_t apdu[] = {0x01, 0x41, 0x02, 0x00, 0x00, 0x01};
+		sn_send_apdu(&pair, &server, apdu, sizeof(apdu));
+		resp_len = 0;
+		assert_int_equal(mock_recv_from_peer(&pair.client_rx, resp, sizeof(resp), &resp_len, 0), OSP_OK);
+		assert_int_equal(resp[0], OSP_TAG_EXCEPTION_RESPONSE);
+		printf("  APPL_DATA_SN_N3 Subtest 1: ReadRequest SN → ExceptionResponse OK\n");
+	}
+
+	/* Subtest 2: WriteRequest (SN 0x02) — not supported. */
+	{
+		uint8_t apdu[] = {0x02, 0x42, 0x02, 0x00, 0x00, 0x01, 0x0F, 0x00};
+		sn_send_apdu(&pair, &server, apdu, sizeof(apdu));
+		resp_len = 0;
+		assert_int_equal(mock_recv_from_peer(&pair.client_rx, resp, sizeof(resp), &resp_len, 0), OSP_OK);
+		assert_int_equal(resp[0], OSP_TAG_EXCEPTION_RESPONSE);
+		printf("  APPL_DATA_SN_N3 Subtest 2: WriteRequest SN → ExceptionResponse OK\n");
+	}
+
+	/* Subtest 3: ActionRequest via SN (0x03) — not supported. */
+	{
+		uint8_t apdu[] = {0x03, 0x43, 0x02, 0x00, 0x00, 0x01, 0x00};
+		sn_send_apdu(&pair, &server, apdu, sizeof(apdu));
+		resp_len = 0;
+		assert_int_equal(mock_recv_from_peer(&pair.client_rx, resp, sizeof(resp), &resp_len, 0), OSP_OK);
+		assert_int_equal(resp[0], OSP_TAG_EXCEPTION_RESPONSE);
+		printf("  APPL_DATA_SN_N3 Subtest 3: ActionRequest SN → ExceptionResponse OK\n");
+	}
+
+	/* Release without assert — client framing is WRAPPER but server is NONE */
+	osp_client_release(&client);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
  *  APPL_REL: Association release
  * ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -473,6 +635,9 @@ int main(void) {
 		cmocka_unit_test(test_appl_data_ln_n1),
 		cmocka_unit_test(test_appl_data_ln_n3),
 		cmocka_unit_test(test_appl_data_ln_n4),
+		cmocka_unit_test(test_appl_data_sn_n1),
+		cmocka_unit_test(test_appl_data_sn_n2),
+		cmocka_unit_test(test_appl_data_sn_n3),
 
 		/* APPL_REL */
 		cmocka_unit_test(test_appl_rel_p1),
