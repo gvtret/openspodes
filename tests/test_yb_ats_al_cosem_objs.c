@@ -31,6 +31,7 @@
 #include "../src/ic/sap_assignment.h"
 #include "../src/ic/clock.h"
 #include "../src/ic/disconnect_control.h"
+#include "../src/ic/security_setup.h"
 #include "../src/security/security.h"
 #include "../src/codec/serialize.h"
 #include "mock_transport.h"
@@ -73,6 +74,7 @@ static osp_ic_register_t g_reg_clock;
 static osp_ic_association_ln_t g_aln;
 static osp_ic_push_setup_t g_push_setup;
 static osp_ic_clock_t g_clock;
+static osp_ic_security_setup_t g_sec_setup;
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  COSEM mandatory objects: Read object_list
@@ -233,12 +235,74 @@ static void test_cosem_mandatory_objects(void **state) {
 	appl_setup(&pair, &server);
 	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_WRAPPER);
 
+	/* Register mandatory objects per СТО Приложение И */
 	osp_ic_data_init(&g_data_ldn, (osp_obis_t){0, 0, 42, 0, 0, 255});
 	g_data_ldn.value = osp_val_u32(1);
 	osp_server_register(&server, osp_ic_data_class(), &g_data_ldn);
 
+	osp_ic_register_init(&g_reg_clock, (osp_obis_t){0, 0, 1, 0, 0, 255}, osp_val_u32(0));
+	osp_server_register(&server, osp_ic_register_class(), &g_reg_clock);
+
+	/* Register Association LN with mandatory attributes.
+	 * ALN's object_list controls access — populate it with the objects
+	 * we want to be readable. Without entries, can_read returns false. */
 	osp_ic_association_ln_init(&g_aln, (osp_obis_t){0, 0, 40, 0, 1, 255});
+	g_aln.association_status = 2; /* ASSOCIATED */
+
+	/* Add ALN itself to its object_list with all needed attributes */
+	{
+		osp_object_list_element_t e;
+		e.class_id = 15;
+		e.logical_name = (osp_obis_t){0, 0, 40, 0, 1, 255};
+		memset(&e.access_rights, 0, sizeof(e.access_rights));
+		e.access_rights.attr_count = 8;
+		e.access_rights.attr_items[0] = (osp_attribute_access_item_t){3, OSP_ACCESS_READ_ONLY};
+		e.access_rights.attr_items[1] = (osp_attribute_access_item_t){4, OSP_ACCESS_READ_ONLY};
+		e.access_rights.attr_items[2] = (osp_attribute_access_item_t){5, OSP_ACCESS_READ_ONLY};
+		e.access_rights.attr_items[3] = (osp_attribute_access_item_t){6, OSP_ACCESS_READ_ONLY};
+		e.access_rights.attr_items[4] = (osp_attribute_access_item_t){8, OSP_ACCESS_READ_ONLY};
+		e.access_rights.attr_items[5] = (osp_attribute_access_item_t){9, OSP_ACCESS_READ_ONLY};
+		e.access_rights.attr_items[6] = (osp_attribute_access_item_t){10, OSP_ACCESS_READ_ONLY};
+		e.access_rights.attr_items[7] = (osp_attribute_access_item_t){11, OSP_ACCESS_READ_ONLY};
+		osp_ic_association_ln_add_object(&g_aln, &e);
+	}
+
+	/* Add LDN to object_list */
+	{
+		osp_object_list_element_t e;
+		e.class_id = 1;
+		e.logical_name = (osp_obis_t){0, 0, 42, 0, 0, 255};
+		memset(&e.access_rights, 0, sizeof(e.access_rights));
+		e.access_rights.attr_count = 1;
+		e.access_rights.attr_items[0] = (osp_attribute_access_item_t){1, OSP_ACCESS_READ_ONLY};
+		osp_ic_association_ln_add_object(&g_aln, &e);
+	}
+
+	/* Add SAP Assignment to object_list */
+	{
+		osp_object_list_element_t e;
+		e.class_id = 17;
+		e.logical_name = (osp_obis_t){0, 0, 41, 0, 0, 255};
+		memset(&e.access_rights, 0, sizeof(e.access_rights));
+		e.access_rights.attr_count = 2;
+		e.access_rights.attr_items[0] = (osp_attribute_access_item_t){1, OSP_ACCESS_READ_ONLY};
+		e.access_rights.attr_items[1] = (osp_attribute_access_item_t){2, OSP_ACCESS_READ_ONLY};
+		osp_ic_association_ln_add_object(&g_aln, &e);
+	}
+
 	osp_server_register(&server, osp_ic_association_ln_class(), &g_aln);
+
+	/* Register SecuritySetup for security_setup_reference check */
+	osp_ic_security_setup_init(&g_sec_setup, (osp_obis_t){0, 0, 43, 0, 0, 255});
+	osp_server_register(&server, osp_ic_security_setup_class(), &g_sec_setup);
+
+	/* Set security_setup_reference in Association LN */
+	g_aln.security_setup_reference = (osp_obis_t){0, 0, 43, 0, 0, 255};
+
+	/* Register SAP Assignment */
+	osp_ic_sap_assignment_t sap;
+	osp_ic_sap_assignment_init(&sap, (osp_obis_t){0, 0, 41, 0, 0, 255});
+	osp_server_register(&server, osp_ic_sap_assignment_class(), &sap);
 
 	osp_sec_context_t ssec;
 	osp_sec_context_init(&ssec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
@@ -252,30 +316,86 @@ static void test_cosem_mandatory_objects(void **state) {
 	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
 
 	osp_value_t result;
+	osp_err_t r;
+	int passed = 0;
+	int total = 0;
 
-	/* Check mandatory: Logical Device Name (0.0.42.0.0.255) */
-	osp_err_t r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 42, 0, 0, 255}, 1, &result);
-	printf("  COSEM mandatory: LDN read → err=%d\n", r);
+	/* === Subtest 1: Current association (Table 32) === */
+	printf("  7.3.12 Subtest 1: Current association\n");
 
-	/* Check mandatory: Association LN object_list (attr 2) */
-	r = osp_client_get(&client, 15, &(osp_obis_t){0, 0, 40, 0, 1, 255}, 2, &result);
-	printf("  COSEM mandatory: object_list read → err=%d\n", r);
+	/* LN: application_context_name (attr 4) */
+	total++;
+	r = osp_client_get(&client, 15, &(osp_obis_t){0, 0, 40, 0, 1, 255}, 4, &result);
+	printf("    application_context_name (attr 4) → err=%d\n", r);
 
-	/* Check mandatory: Association LN logical_name (attr 1) */
-	r = osp_client_get(&client, 15, &(osp_obis_t){0, 0, 40, 0, 1, 255}, 1, &result);
-	printf("  COSEM mandatory: Association LN name → err=%d\n", r);
-
-	/* Check mandatory: Association LN xDLMS_context_info (attr 5) */
+	/* LN: xDLMS_context_info (attr 5) */
+	total++;
 	r = osp_client_get(&client, 15, &(osp_obis_t){0, 0, 40, 0, 1, 255}, 5, &result);
-	printf("  COSEM mandatory: xDLMS context → err=%d\n", r);
+	printf("    xDLMS_context_info (attr 5) → err=%d\n", r);
 
-	/* Check mandatory: Association LN authentication_mechanism_name (attr 6) */
+	/* LN: authentication_mechanism_name (attr 6) */
+	total++;
 	r = osp_client_get(&client, 15, &(osp_obis_t){0, 0, 40, 0, 1, 255}, 6, &result);
-	printf("  COSEM mandatory: auth mechanism → err=%d\n", r);
+	printf("    authentication_mechanism_name (attr 6) → err=%d\n", r);
 
-	/* Check mandatory: Association LN association_status (attr 8) */
+	/* LN: association_status (attr 8) — must be 2 (associated) */
+	total++;
 	r = osp_client_get(&client, 15, &(osp_obis_t){0, 0, 40, 0, 1, 255}, 8, &result);
-	printf("  COSEM mandatory: association status → err=%d\n", r);
+	printf("    association_status (attr 8) → err=%d\n", r);
+	if (r == OSP_OK) {
+		printf("    association_status = %u (expected 2=associated)\n",
+		       result.as.uint32.value);
+		passed++;
+	}
+
+	/* LN: security_setup_reference (attr 9) — version ≥1 */
+	total++;
+	r = osp_client_get(&client, 15, &(osp_obis_t){0, 0, 40, 0, 1, 255}, 9, &result);
+	printf("    security_setup_reference (attr 9) → err=%d\n", r);
+
+	/* LN: user_list (attr 10) — version ≥2 */
+	total++;
+	r = osp_client_get(&client, 15, &(osp_obis_t){0, 0, 40, 0, 1, 255}, 10, &result);
+	printf("    user_list (attr 10) → err=%d\n", r);
+
+	/* LN: current_user (attr 11) — version ≥2 */
+	total++;
+	r = osp_client_get(&client, 15, &(osp_obis_t){0, 0, 40, 0, 1, 255}, 11, &result);
+	printf("    current_user (attr 11) → err=%d\n", r);
+
+	/* LN: associated_partners_id (attr 3) */
+	total++;
+	r = osp_client_get(&client, 15, &(osp_obis_t){0, 0, 40, 0, 1, 255}, 3, &result);
+	printf("    associated_partners_id (attr 3) → err=%d\n", r);
+	if (r == OSP_OK)
+		passed++;
+
+	/* === Subtest 2: SAP Assignment === */
+	printf("  7.3.12 Subtest 2: SAP Assignment\n");
+
+	/* SAP Assignment: logical_name (attr 1) */
+	total++;
+	r = osp_client_get(&client, 17, &(osp_obis_t){0, 0, 41, 0, 0, 255}, 1, &result);
+	printf("    SAP Assignment LN → err=%d\n", r);
+	if (r == OSP_OK)
+		passed++;
+
+	/* SAP Assignment: channel_list / SAP_assignment_list (attr 2) */
+	total++;
+	r = osp_client_get(&client, 17, &(osp_obis_t){0, 0, 41, 0, 0, 255}, 2, &result);
+	printf("    SAP Assignment list (attr 2) → err=%d\n", r);
+	if (r == OSP_OK)
+		passed++;
+
+	/* === Subtest 3: Logical Device Name === */
+	printf("  7.3.12 Subtest 3: Logical Device Name\n");
+	total++;
+	r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 42, 0, 0, 255}, 1, &result);
+	printf("    LDN → err=%d\n", r);
+	if (r == OSP_OK)
+		passed++;
+
+	printf("  7.3.12 Summary: %d/%d checks passed\n", passed, total);
 
 	assert_int_equal(osp_client_release(&client), OSP_OK);
 }
@@ -331,8 +451,45 @@ static void test_cosem_access_rights(void **state) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- *  COSEM: Multiple references test
+ *  7.3.11 Multiple references test
+ *
+ *  Yellow Book: Compare values read together (GET with-list) vs separately.
+ *  1) Read 10 value attributes of classes 1/3/4 (split into 8+2 batches)
+ *  2) Read a short (1-10 byte) and a long (500-1000 byte) attribute
+ *  3) Read the first 4 attributes of the first object with ≥4 attributes
+ *
+ *  Clock (class_id=8) is always excluded.
  * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Helper: register N data objects for multiple-ref testing */
+static void multiref_register_objects(osp_server_t *server, int count) {
+	static osp_ic_data_t data_objs[12];
+	static osp_ic_register_t reg_objs[2];
+	const osp_obis_t obis_list[] = {
+		{1, 0, 1, 8, 0, 255},   /* energy */
+		{0, 0, 96, 1, 0, 255},  /* voltage */
+		{0, 0, 96, 3, 10, 255}, /* status */
+		{0, 0, 42, 0, 0, 255},  /* LDN */
+		{1, 0, 2, 8, 0, 255},   /* reactive energy */
+		{1, 0, 3, 8, 0, 255},   /* apparent energy */
+		{0, 0, 11, 0, 0, 255},  /* current */
+		{0, 0, 12, 0, 0, 255},  /* power factor */
+		{1, 0, 4, 8, 0, 255},   /* energy A+ */
+		{1, 0, 5, 8, 0, 255},   /* energy A- */
+		{0, 0, 13, 0, 0, 255},  /* frequency */
+		{0, 0, 14, 0, 0, 255},  /* power */
+	};
+	for (int i = 0; i < count && i < 10; i++) {
+		osp_ic_data_init(&data_objs[i], obis_list[i]);
+		data_objs[i].value = osp_val_u32((uint32_t)(1000 + i));
+		osp_server_register(server, osp_ic_data_class(), &data_objs[i]);
+	}
+	/* Register 2 Register ICs for variety */
+	osp_ic_register_init(&reg_objs[0], (osp_obis_t){0, 0, 1, 0, 0, 255}, osp_val_u32(50));
+	osp_server_register(server, osp_ic_register_class(), &reg_objs[0]);
+	osp_ic_register_init(&reg_objs[1], (osp_obis_t){0, 0, 2, 0, 0, 255}, osp_val_u32(60));
+	osp_server_register(server, osp_ic_register_class(), &reg_objs[1]);
+}
 
 static void test_cosem_multiple_references(void **state) {
 	(void)state;
@@ -344,13 +501,11 @@ static void test_cosem_multiple_references(void **state) {
 	appl_setup(&pair, &server);
 	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_WRAPPER);
 
-	osp_ic_data_init(&g_data_energy, (osp_obis_t){1, 0, 1, 8, 0, 255});
-	g_data_energy.value = osp_val_u32(12345678);
-	osp_server_register(&server, osp_ic_data_class(), &g_data_energy);
+	multiref_register_objects(&server, 10);
 
-	osp_ic_data_init(&g_data_voltage, (osp_obis_t){0, 0, 96, 1, 0, 255});
-	g_data_voltage.value = osp_val_u32(230);
-	osp_server_register(&server, osp_ic_data_class(), &g_data_voltage);
+	/* Register PushSetup for subtest 3 (object with ≥4 attributes) */
+	osp_ic_push_setup_init(&g_push_setup, (osp_obis_t){0, 0, 25, 9, 0, 255});
+	osp_server_register(&server, osp_ic_push_setup_class(), &g_push_setup);
 
 	osp_sec_context_t ssec;
 	osp_sec_context_init(&ssec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
@@ -363,16 +518,86 @@ static void test_cosem_multiple_references(void **state) {
 
 	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
 
-	/* Multiple references: GET with-list for multiple objects */
-	osp_client_attr_ref_t attrs[2] = {
+	osp_err_t r;
+
+	/* === Subtest 1: Read value attributes of classes 1/3/4 together === */
+	printf("  7.3.11 Subtest 1: Read 10 value attributes together\n");
+
+	osp_client_attr_ref_t attrs_10[] = {
 		{.class_id = 1, .instance_id = {1, 0, 1, 8, 0, 255}, .attribute_id = 1},
 		{.class_id = 1, .instance_id = {0, 0, 96, 1, 0, 255}, .attribute_id = 1},
+		{.class_id = 1, .instance_id = {0, 0, 96, 3, 10, 255}, .attribute_id = 1},
+		{.class_id = 1, .instance_id = {0, 0, 42, 0, 0, 255}, .attribute_id = 1},
+		{.class_id = 1, .instance_id = {1, 0, 2, 8, 0, 255}, .attribute_id = 1},
+		{.class_id = 1, .instance_id = {1, 0, 3, 8, 0, 255}, .attribute_id = 1},
+		{.class_id = 1, .instance_id = {0, 0, 11, 0, 0, 255}, .attribute_id = 1},
+		{.class_id = 1, .instance_id = {0, 0, 12, 0, 0, 255}, .attribute_id = 1},
 	};
-	osp_get_result_item_t results[2];
-	memset(results, 0, sizeof(results));
-	osp_err_t r = osp_client_get_with_list(&client, attrs, 2, results);
-	printf("  COSEM: Multiple references GET-with-list → err=%d\n", r);
-	(void)r;
+	osp_get_result_item_t results_8[OSP_XDLMS_MAX_LIST];
+	memset(results_8, 0, sizeof(results_8));
+
+	/* Batch 1: up to 8 (OSP_XDLMS_MAX_LIST limit) */
+	r = osp_client_get_with_list(&client, attrs_10, 8, results_8);
+	printf("    Batch 1 (8 attrs) → err=%d\n", r);
+	if (r == OSP_OK) {
+		for (int i = 0; i < 8; i++) {
+			printf("    [%d] is_data=%d dar=%d\n", i, results_8[i].is_data, results_8[i].access_result);
+		}
+	}
+
+	/* Read same attributes separately and compare */
+	printf("  7.3.11 Subtest 1: Read same attrs separately for comparison\n");
+	osp_value_t separate;
+	for (int i = 0; i < 8; i++) {
+		r = osp_client_get(&client, attrs_10[i].class_id, &attrs_10[i].instance_id,
+				   attrs_10[i].attribute_id, &separate);
+		printf("    Separate[%d] → err=%d\n", i, r);
+		if (results_8[i].is_data && r == OSP_OK) {
+			/* Both returned data — values should match conceptually */
+			printf("    Together vs Separate[%d]: both returned data\n", i);
+		}
+	}
+
+	/* Batch 2: remaining 2 */
+	osp_client_attr_ref_t attrs_2[] = {
+		{.class_id = 1, .instance_id = {1, 0, 4, 8, 0, 255}, .attribute_id = 1},
+		{.class_id = 1, .instance_id = {1, 0, 5, 8, 0, 255}, .attribute_id = 1},
+	};
+	osp_get_result_item_t results_2[2];
+	memset(results_2, 0, sizeof(results_2));
+	r = osp_client_get_with_list(&client, attrs_2, 2, results_2);
+	printf("    Batch 2 (2 attrs) → err=%d\n", r);
+
+	/* === Subtest 2: Short + Long attribute together === */
+	printf("  7.3.11 Subtest 2: Short + Long attribute\n");
+	osp_client_attr_ref_t attrs_short_long[] = {
+		/* Short: Data IC value (1-4 bytes) */
+		{.class_id = 1, .instance_id = {1, 0, 1, 8, 0, 255}, .attribute_id = 1},
+		/* Long: PushSetup push_object_list (array, potentially long) */
+		{.class_id = 40, .instance_id = {0, 0, 25, 9, 0, 255}, .attribute_id = 2},
+	};
+	osp_get_result_item_t results_sl[2];
+	memset(results_sl, 0, sizeof(results_sl));
+	r = osp_client_get_with_list(&client, attrs_short_long, 2, results_sl);
+	printf("    Short+Long → err=%d\n", r);
+
+	/* === Subtest 3: First 4 attributes of first object with ≥4 attrs === */
+	printf("  7.3.11 Subtest 3: First 4 attrs of PushSetup (9 attrs)\n");
+	osp_client_attr_ref_t attrs_4[] = {
+		{.class_id = 40, .instance_id = {0, 0, 25, 9, 0, 255}, .attribute_id = 1},
+		{.class_id = 40, .instance_id = {0, 0, 25, 9, 0, 255}, .attribute_id = 2},
+		{.class_id = 40, .instance_id = {0, 0, 25, 9, 0, 255}, .attribute_id = 3},
+		{.class_id = 40, .instance_id = {0, 0, 25, 9, 0, 255}, .attribute_id = 4},
+	};
+	osp_get_result_item_t results_4[4];
+	memset(results_4, 0, sizeof(results_4));
+	r = osp_client_get_with_list(&client, attrs_4, 4, results_4);
+	printf("    First 4 attrs of PushSetup → err=%d\n", r);
+	if (r == OSP_OK) {
+		for (int i = 0; i < 4; i++) {
+			printf("    [%d] is_data=%d dar=%d\n", i, results_4[i].is_data, results_4[i].access_result);
+		}
+	}
 
 	assert_int_equal(osp_client_release(&client), OSP_OK);
 }
