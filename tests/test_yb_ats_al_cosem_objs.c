@@ -27,6 +27,10 @@
 #include "../src/ic/data.h"
 #include "../src/ic/register.h"
 #include "../src/ic/association_ln.h"
+#include "../src/ic/push_setup.h"
+#include "../src/ic/sap_assignment.h"
+#include "../src/ic/clock.h"
+#include "../src/ic/disconnect_control.h"
 #include "../src/security/security.h"
 #include "../src/codec/serialize.h"
 #include "mock_transport.h"
@@ -67,6 +71,8 @@ static osp_ic_data_t g_data_status;
 static osp_ic_data_t g_data_ldn;
 static osp_ic_register_t g_reg_clock;
 static osp_ic_association_ln_t g_aln;
+static osp_ic_push_setup_t g_push_setup;
+static osp_ic_clock_t g_clock;
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  COSEM mandatory objects: Read object_list
@@ -372,6 +378,107 @@ static void test_cosem_multiple_references(void **state) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+ *  COSEM mandatory objects: PushSetup + Clock + SAP Assignment
+ *
+ *  СТО 34.01 Приложение И mandatory objects:
+ *  - PushSetup (class_id=40) OBIS 0.0.25.9.0.255
+ *  - Clock (class_id=8) OBIS 0.0.1.0.0.255
+ *  - SAP Assignment (class_id=17) OBIS 0.0.41.0.0.255
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+static void test_cosem_push_setup_and_others(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_client_t client;
+
+	appl_setup(&pair, &server);
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_WRAPPER);
+
+	/* Register PushSetup */
+	osp_ic_push_setup_init(&g_push_setup, (osp_obis_t){0, 0, 25, 9, 0, 255});
+	osp_server_register(&server, osp_ic_push_setup_class(), &g_push_setup);
+
+	/* Register Clock */
+	osp_ic_clock_init(&g_clock, (osp_obis_t){0, 0, 1, 0, 0, 255});
+	osp_server_register(&server, osp_ic_clock_class(), &g_clock);
+
+	/* Register SAP Assignment */
+	osp_ic_sap_assignment_t sap;
+	osp_ic_sap_assignment_init(&sap, (osp_obis_t){0, 0, 41, 0, 0, 255});
+	osp_server_register(&server, osp_ic_sap_assignment_class(), &sap);
+
+	osp_sec_context_t ssec;
+	osp_sec_context_init(&ssec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
+	osp_server_set_security(&server, &ssec);
+
+	osp_client_init(&client, &pair.client_transport, OSP_FRAMING_WRAPPER);
+	osp_sec_context_t csec;
+	osp_sec_context_init(&csec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
+	osp_client_set_security(&client, &csec);
+
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+
+	osp_value_t result;
+	osp_err_t r;
+
+	/* PushSetup: attr 1 = logical_name (static) */
+	r = osp_client_get(&client, 40, &(osp_obis_t){0, 0, 25, 9, 0, 255}, 1, &result);
+	printf("  PushSetup attr 1 (LN) → err=%d\n", r);
+
+	/* PushSetup: attr 2 = push_object_list (static) */
+	r = osp_client_get(&client, 40, &(osp_obis_t){0, 0, 25, 9, 0, 255}, 2, &result);
+	printf("  PushSetup attr 2 (push_object_list) → err=%d\n", r);
+
+	/* PushSetup: attr 3 = send_destination_and_method (static) */
+	r = osp_client_get(&client, 40, &(osp_obis_t){0, 0, 25, 9, 0, 255}, 3, &result);
+	printf("  PushSetup attr 3 (send_dest) → err=%d\n", r);
+
+	/* PushSetup: attr 4 = communication_window (static) */
+	r = osp_client_get(&client, 40, &(osp_obis_t){0, 0, 25, 9, 0, 255}, 4, &result);
+	printf("  PushSetup attr 4 (comm_window) → err=%d\n", r);
+
+	/* PushSetup: attr 5 = randomisation_start_interval (static) */
+	r = osp_client_get(&client, 40, &(osp_obis_t){0, 0, 25, 9, 0, 255}, 5, &result);
+	printf("  PushSetup attr 5 (randomisation) → err=%d\n", r);
+
+	/* PushSetup: attr 6 = number_of_retries (static) */
+	r = osp_client_get(&client, 40, &(osp_obis_t){0, 0, 25, 9, 0, 255}, 6, &result);
+	printf("  PushSetup attr 6 (retries) → err=%d\n", r);
+
+	/* PushSetup: attr 7 = repetition_delay (static) */
+	r = osp_client_get(&client, 40, &(osp_obis_t){0, 0, 25, 9, 0, 255}, 7, &result);
+	printf("  PushSetup attr 7 (repetition_delay) → err=%d\n", r);
+
+	/* PushSetup: attr 8 = port_reference (static) */
+	r = osp_client_get(&client, 40, &(osp_obis_t){0, 0, 25, 9, 0, 255}, 8, &result);
+	printf("  PushSetup attr 8 (port_reference) → err=%d\n", r);
+
+	/* PushSetup: attr 9 = push_client_SAP (static) */
+	r = osp_client_get(&client, 40, &(osp_obis_t){0, 0, 25, 9, 0, 255}, 9, &result);
+	printf("  PushSetup attr 9 (push_client_SAP) → err=%d\n", r);
+
+	/* Clock: attr 1 = logical_name */
+	r = osp_client_get(&client, 8, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result);
+	printf("  Clock attr 1 (LN) → err=%d\n", r);
+
+	/* Clock: attr 2 = time */
+	r = osp_client_get(&client, 8, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &result);
+	printf("  Clock attr 2 (time) → err=%d\n", r);
+
+	/* SAP Assignment: attr 1 = logical_name */
+	r = osp_client_get(&client, 17, &(osp_obis_t){0, 0, 41, 0, 0, 255}, 1, &result);
+	printf("  SAP Assignment attr 1 (LN) → err=%d\n", r);
+
+	/* SAP Assignment: attr 2 = channel_list */
+	r = osp_client_get(&client, 17, &(osp_obis_t){0, 0, 41, 0, 0, 255}, 2, &result);
+	printf("  SAP Assignment attr 2 (channel_list) → err=%d\n", r);
+
+	assert_int_equal(osp_client_release(&client), OSP_OK);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
  *  Test suite
  * ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -382,6 +489,7 @@ int main(void) {
 		cmocka_unit_test(test_cosem_mandatory_objects),
 		cmocka_unit_test(test_cosem_multiple_references),
 		cmocka_unit_test(test_cosem_access_rights),
+		cmocka_unit_test(test_cosem_push_setup_and_others),
 	};
 
 	return cmocka_run_group_tests(tests, NULL, NULL);
