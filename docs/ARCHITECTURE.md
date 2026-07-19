@@ -317,7 +317,7 @@ Client:                              Server:
 | `OSP_HDLC_MAX_FRAME_SIZE` | 512 | Maximum HDLC frame |
 | `OSP_HDLC_MAX_ADDR_LEN` | 4 | Maximum HDLC address length |
 | `OSP_SPODUS_MAX_METERS` | 16 | Maximum meters in concentrator |
-| `OSP_MAX_OBJECTS` | 64 | Maximum IC objects in dispatcher |
+| `OSP_MAX_OBJECTS` | 320 | Maximum IC objects in dispatcher |
 | `OSP_MAX_BUFFER_ROWS` | 64 | Maximum rows in ProfileGeneric buffer |
 | `OSP_MAX_CAPTURE_OBJECTS` | 8 | Maximum capture objects |
 

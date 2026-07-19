@@ -204,7 +204,7 @@ osp_err_t osp_client_connect(osp_client_t *c, uint32_t timeout_ms) {
 	/* Build AARQ */
 	osp_aarq_t aarq;
 	memset(&aarq, 0, sizeof(aarq));
-	aarq.application_context = OSP_CTX_LN;
+	aarq.application_context = c->ciphering_enabled ? OSP_CTX_LN_CIPHERING : OSP_CTX_LN;
 	aarq.mechanism = (uint8_t)c->security.mechanism;
 	memcpy(aarq.calling_ap_title, c->security.system_title, OSP_SEC_SYSTEM_TITLE_SIZE);
 	aarq.calling_ap_title_len = OSP_SEC_SYSTEM_TITLE_SIZE;

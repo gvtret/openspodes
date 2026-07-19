@@ -189,9 +189,10 @@ static osp_err_t aln_get(const void *inst, uint8_t attr_id, osp_value_t *result)
 			*result = osp_val_enum(a->authentication_mechanism);
 			return OSP_OK;
 		case 7:
+			/* IEC 62056-6-2 §4.4.4 attr 7 secret: never reveal on GET
+			 * (write-only; SET below still updates the stored secret). */
 			result->tag = OSP_TAG_OCTETSTRING;
-			result->as.octetstring.len = a->secret_len;
-			memcpy(result->as.octetstring.data, a->secret, a->secret_len);
+			result->as.octetstring.len = 0;
 			return OSP_OK;
 		case 8:
 			*result = osp_val_enum(a->association_status);
@@ -318,4 +319,24 @@ void osp_ic_association_ln_init(osp_ic_association_ln_t *a, osp_obis_t ln) {
 	a->xdms_context.dlms_version_number = 6; /* DLMS/COSEM edition 6 */
 	a->xdms_context.max_receive_pdu_size = 1024;
 	a->xdms_context.max_send_pdu_size = 1024;
+}
+
+void osp_ic_association_ln_mirror(osp_ic_association_ln_t *dst, const osp_ic_association_ln_t *src) {
+	if (!dst || !src) {
+		return;
+	}
+	osp_obis_t ln = dst->logical_name;
+	*dst = *src;
+	dst->logical_name = ln;
+	dst->association_status = 1; /* associated */
+}
+
+void osp_ic_association_ln_set_idle(osp_ic_association_ln_t *a) {
+	if (!a) {
+		return;
+	}
+	osp_obis_t ln = a->logical_name;
+	memset(a, 0, sizeof(*a));
+	a->logical_name = ln;
+	a->association_status = 0; /* idle */
 }

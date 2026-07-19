@@ -1456,6 +1456,7 @@ static void test_aarq_encode(void **state) {
 	int rc = osp_aarq_encode(&aarq, &w);
 	assert_int_equal(rc, 0);
 
+	/* mechanism-name [11] is IMPLICIT OID (no universal 0x06 wrapper) */
 	const uint8_t expected[] = {
 	    0x60, 0x36,
 	    0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01,
@@ -1519,6 +1520,7 @@ static void test_aare_encode(void **state) {
 	int rc = osp_aare_encode(&aare, &w);
 	assert_int_equal(rc, 0);
 
+	/* mechanism-name [9] is IMPLICIT OID (no universal 0x06 wrapper) */
 	const uint8_t expected[] = {
 	    0x61, 0x28,
 	    0xA2, 0x03, 0x02, 0x01, 0x00,

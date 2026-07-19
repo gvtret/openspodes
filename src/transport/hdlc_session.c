@@ -54,15 +54,27 @@ static uint16_t encode_xid_params(const osp_hdlc_xid_params_t *p, uint8_t *out) 
 	uint16_t group_len_pos = idx++;
 	out[group_len_pos] = 0; /* placeholder */
 
-	/* Parameter 5: max info field length tx (1 byte) */
+	/* Parameter 5: max info field length tx (1 or 2 bytes, big-endian) */
 	out[idx++] = 0x05;
-	out[idx++] = 0x01;
-	out[idx++] = (uint8_t)(p->max_info_tx & 0xFF);
+	if (p->max_info_tx > 255) {
+		out[idx++] = 0x02;
+		out[idx++] = (uint8_t)((p->max_info_tx >> 8) & 0xFF);
+		out[idx++] = (uint8_t)(p->max_info_tx & 0xFF);
+	} else {
+		out[idx++] = 0x01;
+		out[idx++] = (uint8_t)(p->max_info_tx & 0xFF);
+	}
 
-	/* Parameter 6: max info field length rx (1 byte) */
+	/* Parameter 6: max info field length rx (1 or 2 bytes, big-endian) */
 	out[idx++] = 0x06;
-	out[idx++] = 0x01;
-	out[idx++] = (uint8_t)(p->max_info_rx & 0xFF);
+	if (p->max_info_rx > 255) {
+		out[idx++] = 0x02;
+		out[idx++] = (uint8_t)((p->max_info_rx >> 8) & 0xFF);
+		out[idx++] = (uint8_t)(p->max_info_rx & 0xFF);
+	} else {
+		out[idx++] = 0x01;
+		out[idx++] = (uint8_t)(p->max_info_rx & 0xFF);
+	}
 
 	/* Parameter 7: window size tx (4 bytes) */
 	out[idx++] = 0x07;
@@ -143,8 +155,8 @@ void osp_hdlc_session_init_client(osp_hdlc_session_t *s, osp_transport_t *t,
 	osp_hdlc_address_init(&s->client_addr, client_addr, client_addr_len);
 	osp_hdlc_address_init(&s->server_addr, server_addr, server_addr_len);
 	/* Default XID parameters */
-	s->xid.max_info_tx = 128;
-	s->xid.max_info_rx = 128;
+	s->xid.max_info_tx = 1280;
+	s->xid.max_info_rx = 1280;
 	s->xid.window_tx = 1;
 	s->xid.window_rx = 1;
 	/* Default retransmission: 3 retries */
@@ -160,8 +172,8 @@ void osp_hdlc_session_init_server(osp_hdlc_session_t *s, osp_transport_t *t,
 	s->state = OSP_HDLC_STATE_IDLE;
 	osp_hdlc_address_init(&s->server_addr, server_addr, server_addr_len);
 	osp_hdlc_address_init(&s->client_addr, client_addr, client_addr_len);
-	s->xid.max_info_tx = 128;
-	s->xid.max_info_rx = 128;
+	s->xid.max_info_tx = 1280;
+	s->xid.max_info_rx = 1280;
 	s->xid.window_tx = 1;
 	s->xid.window_rx = 1;
 	s->max_retransmits = 3;
@@ -343,10 +355,14 @@ osp_err_t osp_hdlc_session_send_apdu(osp_hdlc_session_t *s, const uint8_t *apdu,
 	if (!s || s->state != OSP_HDLC_STATE_CONNECTED || !apdu)
 		return OSP_ERR_INVALID;
 
-	/* LLC header + APDU */
+	/* LLC header + APDU must fit negotiated max_info_tx and frame buffer */
 	const uint8_t *llc = s->is_client ? LLC_COMMAND : LLC_RESPONSE;
 	uint32_t info_len = 3 + apdu_len;
-	if (info_len > OSP_HDLC_MAX_FRAME_SIZE)
+	uint32_t max_info = s->xid.max_info_tx > 0 ? s->xid.max_info_tx : OSP_HDLC_MAX_FRAME_SIZE;
+	if (max_info > OSP_HDLC_MAX_FRAME_SIZE) {
+		max_info = OSP_HDLC_MAX_FRAME_SIZE;
+	}
+	if (info_len > max_info)
 		return OSP_ERR_NOMEM;
 
 	osp_hdlc_frame_t frame;

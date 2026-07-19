@@ -7,7 +7,7 @@
  * Memory configuration:
  * - OSP_SERVER_MAX_PDU (default 1024): rx/tx buffer size
  * - OSP_SERVER_PENDING_MAX (default 4096): block transfer reassembly
- * - OSP_MAX_OBJECTS (default 32): registered IC objects
+ * - OSP_MAX_OBJECTS (default 320): registered IC objects
  *
  * For constrained MCUs (< 32KB RAM), define before including:
  *   #define OSP_SERVER_MAX_PDU 512
@@ -31,7 +31,8 @@ extern "C" {
 #endif
 
 #define OSP_SERVER_MAX_PDU 1024
-#define OSP_SERVER_PENDING_MAX (OSP_SERVER_MAX_PDU * 4)
+/* Association LN object_list with ACLs is several KB even for 64 entries. */
+#define OSP_SERVER_PENDING_MAX (OSP_SERVER_MAX_PDU * 16)
 
 typedef struct {
 	bool active;
@@ -70,6 +71,7 @@ typedef struct {
 	osp_sec_context_t security;
 	osp_dispatcher_t dispatcher;
 	bool associated;
+	bool hls_pending; /* AARE ok; waiting for HLS pass 3 before full AA */
 	uint8_t invoke_id;
 	uint32_t max_pdu;
 	bool gbt_enabled;
@@ -109,6 +111,9 @@ void osp_server_set_gbt_streaming(osp_server_t *s, bool enabled);
 
 /** @brief Enable glo-ciphering (rx unprotects requests, tx protects responses). */
 void osp_server_set_ciphering(osp_server_t *s, const osp_sec_context_t *tx, const osp_sec_context_t *rx);
+
+/** @brief Disable APDU ciphering (e.g. after AA release). */
+void osp_server_clear_ciphering(osp_server_t *s);
 
 /**
  * @brief Send unsolicited event-notification (0xC2) to the associated client.
@@ -153,6 +158,12 @@ void osp_server_set_hdlc_addresses(osp_server_t *s, uint32_t server_addr, uint8_
 
 /** @brief Bind Association LN for ACL enforcement on GET/SET/ACTION. */
 void osp_server_set_association(osp_server_t *s, osp_ic_association_ln_t *association);
+
+/**
+ * @brief Clear current association (0.0.40.0.0.255) to idle and drop AA flag.
+ * Call on RLRQ/DISC/transport drop (also invoked internally).
+ */
+void osp_server_clear_current_association(osp_server_t *s);
 
 /**
  * @brief Get the actual client SAP after SNRM/UA exchange.

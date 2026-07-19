@@ -41,7 +41,7 @@ osp_err_t osp_dispatcher_register(osp_dispatcher_t *disp, const osp_ic_class_t *
 }
 
 static osp_object_entry_t *find_object(osp_dispatcher_t *disp, uint16_t class_id, const osp_obis_t *obis) {
-	for (uint8_t i = 0; i < disp->count; i++) {
+	for (uint16_t i = 0; i < disp->count; i++) {
 		osp_object_entry_t *e = &disp->objects[i];
 		if (e->class_def->class_id == class_id) {
 			const osp_obis_t *inst_obis = (const osp_obis_t *)e->instance;

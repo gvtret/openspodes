@@ -10,6 +10,7 @@
 #include "../codec/serialize.h"
 #include "../ic/compact_data.h"
 #include "../ic/push_setup.h"
+#include "../ic/association_ln.h"
 #include "../transport/hdlc_session.h"
 #include <string.h>
 
@@ -55,6 +56,38 @@ void osp_server_set_ciphering(osp_server_t *s, const osp_sec_context_t *tx, cons
 	}
 	s->cipher_tx = *tx;
 	s->cipher_rx = *rx;
+	s->ciphering_enabled = true;
+}
+
+void osp_server_clear_ciphering(osp_server_t *s) {
+	if (!s) {
+		return;
+	}
+	s->ciphering_enabled = false;
+}
+
+/** IEC 62056-5-3: app context 3/4 = LN/SN with ciphering. */
+static bool app_context_requires_ciphering(uint8_t application_context) {
+	return application_context == OSP_CTX_LN_CIPHERING ||
+	       application_context == OSP_CTX_SN_CIPHERING;
+}
+
+/**
+ * Enable APDU glo/ded-ciphering only when the AA negotiated a ciphering context.
+ * If set_ciphering() already configured keys, keep them; otherwise seed from security.
+ */
+static void server_apply_ciphering_for_aarq(osp_server_t *s, const osp_aarq_t *aarq, bool aa_accepted) {
+	if (!s) {
+		return;
+	}
+	if (!aa_accepted || !aarq || !app_context_requires_ciphering(aarq->application_context)) {
+		s->ciphering_enabled = false;
+		return;
+	}
+	if (!s->ciphering_enabled) {
+		s->cipher_tx = s->security;
+		s->cipher_rx = s->security;
+	}
 	s->ciphering_enabled = true;
 }
 
@@ -218,24 +251,131 @@ static osp_err_t server_send_action_response(osp_server_t *s, const osp_action_r
 
 /* ── Handle AARQ ─────────────────────────────────────────────────────────── */
 
+static bool secret_eq(const uint8_t *a, uint8_t alen, const uint8_t *b, uint8_t blen) {
+	uint8_t diff = (uint8_t)(alen ^ blen);
+	uint8_t maxlen = alen > blen ? alen : blen;
+	for (uint8_t i = 0; i < maxlen; i++) {
+		uint8_t av = (i < alen) ? a[i] : 0;
+		uint8_t bv = (i < blen) ? b[i] : 0;
+		diff |= (uint8_t)(av ^ bv);
+	}
+	return diff == 0;
+}
+
+/** Pick Association LN by client SAP (HDLC), else by matching mechanism.
+ * Associations with client_sap==0 (e.g. current association 0.0.40.0.0.255) are not login targets. */
+static osp_ic_association_ln_t *server_pick_association(osp_server_t *s, uint8_t mechanism) {
+	uint8_t sap = osp_server_get_client_sap(s);
+	osp_ic_association_ln_t *by_mech = NULL;
+
+	for (uint16_t i = 0; i < s->dispatcher.count; i++) {
+		const osp_object_entry_t *e = &s->dispatcher.objects[i];
+		if (!e->class_def || e->class_def->class_id != 15 || !e->instance) {
+			continue;
+		}
+		osp_ic_association_ln_t *a = (osp_ic_association_ln_t *)e->instance;
+		if (a->associated_partners.client_sap == 0) {
+			continue; /* current association — not used to establish AA */
+		}
+		if (sap != 0 && (uint8_t)a->associated_partners.client_sap == sap) {
+			return a;
+		}
+		if (!by_mech && a->authentication_mechanism == mechanism) {
+			by_mech = a;
+		}
+	}
+	return by_mech ? by_mech : s->dispatcher.association;
+}
+
+/** Current association object OBIS 0.0.40.0.0.255 */
+static osp_ic_association_ln_t *server_find_current_association(osp_server_t *s) {
+	static const osp_obis_t cur_ln = {0, 0, 40, 0, 0, 255};
+	for (uint16_t i = 0; i < s->dispatcher.count; i++) {
+		const osp_object_entry_t *e = &s->dispatcher.objects[i];
+		if (!e->class_def || e->class_def->class_id != 15 || !e->instance) {
+			continue;
+		}
+		osp_ic_association_ln_t *a = (osp_ic_association_ln_t *)e->instance;
+		if (osp_obis_eq(&a->logical_name, &cur_ln)) {
+			return a;
+		}
+	}
+	return NULL;
+}
+
+static void server_mirror_current(osp_server_t *s, const osp_ic_association_ln_t *src) {
+	osp_ic_association_ln_t *cur = server_find_current_association(s);
+	if (cur && src && cur != src) {
+		osp_ic_association_ln_mirror(cur, src);
+	}
+}
+
+static void server_clear_current(osp_server_t *s) {
+	osp_ic_association_ln_t *cur = server_find_current_association(s);
+	if (cur) {
+		osp_ic_association_ln_set_idle(cur);
+	}
+}
+
+void osp_server_clear_current_association(osp_server_t *s) {
+	if (!s) {
+		return;
+	}
+	server_clear_current(s);
+	s->associated = false;
+	s->hls_pending = false;
+	s->ciphering_enabled = false;
+}
+
 static osp_err_t handle_aarq(osp_server_t *s, const osp_aarq_t *aarq) {
 	osp_aare_t aare;
 	memset(&aare, 0, sizeof(aare));
 
-	/* Accept if mechanism is lowest or LLS, or HLS with matching handshake */
-	if (aarq->mechanism == OSP_MECH_LOWEST || aarq->mechanism == OSP_MECH_LLS) {
-		aare.result = OSP_RESULT_ACCEPTED;
-		s->associated = true;
+	osp_ic_association_ln_t *assoc = server_pick_association(s, aarq->mechanism);
+	if (assoc) {
+		osp_server_set_association(s, assoc);
+	}
+
+	if (aarq->mechanism == OSP_MECH_LOWEST) {
+		/* Mechanism 0: no password. Reject if selected association requires higher auth. */
+		if (assoc && assoc->authentication_mechanism != OSP_MECH_LOWEST) {
+			aare.result = OSP_RESULT_REJECTED_PERMANENT;
+		} else {
+			aare.result = OSP_RESULT_ACCEPTED;
+			s->associated = true;
+			s->hls_pending = false;
+			if (assoc) {
+				server_mirror_current(s, assoc);
+			}
+		}
+	} else if (aarq->mechanism == OSP_MECH_LLS) {
+		/* LLS: calling-authentication-value must match association secret */
+		if (!assoc || assoc->secret_len == 0 ||
+		    !secret_eq(aarq->calling_auth_value, aarq->calling_auth_value_len, assoc->secret, assoc->secret_len)) {
+			aare.result = OSP_RESULT_REJECTED_PERMANENT;
+			s->associated = false;
+			s->hls_pending = false;
+		} else {
+			aare.result = OSP_RESULT_ACCEPTED;
+			s->associated = true;
+			s->hls_pending = false;
+			server_mirror_current(s, assoc);
+		}
 	} else if (osp_hls_requires_handshake((osp_auth_mechanism_t)aarq->mechanism)) {
-		/* HLS requires RNG for secure challenge generation */
+		/* HLS: AARE with StoC only — full AA after pass 3 (reply_to_HLS_authentication) */
 		if (!osp_hal_random_fill) {
 			aare.result = OSP_RESULT_REJECTED_PERMANENT;
+			s->hls_pending = false;
 		} else {
 			s->security.mechanism = (osp_auth_mechanism_t)aarq->mechanism;
 
 			/* Store CtoS challenge and client system title for pass 3/4 */
-			memcpy(s->security.ctos, aarq->calling_auth_value, aarq->calling_auth_value_len);
-			s->security.ctos_len = aarq->calling_auth_value_len;
+			uint8_t ctos_len = aarq->calling_auth_value_len;
+			if (ctos_len > sizeof(s->security.ctos)) {
+				ctos_len = (uint8_t)sizeof(s->security.ctos);
+			}
+			memcpy(s->security.ctos, aarq->calling_auth_value, ctos_len);
+			s->security.ctos_len = ctos_len;
 			if (aarq->calling_ap_title_len >= OSP_SEC_SYSTEM_TITLE_SIZE) {
 				memcpy(s->security.peer_system_title, aarq->calling_ap_title, OSP_SEC_SYSTEM_TITLE_SIZE);
 			}
@@ -246,7 +386,9 @@ static osp_err_t handle_aarq(osp_server_t *s, const osp_aarq_t *aarq) {
 			memcpy(aare.responding_auth_value, s->security.stoc, 8);
 			aare.responding_auth_value_len = 8;
 			aare.result = OSP_RESULT_ACCEPTED;
-			s->associated = true;
+			s->associated = false;
+			s->hls_pending = true;
+			/* Mirror current association only after successful pass 3 */
 		}
 	} else {
 		aare.result = OSP_RESULT_REJECTED_PERMANENT;
@@ -254,6 +396,9 @@ static osp_err_t handle_aarq(osp_server_t *s, const osp_aarq_t *aarq) {
 	aare.mechanism = aarq->mechanism;
 	aare.responding_ap_title_len = OSP_SEC_SYSTEM_TITLE_SIZE;
 	memcpy(aare.responding_ap_title, s->security.system_title, OSP_SEC_SYSTEM_TITLE_SIZE);
+
+	/* APDU ciphering only for AA that negotiated With_Ciphering app context (IEC 62056-5-3). */
+	server_apply_ciphering_for_aarq(s, aarq, aare.result == OSP_RESULT_ACCEPTED);
 
 	if (aarq->user_info_len > 0) {
 		osp_buf_t uibuf;
@@ -311,8 +456,30 @@ static osp_err_t start_get_blocks(osp_server_t *s, uint8_t invoke_id_priority, c
 	s->pending_get.active = true;
 	s->pending_get.data_len = len;
 	s->pending_get.next_block = 1;
-	memcpy(s->pending_get.data, data, len);
+	if (data != s->pending_get.data) {
+		memcpy(s->pending_get.data, data, len);
+	}
 	return handle_get_next(s, invoke_id_priority, 0);
+}
+
+static uint32_t server_send_payload_max(const osp_server_t *s) {
+	uint32_t max_pdu = s->max_pdu > 0 ? s->max_pdu : OSP_SERVER_MAX_PDU;
+	if (s->hdlc_active) {
+		uint32_t max_info = s->hdlc.xid.max_info_tx > 0 ? s->hdlc.xid.max_info_tx : OSP_HDLC_MAX_FRAME_SIZE;
+		if (max_info > OSP_HDLC_MAX_FRAME_SIZE) {
+			max_info = OSP_HDLC_MAX_FRAME_SIZE;
+		}
+		/* LLC(3) + GET-response-block header (~12) */
+		uint32_t hdlc_payload = max_info > 16 ? max_info - 16 : 1;
+		if (hdlc_payload < max_pdu) {
+			max_pdu = hdlc_payload;
+		}
+	}
+	/* osp_data_block_t.raw_data is OSP_MAX_OCTET_LEN */
+	if (max_pdu > OSP_MAX_OCTET_LEN) {
+		max_pdu = OSP_MAX_OCTET_LEN;
+	}
+	return max_pdu;
 }
 
 static osp_err_t handle_get_next(osp_server_t *s, uint8_t invoke_id_priority, uint32_t acked_block) {
@@ -331,7 +498,7 @@ static osp_err_t handle_get_next(osp_server_t *s, uint8_t invoke_id_priority, ui
 		resp.data_access_result = OSP_DAR_LONG_GET_ABORTED;
 		return send_get_response(s, &resp);
 	}
-	uint32_t max_pdu = s->max_pdu > 0 ? s->max_pdu : OSP_SERVER_MAX_PDU;
+	uint32_t max_pdu = server_send_payload_max(s);
 	uint32_t start = (block_number - 1) * max_pdu;
 	uint32_t end = start + max_pdu;
 	if (end > s->pending_get.data_len) {
@@ -400,20 +567,24 @@ static osp_err_t handle_get(osp_server_t *s, const osp_get_request_t *req) {
 		uint8_t enc_mem[OSP_SERVER_MAX_PDU];
 		osp_buf_t enc;
 		osp_buf_init(&enc, enc_mem, sizeof(enc_mem));
-		if (osp_get_response_encode(&enc, &resp) != 0) {
-			return OSP_ERR_INVALID;
-		}
-		if (s->gbt_enabled && enc.wr > server_gbt_payload_max(s)) {
-			return server_send(s, enc.buf, enc.wr);
-		}
-		if (enc.wr > s->max_pdu) {
-			uint8_t mem[OSP_SERVER_PENDING_MAX];
-			osp_buf_t w;
-			osp_buf_init(&w, mem, sizeof(mem));
-			if (osp_value_write(&w, &item.data) != OSP_OK) {
-				return OSP_ERR_INVALID;
+		int enc_rc = osp_get_response_encode(&enc, &resp);
+		uint32_t send_limit = server_send_payload_max(s);
+		/* Oversized attribute (e.g. Association LN object_list): fall back to
+		 * data-block transfer instead of aborting the association. */
+		if (enc_rc != 0 || enc.wr > send_limit) {
+			if (s->gbt_enabled && enc_rc == 0 && enc.wr > server_gbt_payload_max(s)) {
+				return server_send(s, enc.buf, enc.wr);
 			}
-			return start_get_blocks(s, req->invoke_id_priority, mem, w.wr);
+			/* Serialize into the server's pending buffer (not a large stack temp). */
+			osp_buf_t w;
+			osp_buf_init(&w, s->pending_get.data, sizeof(s->pending_get.data));
+			osp_err_t wr = osp_value_write(&w, &item.data);
+			if (wr != OSP_OK) {
+				resp.type = OSP_GET_RESP_DATA_ERROR;
+				resp.data_access_result = OSP_DAR_TEMPORARY_FAILURE;
+				return send_get_response(s, &resp);
+			}
+			return start_get_blocks(s, req->invoke_id_priority, s->pending_get.data, w.wr);
 		}
 	} else {
 		resp.type = OSP_GET_RESP_DATA_ERROR;
@@ -718,7 +889,7 @@ static osp_err_t handle_hls_pass3(osp_server_t *s, const osp_action_request_t *r
 
 	/* Verify client's f(StoC) */
 	if (osp_hls_pass3_verify(&s->security, f_stoc, f_len) != 0) {
-		/* Auth failed — send error response */
+		/* Auth failed — send error response; AA not established */
 		osp_action_response_t resp;
 		memset(&resp, 0, sizeof(resp));
 		resp.invoke_id_priority = req->invoke_id_priority;
@@ -730,6 +901,13 @@ static osp_err_t handle_hls_pass3(osp_server_t *s, const osp_action_request_t *r
 		osp_buf_init(&buf, s->tx_buf, sizeof(s->tx_buf));
 		osp_action_response_encode(&buf, &resp);
 		return server_send(s, buf.buf, buf.wr);
+	}
+
+	/* Pass 3 OK — establish AA and mirror current association */
+	s->associated = true;
+	s->hls_pending = false;
+	if (s->dispatcher.association) {
+		server_mirror_current(s, s->dispatcher.association);
 	}
 
 	/* Build pass 4: f(CtoS) */
@@ -783,6 +961,9 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 		r = osp_transport_recv_apdu(s->transport, s->framing, s->rx_buf, sizeof(s->rx_buf), &rx_len, timeout_ms);
 	}
 	if (r != OSP_OK) {
+		if (r == OSP_ERR_DISCONNECTED || r == OSP_ERR_IO) {
+			osp_server_clear_current_association(s);
+		}
 		return r;
 	}
 
@@ -823,10 +1004,43 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 			return OSP_ERR_INVALID;
 		}
 		s->associated = false;
+		s->hls_pending = false;
+		s->ciphering_enabled = false;
+		server_clear_current(s);
 		return server_send(s, buf.buf, buf.wr);
 	}
 
+	/* Decipher before association gate: HLS pass 3 may arrive glo-/ded-ciphered. */
+	if (s->ciphering_enabled && osp_svc_is_ciphered_tag(tag)) {
+		static uint8_t plain[OSP_GBT_MAX_APDU];
+		uint32_t plain_len = 0;
+		int ur = osp_glo_unprotect(&s->cipher_rx, s->rx_buf, rx_len, plain, &plain_len);
+		if (ur == -2) {
+			return server_send_exception(s, OSP_EXC_STATE_SERVICE_NOT_ALLOWED, OSP_EXC_SVC_IC_ERROR);
+		}
+		if (ur != 0) {
+			return server_send_exception(s, OSP_EXC_STATE_SERVICE_NOT_ALLOWED, OSP_EXC_SVC_DECIPHERING_ERROR);
+		}
+		if (plain_len > sizeof(s->rx_buf)) {
+			return OSP_ERR_NOMEM;
+		}
+		memcpy(s->rx_buf, plain, plain_len);
+		rx_len = plain_len;
+		tag = s->rx_buf[0];
+	}
+
+	/* HLS pass 3 is allowed before associated (after AARE with StoC) */
 	if (!s->associated) {
+		if (s->hls_pending && tag == OSP_TAG_ACTION_REQUEST) {
+			osp_buf_t abuf;
+			osp_buf_init(&abuf, s->rx_buf, rx_len);
+			abuf.wr = rx_len;
+			osp_action_request_t areq;
+			if (osp_action_request_decode(&abuf, &areq) == 0 && areq.type == OSP_ACTION_NORMAL &&
+			    areq.as.normal.items[0].method.class_id == 15 && areq.as.normal.items[0].method.method_id == 1) {
+				return handle_hls_pass3(s, &areq);
+			}
+		}
 		return server_send_exception(s, OSP_EXC_STATE_SERVICE_NOT_ALLOWED, OSP_EXC_SVC_OPERATION_NOT_POSSIBLE);
 	}
 
@@ -851,9 +1065,9 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 	}
 
 	if (s->ciphering_enabled && osp_svc_is_ciphered_tag(tag)) {
-		static uint8_t plain[OSP_GBT_MAX_APDU];
+		static uint8_t plain_gbt[OSP_GBT_MAX_APDU];
 		uint32_t plain_len = 0;
-		int ur = osp_glo_unprotect(&s->cipher_rx, s->rx_buf, rx_len, plain, &plain_len);
+		int ur = osp_glo_unprotect(&s->cipher_rx, s->rx_buf, rx_len, plain_gbt, &plain_len);
 		if (ur == -2) {
 			return server_send_exception(s, OSP_EXC_STATE_SERVICE_NOT_ALLOWED, OSP_EXC_SVC_IC_ERROR);
 		}
@@ -863,7 +1077,7 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 		if (plain_len > sizeof(s->rx_buf)) {
 			return OSP_ERR_NOMEM;
 		}
-		memcpy(s->rx_buf, plain, plain_len);
+		memcpy(s->rx_buf, plain_gbt, plain_len);
 		rx_len = plain_len;
 		tag = s->rx_buf[0];
 	}
