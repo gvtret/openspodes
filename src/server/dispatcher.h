@@ -16,7 +16,7 @@ extern "C" {
 #endif
 
 #ifndef OSP_MAX_OBJECTS
-#define OSP_MAX_OBJECTS 64
+#define OSP_MAX_OBJECTS 320
 #endif
 
 typedef struct {

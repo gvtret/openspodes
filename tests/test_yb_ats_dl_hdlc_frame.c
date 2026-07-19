@@ -201,7 +201,8 @@ static void test_frame_max_info_length(void **state) {
 	}
 	frame.info_len = info_len;
 
-	uint8_t encoded[1024];
+	/* Frame buffer must fit max info + HDLC header/FCS overhead */
+	uint8_t encoded[OSP_HDLC_MAX_FRAME_SIZE + 64];
 	uint32_t encoded_len = 0;
 	assert_int_equal(osp_hdlc_frame(&frame, encoded, sizeof(encoded), &encoded_len), OSP_OK);
 

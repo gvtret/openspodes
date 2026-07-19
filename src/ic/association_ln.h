@@ -123,5 +123,16 @@ bool osp_ic_association_ln_can_write(const osp_ic_association_ln_t *a, uint16_t 
  */
 bool osp_ic_association_ln_can_invoke(const osp_ic_association_ln_t *a, uint16_t class_id, const osp_obis_t *ln, int8_t method_id);
 
+/**
+ * @brief Mirror all association state from @p src into @p dst except logical_name.
+ * Sets association_status to associated (1).
+ */
+void osp_ic_association_ln_mirror(osp_ic_association_ln_t *dst, const osp_ic_association_ln_t *src);
+
+/**
+ * @brief Reset to idle: clear object_list and other fields, keep logical_name.
+ */
+void osp_ic_association_ln_set_idle(osp_ic_association_ln_t *a);
+
 /** @} */
 #endif

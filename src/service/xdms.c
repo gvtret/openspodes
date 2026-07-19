@@ -238,7 +238,9 @@ int osp_get_response_encode(osp_buf_t *buf, const osp_get_response_t *resp) {
 			osp_axdr_write_u8(buf, 1);
 			osp_axdr_write_u8(buf, resp->invoke_id_priority);
 			osp_axdr_write_u8(buf, 0);
-			osp_value_write(buf, &resp->data);
+			if (osp_value_write(buf, &resp->data) != OSP_OK) {
+				return -1;
+			}
 			break;
 		case OSP_GET_RESP_DATA_ERROR:
 			osp_axdr_write_u8(buf, 1);

@@ -214,8 +214,10 @@ int osp_aarq_decode(osp_buf_t *buf, osp_aarq_t *aarq) {
 						uint32_t alen;
 						if (osp_ber_read_length(buf, &alen) != OSP_OK)
 							return -1;
+						if (alen > sizeof(aarq->calling_auth_value))
+							return -1;
 						aarq->calling_auth_value_len = (uint8_t)alen;
-						for (uint32_t i = 0; i < alen && i < 64; i++) {
+						for (uint32_t i = 0; i < alen; i++) {
 							if (osp_axdr_read_u8(buf, &aarq->calling_auth_value[i]) != OSP_OK)
 								return -1;
 						}
@@ -231,8 +233,10 @@ int osp_aarq_decode(osp_buf_t *buf, osp_aarq_t *aarq) {
 					uint32_t utlen;
 					if (osp_ber_read_length(buf, &utlen) != OSP_OK)
 						return -1;
+					if (utlen > sizeof(aarq->user_info))
+						return -1;
 					aarq->user_info_len = utlen;
-					for (uint32_t i = 0; i < utlen && i < 128; i++) {
+					for (uint32_t i = 0; i < utlen; i++) {
 						if (osp_axdr_read_u8(buf, &aarq->user_info[i]) != OSP_OK)
 							return -1;
 					}
