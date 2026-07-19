@@ -385,7 +385,7 @@ osp_err_t osp_transport_send_apdu(osp_transport_t *t, osp_framing_type_t framing
 
 	switch (framing) {
 		case OSP_FRAMING_WRAPPER: {
-			osp_err_t r = osp_wrapper_encode(0, 0, apdu, apdu_len, framed, sizeof(framed), &framed_len);
+			osp_err_t r = osp_wrapper_encode(t->wrapper_source, t->wrapper_dest, apdu, apdu_len, framed, sizeof(framed), &framed_len);
 			if (r != OSP_OK)
 				return r;
 			break;

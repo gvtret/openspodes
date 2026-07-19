@@ -215,6 +215,8 @@ void mock_transport_pair_init(mock_transport_pair_t *p) {
 	p->client_transport.close = mock_close;
 	p->client_transport.is_connected = mock_is_connected;
 	p->client_transport.ctx = p;
+	p->client_transport.wrapper_source = 1; /* Client SAP */
+	p->client_transport.wrapper_dest = 2;   /* Server SAP */
 
 	p->server_transport.open = mock_open;
 	p->server_transport.send = server_send;
@@ -222,4 +224,6 @@ void mock_transport_pair_init(mock_transport_pair_t *p) {
 	p->server_transport.close = mock_close;
 	p->server_transport.is_connected = mock_is_connected;
 	p->server_transport.ctx = p;
+	p->server_transport.wrapper_source = 2; /* Server SAP */
+	p->server_transport.wrapper_dest = 1;   /* Client SAP */
 }

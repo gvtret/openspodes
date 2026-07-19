@@ -158,6 +158,9 @@ typedef struct {
 	void (*close)(void *ctx);
 	bool (*is_connected)(void *ctx);
 	void *ctx;
+	/* Wrapper framing addresses */
+	uint16_t wrapper_source;
+	uint16_t wrapper_dest;
 } osp_transport_t;
 
 typedef struct {
