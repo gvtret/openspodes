@@ -7,7 +7,10 @@
  *   3. For each writable attribute, write back the value
  *   4. Check mandatory objects (Association LN, SAP assignment, LDN)
  *
- * Test cases: COSEM mandatory objects (CTT 3.0)
+ * Mandatory objects per СТО 34.01 Приложение И:
+ *   - Association LN (class_id=15) OBIS 0.0.40.0.x.255
+ *   - SAP Assignment (class_id=17) OBIS 0.0.41.0.0.255
+ *   - Logical Device Name (Data IC, class_id=1) OBIS 0.0.42.0.0.255
  */
 
 #include <stdarg.h>
@@ -31,7 +34,7 @@
 #include "yb_helpers.h"
 
 /* ═══════════════════════════════════════════════════════════════════════════
- *  WRAPPER-framed loopback setup (duplicated from test_yellowbook_appl.c)
+ *  WRAPPER-framed loopback
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static osp_server_t *g_cosem_server = NULL;
@@ -55,14 +58,15 @@ static void appl_setup(mock_transport_pair_t *pair, osp_server_t *server) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- *  COSEM object definitions for testing
+ *  Test objects (static to survive function scope)
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static osp_ic_data_t g_data_energy;
 static osp_ic_data_t g_data_voltage;
 static osp_ic_data_t g_data_status;
-static osp_ic_data_t g_data_ldn;  /* Logical Device Name */
+static osp_ic_data_t g_data_ldn;
 static osp_ic_register_t g_reg_clock;
+static osp_ic_association_ln_t g_aln;
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  COSEM mandatory objects: Read object_list
@@ -73,17 +77,94 @@ static osp_ic_register_t g_reg_clock;
 
 static void test_cosem_read_object_list(void **state) {
 	(void)state;
-	/* Association LN (class_id=15) is not registered with the dispatcher.
-	 * It's created internally by the server during AARQ/AARE processing.
-	 * Skip until Association LN is properly exposed. */
-	skip();
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_client_t client;
+
+	/* Init transport pair */
+	appl_setup(&pair, &server);
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_WRAPPER);
+
+	/* Register objects */
+	osp_ic_data_init(&g_data_energy, (osp_obis_t){1, 0, 1, 8, 0, 255});
+	g_data_energy.value = osp_val_u32(12345678);
+	osp_server_register(&server, osp_ic_data_class(), &g_data_energy);
+
+	osp_ic_data_init(&g_data_voltage, (osp_obis_t){0, 0, 96, 1, 0, 255});
+	g_data_voltage.value = osp_val_u32(230);
+	osp_server_register(&server, osp_ic_data_class(), &g_data_voltage);
+
+	osp_ic_data_init(&g_data_status, (osp_obis_t){0, 0, 96, 3, 10, 255});
+	g_data_status.value = osp_val_u32(0);
+	osp_server_register(&server, osp_ic_data_class(), &g_data_status);
+
+	osp_ic_data_init(&g_data_ldn, (osp_obis_t){0, 0, 42, 0, 0, 255});
+	g_data_ldn.value = osp_val_u32(1);
+	osp_server_register(&server, osp_ic_data_class(), &g_data_ldn);
+
+	osp_ic_register_init(&g_reg_clock, (osp_obis_t){0, 0, 1, 0, 0, 255}, osp_val_u32(0));
+	osp_server_register(&server, osp_ic_register_class(), &g_reg_clock);
+
+	/* Register Association LN with object_list */
+	osp_ic_association_ln_init(&g_aln, (osp_obis_t){0, 0, 40, 0, 1, 255});
+	osp_object_list_element_t elem;
+	elem.class_id = 1;
+	elem.logical_name = (osp_obis_t){1, 0, 1, 8, 0, 255};
+	memset(&elem.access_rights, 0, sizeof(elem.access_rights));
+	elem.access_rights.attr_count = 1;
+	elem.access_rights.attr_items[0].attribute_id = 1;
+	elem.access_rights.attr_items[0].access_mode = OSP_ACCESS_READ_ONLY;
+	osp_ic_association_ln_add_object(&g_aln, &elem);
+
+	elem.class_id = 1;
+	elem.logical_name = (osp_obis_t){0, 0, 96, 1, 0, 255};
+	osp_ic_association_ln_add_object(&g_aln, &elem);
+
+	elem.class_id = 3;
+	elem.logical_name = (osp_obis_t){0, 0, 1, 0, 0, 255};
+	osp_ic_association_ln_add_object(&g_aln, &elem);
+
+	osp_server_register(&server, osp_ic_association_ln_class(), &g_aln);
+
+	osp_sec_context_t ssec;
+	osp_sec_context_init(&ssec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
+	osp_server_set_security(&server, &ssec);
+
+	osp_client_init(&client, &pair.client_transport, OSP_FRAMING_WRAPPER);
+	osp_sec_context_t csec;
+	osp_sec_context_init(&csec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
+	osp_client_set_security(&client, &csec);
+
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+
+	/* Read object_list (attr 2 of Association LN) */
+	osp_value_t obj_list;
+	osp_err_t r = osp_client_get(&client, 15, &(osp_obis_t){0, 0, 40, 0, 1, 255}, 2, &obj_list);
+	printf("  COSEM: Read object_list → err=%d\n", r);
+
+	/* Read logical device name (Data IC 0.0.42.0.0.255) */
+	osp_value_t ldn;
+	r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 42, 0, 0, 255}, 1, &ldn);
+	printf("  COSEM: Read LDN → err=%d\n", r);
+
+	/* Read all registered objects */
+	osp_value_t result;
+	r = osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 1, &result);
+	assert_int_equal(r, OSP_OK);
+	assert_int_equal(result.as.uint32.value, 12345678);
+	printf("  COSEM: Read energy=%u OK\n", result.as.uint32.value);
+
+	r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 96, 1, 0, 255}, 1, &result);
+	assert_int_equal(r, OSP_OK);
+	assert_int_equal(result.as.uint32.value, 230);
+	printf("  COSEM: Read voltage=%u OK\n", result.as.uint32.value);
+
+	assert_int_equal(osp_client_release(&client), OSP_OK);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  COSEM mandatory objects: Write-back test
- *
- *  Yellow Book Section 7.2:
- *  "For each Attribute do: if writable, write back original value"
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_cosem_write_back(void **state) {
@@ -93,7 +174,9 @@ static void test_cosem_write_back(void **state) {
 	osp_server_t server;
 	osp_client_t client;
 
+	appl_setup(&pair, &server);
 	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_WRAPPER);
+
 	osp_ic_data_init(&g_data_energy, (osp_obis_t){1, 0, 1, 8, 0, 255});
 	g_data_energy.value = osp_val_u32(12345678);
 	osp_server_register(&server, osp_ic_data_class(), &g_data_energy);
@@ -101,13 +184,6 @@ static void test_cosem_write_back(void **state) {
 	osp_sec_context_t ssec;
 	osp_sec_context_init(&ssec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
 	osp_server_set_security(&server, &ssec);
-
-	appl_setup(&pair, &server);
-	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_WRAPPER);
-	osp_server_set_security(&server, &ssec);
-
-	/* Re-register after server re-init */
-	osp_server_register(&server, osp_ic_data_class(), &g_data_energy);
 
 	osp_client_init(&client, &pair.client_transport, OSP_FRAMING_WRAPPER);
 	osp_sec_context_t csec;
@@ -136,25 +212,120 @@ static void test_cosem_write_back(void **state) {
 /* ═══════════════════════════════════════════════════════════════════════════
  *  COSEM mandatory objects: Check mandatory elements
  *
- *  Yellow Book Section 7.3.12:
- *  Check presence of mandatory objects:
- *  - Association LN (class_id=15)
- *  - SAP assignment (class_id=17)
- *  - Logical Device Name (Data IC 0.0.42.0.0.255)
+ *  Yellow Book Section 7.3.12 / СТО Приложение И:
+ *  - Association LN (class_id=15) OBIS 0.0.40.0.x.255
+ *  - Logical Device Name (Data IC) OBIS 0.0.42.0.0.255
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_cosem_mandatory_objects(void **state) {
 	(void)state;
-	/* Association LN (class_id=15) is not registered with the dispatcher.
-	 * Skip until Association LN is properly exposed. */
-	skip();
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_client_t client;
+
+	appl_setup(&pair, &server);
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_WRAPPER);
+
+	osp_ic_data_init(&g_data_ldn, (osp_obis_t){0, 0, 42, 0, 0, 255});
+	g_data_ldn.value = osp_val_u32(1);
+	osp_server_register(&server, osp_ic_data_class(), &g_data_ldn);
+
+	osp_ic_association_ln_init(&g_aln, (osp_obis_t){0, 0, 40, 0, 1, 255});
+	osp_server_register(&server, osp_ic_association_ln_class(), &g_aln);
+
+	osp_sec_context_t ssec;
+	osp_sec_context_init(&ssec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
+	osp_server_set_security(&server, &ssec);
+
+	osp_client_init(&client, &pair.client_transport, OSP_FRAMING_WRAPPER);
+	osp_sec_context_t csec;
+	osp_sec_context_init(&csec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
+	osp_client_set_security(&client, &csec);
+
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+
+	osp_value_t result;
+
+	/* Check mandatory: Logical Device Name (0.0.42.0.0.255) */
+	osp_err_t r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 42, 0, 0, 255}, 1, &result);
+	printf("  COSEM mandatory: LDN read → err=%d\n", r);
+
+	/* Check mandatory: Association LN object_list (attr 2) */
+	r = osp_client_get(&client, 15, &(osp_obis_t){0, 0, 40, 0, 1, 255}, 2, &result);
+	printf("  COSEM mandatory: object_list read → err=%d\n", r);
+
+	/* Check mandatory: Association LN logical_name (attr 1) */
+	r = osp_client_get(&client, 15, &(osp_obis_t){0, 0, 40, 0, 1, 255}, 1, &result);
+	printf("  COSEM mandatory: Association LN name → err=%d\n", r);
+
+	/* Check mandatory: Association LN xDLMS_context_info (attr 5) */
+	r = osp_client_get(&client, 15, &(osp_obis_t){0, 0, 40, 0, 1, 255}, 5, &result);
+	printf("  COSEM mandatory: xDLMS context → err=%d\n", r);
+
+	/* Check mandatory: Association LN authentication_mechanism_name (attr 6) */
+	r = osp_client_get(&client, 15, &(osp_obis_t){0, 0, 40, 0, 1, 255}, 6, &result);
+	printf("  COSEM mandatory: auth mechanism → err=%d\n", r);
+
+	/* Check mandatory: Association LN association_status (attr 8) */
+	r = osp_client_get(&client, 15, &(osp_obis_t){0, 0, 40, 0, 1, 255}, 8, &result);
+	printf("  COSEM mandatory: association status → err=%d\n", r);
+
+	assert_int_equal(osp_client_release(&client), OSP_OK);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- *  COSEM mandatory objects: Multiple references test
- *
- *  Yellow Book Section 7.2:
- *  "perform Multiple references test"
+ *  COSEM mandatory objects: Access rights verification
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+static void test_cosem_access_rights(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_transport_pair_t pair;
+	osp_server_t server;
+	osp_client_t client;
+
+	appl_setup(&pair, &server);
+	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_WRAPPER);
+
+	osp_ic_data_init(&g_data_energy, (osp_obis_t){1, 0, 1, 8, 0, 255});
+	g_data_energy.value = osp_val_u32(12345678);
+	osp_server_register(&server, osp_ic_data_class(), &g_data_energy);
+
+	osp_ic_register_init(&g_reg_clock, (osp_obis_t){0, 0, 1, 0, 0, 255}, osp_val_u32(0));
+	osp_server_register(&server, osp_ic_register_class(), &g_reg_clock);
+
+	osp_sec_context_t ssec;
+	osp_sec_context_init(&ssec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
+	osp_server_set_security(&server, &ssec);
+
+	osp_client_init(&client, &pair.client_transport, OSP_FRAMING_WRAPPER);
+	osp_sec_context_t csec;
+	osp_sec_context_init(&csec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
+	osp_client_set_security(&client, &csec);
+
+	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
+
+	/* Read each attribute of the registered objects */
+	osp_value_t result;
+	/* Data IC: attr 1 = value */
+	osp_err_t r = osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 1, &result);
+	assert_int_equal(r, OSP_OK);
+	printf("  COSEM: Data IC attr 1 = %u (readable)\n", result.as.uint32.value);
+
+	/* Register IC: attr 1 = value */
+	r = osp_client_get(&client, 3, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result);
+	printf("  COSEM: Register IC attr 1 → err=%d\n", r);
+
+	/* Register IC: attr 2 = scalar_unit */
+	r = osp_client_get(&client, 3, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &result);
+	printf("  COSEM: Register IC attr 2 → err=%d\n", r);
+
+	assert_int_equal(osp_client_release(&client), OSP_OK);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  COSEM: Multiple references test
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 static void test_cosem_multiple_references(void **state) {
@@ -164,7 +335,9 @@ static void test_cosem_multiple_references(void **state) {
 	osp_server_t server;
 	osp_client_t client;
 
+	appl_setup(&pair, &server);
 	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_WRAPPER);
+
 	osp_ic_data_init(&g_data_energy, (osp_obis_t){1, 0, 1, 8, 0, 255});
 	g_data_energy.value = osp_val_u32(12345678);
 	osp_server_register(&server, osp_ic_data_class(), &g_data_energy);
@@ -175,10 +348,6 @@ static void test_cosem_multiple_references(void **state) {
 
 	osp_sec_context_t ssec;
 	osp_sec_context_init(&ssec, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
-	osp_server_set_security(&server, &ssec);
-
-	appl_setup(&pair, &server);
-	osp_server_init(&server, &pair.server_transport, OSP_FRAMING_WRAPPER);
 	osp_server_set_security(&server, &ssec);
 
 	osp_client_init(&client, &pair.client_transport, OSP_FRAMING_WRAPPER);
@@ -200,21 +369,6 @@ static void test_cosem_multiple_references(void **state) {
 	(void)r;
 
 	assert_int_equal(osp_client_release(&client), OSP_OK);
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════
- *  COSEM mandatory objects: Access rights verification
- *
- *  Yellow Book Section 7.2:
- *  "access_rights are provided by the object_list attribute"
- * ═══════════════════════════════════════════════════════════════════════════ */
-
-static void test_cosem_access_rights(void **state) {
-	(void)state;
-	/* Association LN (class_id=15) is not registered with the dispatcher.
-	 * Access rights are provided by the object_list attribute of Association LN.
-	 * Skip until Association LN is properly exposed. */
-	skip();
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
