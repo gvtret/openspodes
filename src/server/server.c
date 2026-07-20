@@ -394,17 +394,40 @@ static osp_err_t handle_aarq(osp_server_t *s, const osp_aarq_t *aarq) {
 		aare.result = OSP_RESULT_REJECTED_PERMANENT;
 	}
 	aare.mechanism = aarq->mechanism;
-	aare.responding_ap_title_len = OSP_SEC_SYSTEM_TITLE_SIZE;
-	memcpy(aare.responding_ap_title, s->security.system_title, OSP_SEC_SYSTEM_TITLE_SIZE);
+	aare.application_context = aarq->application_context ? aarq->application_context : OSP_CTX_LN;
+	/* Etalon SPODES meters always echo ACSE protocol-version in AARE. */
+	aare.has_protocol_version = 1;
+	aare.protocol_version[0] = 0x02;
+	aare.protocol_version[1] = 0x84;
+	aare.result_source_diagnostic = 0; /* null on accept; overwrite on reject below */
+
+	if (aare.result != OSP_RESULT_ACCEPTED) {
+		/* authentication-failure / no-reason — keep diagnostic non-null for rejects */
+		if (aare.result_source_diagnostic == 0) {
+			aare.result_source_diagnostic = 1; /* 1 = no-reason-given (acse-service-user) */
+		}
+	}
+
+	if (osp_hls_requires_handshake((osp_auth_mechanism_t)aarq->mechanism)) {
+		/* HLS: AP-title + StoC authentication fields */
+		aare.include_authentication = 1;
+		aare.responding_ap_title_len = OSP_SEC_SYSTEM_TITLE_SIZE;
+		memcpy(aare.responding_ap_title, s->security.system_title, OSP_SEC_SYSTEM_TITLE_SIZE);
+	} else {
+		/* LLS / Lowest: match SPODES etalon AARE (no A4/88/89/AA). */
+		aare.include_authentication = 0;
+		aare.responding_ap_title_len = 0;
+	}
 
 	/* APDU ciphering only for AA that negotiated With_Ciphering app context (IEC 62056-5-3). */
 	server_apply_ciphering_for_aarq(s, aarq, aare.result == OSP_RESULT_ACCEPTED);
 
+	osp_initiate_request_t ireq;
+	memset(&ireq, 0, sizeof(ireq));
 	if (aarq->user_info_len > 0) {
 		osp_buf_t uibuf;
 		osp_buf_init(&uibuf, (uint8_t *)aarq->user_info, aarq->user_info_len);
 		uibuf.wr = aarq->user_info_len;
-		osp_initiate_request_t ireq;
 		if (osp_initiate_request_decode(&uibuf, &ireq) == OSP_OK && ireq.has_dedicated_key && s->ciphering_enabled) {
 			osp_sec_cipher_session_use_dedicated(&s->cipher_tx, &s->cipher_rx, ireq.dedicated_key, ireq.dedicated_key_len);
 		}
@@ -412,6 +435,16 @@ static osp_err_t handle_aarq(osp_server_t *s, const osp_aarq_t *aarq) {
 
 	osp_initiate_response_t iresp;
 	osp_initiate_response_default(&iresp);
+	/* SPODES etalon: public/lowest → 0x001010, LLS/HLS → 0x001015. */
+	iresp.negotiated_conformance =
+	    (aarq->mechanism == OSP_MECH_LOWEST) ? 0x001010u : 0x001015u;
+	if (ireq.proposed_conformance != 0) {
+		iresp.negotiated_conformance &= ireq.proposed_conformance;
+	}
+	if (ireq.client_max_receive_pdu_size > 0 &&
+	    ireq.client_max_receive_pdu_size < iresp.server_max_receive_pdu_size) {
+		iresp.server_max_receive_pdu_size = ireq.client_max_receive_pdu_size;
+	}
 	osp_buf_t ui;
 	osp_buf_init(&ui, aare.user_info, sizeof(aare.user_info));
 	if (osp_initiate_response_encode(&iresp, &ui) != OSP_OK) {
@@ -945,23 +978,35 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 	uint32_t rx_len = 0;
 	osp_err_t r = OSP_OK;
 
-	/* HDLC: handle SNRM/UA on first call */
-	if (s->framing == OSP_FRAMING_HDLC && !s->hdlc_active) {
-		r = osp_hdlc_session_connect(&s->hdlc, timeout_ms);
-		if (r != OSP_OK) {
-			return r;
+	/* HDLC: NDM (IDLE) — SNRM/DISC; NRM (CONNECTED) — I-frame/APDU */
+	if (s->framing == OSP_FRAMING_HDLC) {
+		uint32_t frame_wait_ms = osp_hdlc_inactivity_wait_ms(s->hdlc.inactivity_timeout_s);
+		if (osp_hdlc_session_state(&s->hdlc) != OSP_HDLC_STATE_CONNECTED) {
+			r = osp_hdlc_session_connect(&s->hdlc, frame_wait_ms);
+			if (r != OSP_OK) {
+				return r;
+			}
+			s->hdlc_active = true;
+			return OSP_OK; /* SNRM/UA: now in NRM, caller calls again for APDU */
 		}
-		s->hdlc_active = true;
-		return OSP_OK; /* link established, caller calls again for APDU */
-	}
-
-	if (s->hdlc_active) {
-		r = osp_hdlc_session_recv_apdu(&s->hdlc, s->rx_buf, sizeof(s->rx_buf), &rx_len, timeout_ms);
+		r = osp_hdlc_session_recv_apdu(&s->hdlc, s->rx_buf, sizeof(s->rx_buf), &rx_len, frame_wait_ms);
 	} else {
 		r = osp_transport_recv_apdu(s->transport, s->framing, s->rx_buf, sizeof(s->rx_buf), &rx_len, timeout_ms);
 	}
 	if (r != OSP_OK) {
-		if (r == OSP_ERR_DISCONNECTED || r == OSP_ERR_IO) {
+		if (r == OSP_ERR_DISCONNECTED) {
+			/* HDLC DISC → NDM: clear AA, keep TCP, wait for next SNRM. */
+			osp_server_clear_current_association(s);
+			s->associated = false;
+			s->hls_pending = false;
+			s->ciphering_enabled = false;
+			if (s->framing == OSP_FRAMING_HDLC) {
+				s->hdlc_active = false;
+				return OSP_ERR_TIMEOUT;
+			}
+			return r;
+		}
+		if (r == OSP_ERR_IO) {
 			osp_server_clear_current_association(s);
 		}
 		return r;

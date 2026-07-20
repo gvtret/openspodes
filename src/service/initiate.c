@@ -84,7 +84,7 @@ void osp_initiate_response_default(osp_initiate_response_t *resp) {
 	memset(resp, 0, sizeof(*resp));
 	resp->negotiated_dlms_version = 6;
 	resp->negotiated_conformance = 0x007E1F;
-	resp->server_max_receive_pdu_size = 0x01F4;
+	resp->server_max_receive_pdu_size = 0x0800;
 	resp->vaa_name = 0x0007;
 }
 

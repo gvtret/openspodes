@@ -113,7 +113,11 @@ int osp_aarq_decode(osp_buf_t *buf, osp_aarq_t *aarq);
 typedef struct {
 	uint8_t result; /* OSP_RESULT_* */
 	uint8_t result_source_diagnostic;
+	uint8_t application_context; /* OSP_CTX_*; 0 = omit field */
+	uint8_t has_protocol_version;
+	uint8_t protocol_version[2]; /* typically 02 84 (version 2) */
 	uint8_t mechanism;              /* OSP_MECH_* */
+	uint8_t include_authentication; /* emit 88/89/AA (HLS / auth echo) */
 	uint8_t responding_ap_title[8]; /* system title */
 	uint8_t responding_ap_title_len;
 	uint8_t responding_auth_value[64]; /* StoC challenge */

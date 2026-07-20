@@ -291,12 +291,9 @@ osp_err_t osp_ic_read_threshold_list(const osp_value_t *val, osp_threshold_list_
 	return OSP_OK;
 }
 
-static osp_value_t ic_val_access_right(const osp_access_right_t *ar) {
-	OSP_TLS osp_value_t attr_rows[OSP_MAX_ACCESS_ITEMS];
-	OSP_TLS osp_value_t method_rows[OSP_MAX_ACCESS_ITEMS];
-	OSP_TLS osp_value_t attr_fields[OSP_MAX_ACCESS_ITEMS][3];
-	OSP_TLS osp_value_t method_fields[OSP_MAX_ACCESS_ITEMS][2];
-	osp_value_t outer[2];
+static osp_value_t ic_val_access_right(const osp_access_right_t *ar, osp_value_t outer[2], osp_value_t attr_rows[OSP_MAX_ACCESS_ITEMS],
+                                       osp_value_t method_rows[OSP_MAX_ACCESS_ITEMS], osp_value_t attr_fields[OSP_MAX_ACCESS_ITEMS][3],
+                                       osp_value_t method_fields[OSP_MAX_ACCESS_ITEMS][2]) {
 	osp_value_t v = {0};
 	uint8_t ac = ar ? ar->attr_count : 0;
 	uint8_t mc = ar ? ar->method_count : 0;
@@ -339,8 +336,14 @@ static osp_value_t ic_val_access_right(const osp_access_right_t *ar) {
 }
 
 osp_value_t osp_ic_val_object_list(const osp_object_list_t *ol) {
+	/* Per-element buffers: access-right trees must stay alive until encode finishes. */
 	OSP_TLS osp_value_t rows[OSP_MAX_OBJECT_LIST];
 	OSP_TLS osp_value_t fields[OSP_MAX_OBJECT_LIST][4];
+	OSP_TLS osp_value_t ar_outer[OSP_MAX_OBJECT_LIST][2];
+	OSP_TLS osp_value_t ar_attr_rows[OSP_MAX_OBJECT_LIST][OSP_MAX_ACCESS_ITEMS];
+	OSP_TLS osp_value_t ar_method_rows[OSP_MAX_OBJECT_LIST][OSP_MAX_ACCESS_ITEMS];
+	OSP_TLS osp_value_t ar_attr_fields[OSP_MAX_OBJECT_LIST][OSP_MAX_ACCESS_ITEMS][3];
+	OSP_TLS osp_value_t ar_method_fields[OSP_MAX_OBJECT_LIST][OSP_MAX_ACCESS_ITEMS][2];
 	osp_value_t v = {0};
 	uint8_t n = ol ? ol->count : 0;
 	if (n > OSP_MAX_OBJECT_LIST) {
@@ -353,7 +356,8 @@ osp_value_t osp_ic_val_object_list(const osp_object_list_t *ol) {
 		fields[i][2].tag = OSP_TAG_OCTETSTRING;
 		fields[i][2].as.octetstring.len = 6;
 		memcpy(fields[i][2].as.octetstring.data, &e->logical_name, 6);
-		fields[i][3] = ic_val_access_right(&e->access_rights);
+		fields[i][3] = ic_val_access_right(&e->access_rights, ar_outer[i], ar_attr_rows[i], ar_method_rows[i], ar_attr_fields[i],
+		                                   ar_method_fields[i]);
 		rows[i].tag = OSP_TAG_STRUCTURE;
 		rows[i].as.structure.elements.items = fields[i];
 		rows[i].as.structure.elements.count = 4;

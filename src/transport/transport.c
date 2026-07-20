@@ -266,9 +266,10 @@ osp_err_t osp_hdlc_deframe(const uint8_t *data, uint32_t len, osp_hdlc_frame_t *
 
 	memset(frame, 0, sizeof(*frame));
 
-	/* Frame format */
+	/* Frame format (type A); bit 3 = segmentation */
 	if ((data[1] & 0xF0) != 0xA0)
 		return OSP_ERR_INVALID;
+	frame->segmented = (data[1] & 0x08) ? 1 : 0;
 	uint16_t flen = ((uint16_t)(data[1] & 0x07) << 8) | data[2];
 	if (flen < 4 || (uint32_t)flen + 2 > len)
 		return OSP_ERR_INVALID;
@@ -306,9 +307,12 @@ osp_err_t osp_hdlc_deframe(const uint8_t *data, uint32_t len, osp_hdlc_frame_t *
 	/* Control byte */
 	if (idx >= len - 3)
 		return OSP_ERR_INVALID;
+	frame->control_raw = data[idx];
 	osp_err_t r = osp_hdlc_control_decode(data[idx++], &frame->control);
-	if (r != OSP_OK)
+	if (r != OSP_OK) {
+		/* Addresses + control_raw filled — caller may send FRMR (W). */
 		return r;
+	}
 
 	/* HCS + information field */
 	uint32_t fcs_start = len - 3;

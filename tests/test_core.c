@@ -1563,7 +1563,7 @@ static void test_initiate_response_default(void **state) {
 	osp_initiate_response_default(&resp);
 	assert_int_equal(resp.negotiated_dlms_version, 6);
 	assert_int_equal(resp.negotiated_conformance, 0x007E1F);
-	assert_int_equal(resp.server_max_receive_pdu_size, 0x01F4);
+	assert_int_equal(resp.server_max_receive_pdu_size, 0x0800);
 	assert_int_equal(resp.vaa_name, 0x0007);
 }
 
@@ -1676,7 +1676,7 @@ static void test_initiate_response_roundtrip(void **state) {
 	assert_int_equal(osp_initiate_response_decode(&rbuf, &decoded), OSP_OK);
 	assert_int_equal(decoded.negotiated_dlms_version, 6);
 	assert_int_equal(decoded.negotiated_conformance, 0x007E1F);
-	assert_int_equal(decoded.server_max_receive_pdu_size, 0x01F4);
+	assert_int_equal(decoded.server_max_receive_pdu_size, 0x0800);
 	assert_int_equal(decoded.vaa_name, 0x0007);
 }
 
