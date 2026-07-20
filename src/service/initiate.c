@@ -3,6 +3,7 @@
  */
 
 #include "initiate.h"
+#include "service.h"
 #include "../codec/codec.h"
 #include <string.h>
 
@@ -280,6 +281,18 @@ osp_err_t osp_initiate_response_encode(const osp_initiate_response_t *resp, osp_
 		return r;
 	}
 	return osp_axdr_write_u16(buf, resp->vaa_name);
+}
+
+osp_err_t osp_initiate_error_encode(osp_buf_t *buf, uint8_t initiate_error_value) {
+	if (!buf) {
+		return OSP_ERR_INVALID;
+	}
+	osp_confirmed_service_error_t err = {
+	    .service = OSP_CSE_SERVICE_INITIATE_ERROR,
+	    .category = OSP_CSE_CATEGORY_INITIATE,
+	    .value = initiate_error_value,
+	};
+	return osp_confirmed_service_error_encode(buf, &err) == 0 ? OSP_OK : OSP_ERR_INVALID;
 }
 
 osp_err_t osp_initiate_response_decode(osp_buf_t *buf, osp_initiate_response_t *resp) {

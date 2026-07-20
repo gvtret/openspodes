@@ -6,6 +6,7 @@
  */
 
 #include "service.h"
+#include "initiate.h"
 #include "../codec/codec.h"
 #include "../codec/serialize.h"
 #include <string.h>
@@ -169,7 +170,12 @@ int osp_aarq_decode(osp_buf_t *buf, osp_aarq_t *aarq) {
 		if (ftag.tag_class == 2) {
 			/* Context-specific: dispatch by tag number */
 			switch (ftag.tag_number) {
-				case 0: /* [0] protocol-version: skip */
+				case 0: /* [0] protocol-version */
+					if (field_len >= 2) {
+						aarq->has_protocol_version = 1;
+						aarq->protocol_version[0] = buf->buf[buf->rd++];
+						aarq->protocol_version[1] = buf->buf[buf->rd++];
+					}
 					break;
 
 				case 1: /* [1] application-context-name: EXPLICIT wraps OID */
@@ -193,7 +199,12 @@ int osp_aarq_decode(osp_buf_t *buf, osp_aarq_t *aarq) {
 				}
 					break;
 
-				case 10: /* [10] sender-acse-requirements: skip */
+				case 10: /* [10] sender-acse-requirements */
+					if (field_len >= 2) {
+						aarq->has_sender_acse_requirement = 1;
+						buf->rd++; /* unused bits */
+						aarq->sender_acse_requirement = buf->buf[buf->rd++];
+					}
 					break;
 
 				case 11: /* [11] mechanism-name: IMPLICIT OID (no 06 tag prefix) */
@@ -204,6 +215,7 @@ int osp_aarq_decode(osp_buf_t *buf, osp_aarq_t *aarq) {
 					buf->rd += 6;
 					if (osp_axdr_read_u8(buf, &aarq->mechanism) != OSP_OK)
 						return -1;
+					aarq->has_mechanism = 1;
 				}
 					break;
 
@@ -221,6 +233,7 @@ int osp_aarq_decode(osp_buf_t *buf, osp_aarq_t *aarq) {
 							if (osp_axdr_read_u8(buf, &aarq->calling_auth_value[i]) != OSP_OK)
 								return -1;
 						}
+						aarq->has_calling_auth = 1;
 					}
 					break;
 				}
@@ -308,7 +321,7 @@ int osp_aare_encode(osp_aare_t *aare, osp_buf_t *buf) {
 	/* [3] result-source-diagnostic: always present (null = 0 on accept) */
 	osp_ber_write_tag(buf, 2, true, 3);
 	osp_ber_write_length(buf, 5);
-	osp_ber_write_tag(buf, 2, true, 1); /* [1] acse-service-user */
+	osp_ber_write_tag(buf, 2, true, aare->result_source_is_provider ? 2 : 1);
 	osp_ber_write_length(buf, 3);
 	osp_axdr_write_u8(buf, 2); /* INTEGER tag */
 	osp_axdr_write_u8(buf, 1); /* length */
@@ -424,6 +437,7 @@ int osp_aare_decode(osp_buf_t *buf, osp_aare_t *aare) {
 					osp_ber_read_tag(buf, &itag);
 					uint32_t ilen;
 					osp_ber_read_length(buf, &ilen);
+					aare->result_source_is_provider = (itag.tag_number == 2) ? 1 : 0;
 					osp_axdr_read_u8(buf, &aare->result_source_diagnostic);
 					break;
 				}

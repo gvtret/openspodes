@@ -213,6 +213,16 @@ typedef struct {
 	/* Rate limiting */
 	uint8_t hls_failures;
 } osp_sec_context_t;
+
+/** Map DLMS mechanism id 2 (generic HLS) to Suite-0 GMAC for pass 3/4. */
+static inline osp_auth_mechanism_t osp_hls_effective_mechanism(const osp_sec_context_t *ctx, uint8_t proposed) {
+	osp_auth_mechanism_t m = (osp_auth_mechanism_t)proposed;
+	if (m == OSP_MECH_HLS && ctx && ctx->suite == OSP_SUITE_0) {
+		return OSP_MECH_HLS_GMAC;
+	}
+	return m;
+}
+
 /**
  * @brief Initialize a security context with the given suite and mechanism.
  * @param ctx          Security context to initialize (caller-owned).
