@@ -32,7 +32,11 @@ static const uint8_t HLS_HIGH_S_BOX[256] = {
 
 static uint8_t hls_high_galois_multiply(uint8_t value) {
 	if (value >> 7) {
-		return (uint8_t)((value << 1) ^ 0x1b);
+		/* Keep identical truncation behavior to GXCipher::GaloisMultiply:
+		 * value is uint8_t (unsigned char), so (value<<1) is truncated to 8 bits
+		 * before XOR with 0x1b. */
+		value = (uint8_t)(value << 1);
+		return (uint8_t)(value ^ 0x1b);
 	}
 	return (uint8_t)(value << 1);
 }

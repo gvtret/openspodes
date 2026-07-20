@@ -154,8 +154,9 @@ void osp_server_set_security(osp_server_t *s, const osp_sec_context_t *sec) {
 
 void osp_server_set_hdlc_addresses(osp_server_t *s, uint32_t server_addr, uint8_t server_addr_len,
                                     uint32_t client_addr, uint8_t client_addr_len) {
-	if (!s || s->framing != OSP_FRAMING_HDLC)
+	if (!s || s->framing != OSP_FRAMING_HDLC) {
 		return;
+	}
 	osp_hdlc_session_init_server(&s->hdlc, s->transport, server_addr, server_addr_len, client_addr, client_addr_len);
 }
 
@@ -166,8 +167,9 @@ void osp_server_set_association(osp_server_t *s, osp_ic_association_ln_t *associ
 }
 
 uint8_t osp_server_get_client_sap(osp_server_t *s) {
-	if (!s || !s->hdlc_active)
+	if (!s || !s->hdlc_active) {
 		return 0;
+	}
 	/* received_client_addr stores the actual client address from SNRM source.
 	 * For 1-byte HDLC addressing: value is directly the SAP (e.g. 0x10, 0x20, 0x30).
 	 * For 2-byte addressing: value = (logical << 7) | physical; we use the full value. */
@@ -1318,6 +1320,23 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 		case OSP_TAG_GET_REQUEST: {
 			osp_get_request_t req;
 			if (osp_get_request_decode(&rbuf, &req) != 0) {
+				/* Malformed GET must not kill the session.
+				 * Conformance clients expect a Get-Response with DATA-ERROR, not a raw ExceptionResponse. */
+				if (s->associated) {
+					osp_get_response_t resp = {0};
+					/* APDU layout: [C0 tag][type][invoke-id-priority]... */
+					resp.type = OSP_GET_RESP_DATA_ERROR;
+					resp.invoke_id_priority = (rx_len >= 3) ? s->rx_buf[2] : 0;
+					/* Etalon returns data-access-result == 1 for malformed GET in tests #20/#21. */
+					resp.data_access_result = OSP_DAR_HARDWARE_FAULT;
+
+					osp_buf_t buf;
+					osp_buf_init(&buf, s->tx_buf, sizeof(s->tx_buf));
+					if (osp_get_response_encode(&buf, &resp) != 0) {
+						return OSP_ERR_INVALID;
+					}
+					return server_send(s, buf.buf, buf.wr);
+				}
 				return OSP_ERR_INVALID;
 			}
 			return handle_get(s, &req);
@@ -1326,6 +1345,23 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 		case OSP_TAG_SET_REQUEST: {
 			osp_set_request_t req;
 			if (osp_set_request_decode(&rbuf, &req) != 0) {
+				/* Malformed SET must not kill the session.
+				 * Conformance clients expect a Set-Response with normal DAR result. */
+				if (s->associated) {
+					osp_set_response_t resp = {0};
+					/* APDU layout: [C1 tag][type][invoke-id-priority]... */
+					resp.type = OSP_SET_RESP_NORMAL;
+					resp.invoke_id_priority = (rx_len >= 3) ? s->rx_buf[2] : 0;
+					/* Etalon returns result == 1 for malformed SET in tests #20/#21. */
+					resp.as.normal.result = OSP_DAR_HARDWARE_FAULT;
+
+					osp_buf_t buf;
+					osp_buf_init(&buf, s->tx_buf, sizeof(s->tx_buf));
+					if (osp_set_response_encode(&buf, &resp) != 0) {
+						return OSP_ERR_INVALID;
+					}
+					return server_send(s, buf.buf, buf.wr);
+				}
 				return OSP_ERR_INVALID;
 			}
 			return handle_set(s, &req);
