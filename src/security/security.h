@@ -204,6 +204,10 @@ typedef struct {
 	uint8_t signing_key_len;
 	uint8_t peer_public_key_len;
 
+	/* HLS password (mechanism 2 — DLMS_AUTHENTICATION_HIGH) */
+	uint8_t hls_secret[OSP_SEC_CHALLENGE_MAX];
+	uint8_t hls_secret_len;
+
 	/* Challenge values */
 	uint8_t ctos[OSP_SEC_CHALLENGE_MAX]; /* Client-to-Server */
 	uint8_t ctos_len;
@@ -214,13 +218,10 @@ typedef struct {
 	uint8_t hls_failures;
 } osp_sec_context_t;
 
-/** Map DLMS mechanism id 2 (generic HLS) to Suite-0 GMAC for pass 3/4. */
+/** Resolve proposed AARQ mechanism for pass 3/4 (identity; mech 2 uses password AES). */
 static inline osp_auth_mechanism_t osp_hls_effective_mechanism(const osp_sec_context_t *ctx, uint8_t proposed) {
-	osp_auth_mechanism_t m = (osp_auth_mechanism_t)proposed;
-	if (m == OSP_MECH_HLS && ctx && ctx->suite == OSP_SUITE_0) {
-		return OSP_MECH_HLS_GMAC;
-	}
-	return m;
+	(void)ctx;
+	return (osp_auth_mechanism_t)proposed;
 }
 
 /**
@@ -270,6 +271,10 @@ int osp_hls_sha256(const uint8_t *input, uint32_t len, uint8_t output[32]);
 
 /** @brief Compute AES-GMAC authentication tag over data. */
 int osp_hls_gmac(const osp_sec_context_t *ctx, const uint8_t *system_title, uint32_t ic, const uint8_t *data, uint32_t data_len, uint8_t tag[OSP_SEC_TAG_SIZE]);
+
+/** @brief DLMS_AUTHENTICATION_HIGH f(x) = Aes1Encrypt(password, x). */
+int osp_hls_high_secure(const uint8_t *data, uint32_t data_len, const uint8_t *secret, uint32_t secret_len, uint8_t *out,
+                        uint32_t *out_len);
 
 /** @brief Build HLS pass-3 client response f(StoC). */
 int osp_hls_pass3_build(const osp_sec_context_t *ctx, uint8_t *out, uint32_t out_size, uint32_t *out_len);

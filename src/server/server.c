@@ -66,6 +66,20 @@ void osp_server_clear_ciphering(osp_server_t *s) {
 	s->ciphering_enabled = false;
 }
 
+void osp_server_set_acse_log_cb(osp_server_t *s, osp_server_acse_log_fn fn, void *ctx) {
+	if (!s) {
+		return;
+	}
+	s->acse_log_cb = fn;
+	s->acse_log_ctx = ctx;
+}
+
+static void server_emit_acse_log(osp_server_t *s, const osp_acse_log_event_t *ev) {
+	if (s && s->acse_log_cb && ev) {
+		s->acse_log_cb(s->acse_log_ctx, ev);
+	}
+}
+
 /** IEC 62056-5-3: app context 3/4 = LN/SN with ciphering. */
 static bool app_context_requires_ciphering(uint8_t application_context) {
 	return application_context == OSP_CTX_LN_CIPHERING ||
@@ -484,24 +498,42 @@ static osp_err_t handle_aarq(osp_server_t *s, const osp_aarq_t *aarq) {
 				rejected = true;
 				reject.acse_diag = OSP_ACSE_DIAG_AUTH_FAILURE;
 			} else {
-				s->security.mechanism = osp_hls_effective_mechanism(&s->security, aarq->mechanism);
+				osp_auth_mechanism_t mech = osp_hls_effective_mechanism(&s->security, aarq->mechanism);
+				if (mech == OSP_MECH_HLS && (!assoc || assoc->secret_len == 0)) {
+					rejected = true;
+					reject.acse_diag = OSP_ACSE_DIAG_AUTH_FAILURE;
+				} else {
+					s->security.mechanism = mech;
+					s->security.hls_secret_len = 0;
+					osp_memzero(s->security.hls_secret, sizeof(s->security.hls_secret));
+					if (mech == OSP_MECH_HLS && assoc) {
+						s->security.hls_secret_len = assoc->secret_len;
+						memcpy(s->security.hls_secret, assoc->secret, assoc->secret_len);
+					}
 
-				uint8_t ctos_len = aarq->calling_auth_value_len;
-				if (ctos_len > sizeof(s->security.ctos)) {
-					ctos_len = (uint8_t)sizeof(s->security.ctos);
-				}
-				memcpy(s->security.ctos, aarq->calling_auth_value, ctos_len);
-				s->security.ctos_len = ctos_len;
-				if (aarq->calling_ap_title_len >= OSP_SEC_SYSTEM_TITLE_SIZE) {
-					memcpy(s->security.peer_system_title, aarq->calling_ap_title, OSP_SEC_SYSTEM_TITLE_SIZE);
-				}
+					uint8_t ctos_len = aarq->calling_auth_value_len;
+					if (ctos_len > sizeof(s->security.ctos)) {
+						ctos_len = (uint8_t)sizeof(s->security.ctos);
+					}
+					if (mech == OSP_MECH_HLS && ctos_len != 16) {
+						rejected = true;
+						reject.acse_diag = OSP_ACSE_DIAG_AUTH_FAILURE;
+					} else {
+						memcpy(s->security.ctos, aarq->calling_auth_value, ctos_len);
+						s->security.ctos_len = ctos_len;
+						if (aarq->calling_ap_title_len >= OSP_SEC_SYSTEM_TITLE_SIZE) {
+							memcpy(s->security.peer_system_title, aarq->calling_ap_title, OSP_SEC_SYSTEM_TITLE_SIZE);
+						}
 
-				s->security.stoc_len = 8;
-				osp_hal_random_fill(s->security.stoc, 8);
-				memcpy(aare.responding_auth_value, s->security.stoc, 8);
-				aare.responding_auth_value_len = 8;
-				aare.result = OSP_RESULT_ACCEPTED;
-				s->hls_pending = true;
+						uint8_t stoc_len = (mech == OSP_MECH_HLS) ? 16 : 8;
+						s->security.stoc_len = stoc_len;
+						osp_hal_random_fill(s->security.stoc, stoc_len);
+						memcpy(aare.responding_auth_value, s->security.stoc, stoc_len);
+						aare.responding_auth_value_len = stoc_len;
+						aare.result = OSP_RESULT_ACCEPTED;
+						s->hls_pending = true;
+					}
+				}
 			}
 		} else {
 			rejected = true;
@@ -565,6 +597,35 @@ static osp_err_t handle_aarq(osp_server_t *s, const osp_aarq_t *aarq) {
 	osp_buf_init(&buf, s->tx_buf, sizeof(s->tx_buf));
 	if (osp_aare_encode(&aare, &buf) != 0) {
 		return OSP_ERR_INVALID;
+	}
+
+	{
+		osp_acse_user_info_kind_t ui_kind = OSP_ACSE_USER_INFO_NONE;
+		if (reject.initiate_err != 0) {
+			ui_kind = OSP_ACSE_USER_INFO_INITIATE_ERROR;
+		} else if (aare.user_info_len > 0) {
+			ui_kind = OSP_ACSE_USER_INFO_INITIATE_RESPONSE;
+		}
+		osp_acse_log_event_t log_ev = {
+		    .kind = OSP_ACSE_LOG_AARE,
+		    .client_sap = osp_server_get_client_sap(s),
+		    .aarq_application_context = aarq->application_context,
+		    .aarq_mechanism = aarq->mechanism,
+		    .aarq_has_mechanism = aarq->has_mechanism,
+		    .aarq_has_calling_auth = aarq->has_calling_auth,
+		    .aarq_ireq_ok = ireq_ok,
+		    .aarq_dlms_version = ireq_ok ? ireq.proposed_dlms_version : 0,
+		    .aarq_conformance = ireq_ok ? ireq.proposed_conformance : 0,
+		    .aarq_client_pdu = ireq_ok ? ireq.client_max_receive_pdu_size : 0,
+		    .aare_result = aare.result,
+		    .aare_diagnostic = aare.result_source_diagnostic,
+		    .aare_diag_is_provider = aare.result_source_is_provider,
+		    .aare_initiate_error = reject.initiate_err,
+		    .aare_hls_pending = s->hls_pending,
+		    .aare_application_context = aare.application_context,
+		    .aare_user_info = ui_kind,
+		};
+		server_emit_acse_log(s, &log_ev);
 	}
 
 	return server_send(s, buf.buf, buf.wr);
@@ -1042,6 +1103,12 @@ static osp_err_t handle_hls_pass3(osp_server_t *s, const osp_action_request_t *r
 		osp_buf_t buf;
 		osp_buf_init(&buf, s->tx_buf, sizeof(s->tx_buf));
 		osp_action_response_encode(&buf, &resp);
+		osp_acse_log_event_t log_ev = {
+		    .kind = OSP_ACSE_LOG_HLS_PASS3,
+		    .client_sap = osp_server_get_client_sap(s),
+		    .hls_pass3_ok = false,
+		};
+		server_emit_acse_log(s, &log_ev);
 		return server_send(s, buf.buf, buf.wr);
 	}
 
@@ -1073,6 +1140,12 @@ static osp_err_t handle_hls_pass3(osp_server_t *s, const osp_action_request_t *r
 	osp_buf_t buf;
 	osp_buf_init(&buf, s->tx_buf, sizeof(s->tx_buf));
 	osp_action_response_encode(&buf, &resp);
+	osp_acse_log_event_t log_ev = {
+	    .kind = OSP_ACSE_LOG_HLS_PASS3,
+	    .client_sap = osp_server_get_client_sap(s),
+	    .hls_pass3_ok = true,
+	};
+	server_emit_acse_log(s, &log_ev);
 	return server_send(s, buf.buf, buf.wr);
 }
 

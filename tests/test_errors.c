@@ -620,6 +620,49 @@ static void test_security_hls_errors(void **state) {
 	osp_sec_context_init(NULL, OSP_SUITE_0, OSP_MECH_LOWEST, NULL);
 }
 
+static void test_security_hls_high(void **state) {
+	(void)state;
+	static const char password[] = "HiPassword";
+	uint8_t stoc[16];
+	uint8_t ctos[16];
+	for (int i = 0; i < 16; i++) {
+		stoc[i] = (uint8_t)(i + 1);
+		ctos[i] = (uint8_t)(i + 0x11);
+	}
+
+	osp_sec_context_t server;
+	osp_sec_context_t client;
+	osp_sec_context_init(&server, OSP_SUITE_0, OSP_MECH_HLS, NULL);
+	osp_sec_context_init(&client, OSP_SUITE_0, OSP_MECH_HLS, NULL);
+	memcpy(server.hls_secret, password, sizeof(password) - 1);
+	server.hls_secret_len = (uint8_t)(sizeof(password) - 1);
+	memcpy(client.hls_secret, password, sizeof(password) - 1);
+	client.hls_secret_len = (uint8_t)(sizeof(password) - 1);
+	memcpy(server.stoc, stoc, sizeof(stoc));
+	server.stoc_len = sizeof(stoc);
+	memcpy(server.ctos, ctos, sizeof(ctos));
+	server.ctos_len = sizeof(ctos);
+	memcpy(client.stoc, stoc, sizeof(stoc));
+	client.stoc_len = sizeof(stoc);
+	memcpy(client.ctos, ctos, sizeof(ctos));
+	client.ctos_len = sizeof(ctos);
+
+	uint8_t f_stoc[32];
+	uint32_t f_stoc_len = 0;
+	assert_int_equal(osp_hls_pass3_build(&client, f_stoc, sizeof(f_stoc), &f_stoc_len), 0);
+	assert_int_equal(f_stoc_len, 16);
+	assert_int_equal(osp_hls_pass3_verify(&server, f_stoc, f_stoc_len), 0);
+
+	uint8_t f_ctos[32];
+	uint32_t f_ctos_len = 0;
+	assert_int_equal(osp_hls_pass4_build(&server, f_ctos, sizeof(f_ctos), &f_ctos_len), 0);
+	assert_int_equal(f_ctos_len, 16);
+	assert_int_equal(osp_hls_pass4_verify(&client, f_ctos, f_ctos_len), 0);
+
+	f_stoc[0] ^= 0xFF;
+	assert_int_equal(osp_hls_pass3_verify(&server, f_stoc, f_stoc_len), -5);
+}
+
 static void setup_connected_lowest_client(osp_client_t *client, mock_transport_pair_t *pair, osp_server_t *server) {
 	mock_crypto_init();
 	mock_transport_pair_init(pair);
@@ -1088,6 +1131,7 @@ int main(void) {
 	    cmocka_unit_test(test_client_aare_rejected),
 	    cmocka_unit_test(test_client_bad_aare_response),
 	    cmocka_unit_test(test_security_hls_errors),
+	    cmocka_unit_test(test_security_hls_high),
 	    cmocka_unit_test(test_client_get_decode_error),
 	    cmocka_unit_test(test_client_set_not_found),
 	    cmocka_unit_test(test_client_get_send_failure),
