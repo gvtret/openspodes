@@ -7,6 +7,7 @@
 
 #include "service.h"
 #include "initiate.h"
+#include "../security/security.h"
 #include "../codec/codec.h"
 #include "../codec/serialize.h"
 #include <string.h>
@@ -58,6 +59,111 @@ static int ber_backpatch_length(osp_buf_t *buf, uint32_t len_pos) {
 		buf->wr++;
 	}
 	return 0;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ *  ACSE name helpers (logging)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+const char *osp_acse_result_name(uint8_t result) {
+	switch (result) {
+	case OSP_RESULT_ACCEPTED:
+		return "accepted";
+	case OSP_RESULT_REJECTED_PERMANENT:
+		return "rejected-permanent";
+	case OSP_RESULT_REJECTED_TRANSIENT:
+		return "rejected-transient";
+	default:
+		return "unknown";
+	}
+}
+
+const char *osp_acse_diag_name(uint8_t diag, int is_provider) {
+	if (is_provider) {
+		switch (diag) {
+		case OSP_ACSE_DIAG_NULL:
+			return "null";
+		case OSP_ACSE_PROVIDER_NO_COMMON_ACSE_VERSION:
+			return "no-common-acse-version";
+		default:
+			return "provider-unknown";
+		}
+	}
+	switch (diag) {
+	case OSP_ACSE_DIAG_NULL:
+		return "null";
+	case OSP_ACSE_DIAG_NO_REASON:
+		return "no-reason";
+	case OSP_ACSE_DIAG_APP_CONTEXT_NOT_SUPPORTED:
+		return "application-context-not-supported";
+	case OSP_ACSE_DIAG_AUTH_MECH_NOT_RECOGNISED:
+		return "authentication-mechanism-not-recognised";
+	case OSP_ACSE_DIAG_AUTH_MECH_REQUIRED:
+		return "authentication-mechanism-required";
+	case OSP_ACSE_DIAG_AUTH_FAILURE:
+		return "authentication-failure";
+	case OSP_ACSE_DIAG_AUTH_REQUIRED:
+		return "authentication-required";
+	default:
+		return "user-unknown";
+	}
+}
+
+const char *osp_app_context_name(uint8_t ctx) {
+	switch (ctx) {
+	case OSP_CTX_LN:
+		return "LN";
+	case OSP_CTX_SN:
+		return "SN";
+	case OSP_CTX_LN_CIPHERING:
+		return "LN-ciphering";
+	case OSP_CTX_SN_CIPHERING:
+		return "SN-ciphering";
+	default:
+		return "unknown";
+	}
+}
+
+const char *osp_auth_mechanism_name(uint8_t mech) {
+	switch (mech) {
+	case OSP_MECH_LOWEST:
+		return "lowest";
+	case OSP_MECH_LLS:
+		return "LLS";
+	case OSP_MECH_HLS:
+		return "HLS";
+	case OSP_MECH_HLS_MD5:
+		return "HLS-MD5";
+	case OSP_MECH_HLS_SHA1:
+		return "HLS-SHA1";
+	case OSP_MECH_HLS_GMAC:
+		return "HLS-GMAC";
+	case OSP_MECH_HLS_SHA256:
+		return "HLS-SHA256";
+	case OSP_MECH_HLS_ECDSA:
+		return "HLS-ECDSA";
+	case OSP_MECH_HLS_GOST_CMAC:
+		return "HLS-GOST-CMAC";
+	case OSP_MECH_HLS_GOST_STREEBOG:
+		return "HLS-GOST-Streebog";
+	case OSP_MECH_HLS_GOST_SIG:
+		return "HLS-GOST-SIG";
+	default:
+		return "unknown";
+	}
+}
+
+const char *osp_initiate_error_name(uint8_t err) {
+	switch (err) {
+	case OSP_INITIATE_ERR_DLMS_VERSION_TOO_LOW:
+		return "dlms-version-too-low";
+	case OSP_INITIATE_ERR_INCOMPATIBLE_CONFORMANCE:
+		return "incompatible-conformance";
+	case OSP_INITIATE_ERR_PDU_SIZE_TOO_SHORT:
+		return "pdu-size-too-short";
+	default:
+		return "unknown";
+	}
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

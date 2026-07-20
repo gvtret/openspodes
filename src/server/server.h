@@ -34,6 +34,40 @@ extern "C" {
 /* Association LN object_list with ACLs is several KB even for 64 entries. */
 #define OSP_SERVER_PENDING_MAX (OSP_SERVER_MAX_PDU * 16)
 
+typedef enum {
+	OSP_ACSE_LOG_AARE = 0,
+	OSP_ACSE_LOG_HLS_PASS3 = 1,
+} osp_acse_log_kind_t;
+
+typedef enum {
+	OSP_ACSE_USER_INFO_NONE = 0,
+	OSP_ACSE_USER_INFO_INITIATE_RESPONSE = 1,
+	OSP_ACSE_USER_INFO_INITIATE_ERROR = 2,
+} osp_acse_user_info_kind_t;
+
+typedef struct {
+	osp_acse_log_kind_t kind;
+	uint8_t client_sap;
+	uint8_t aarq_application_context;
+	uint8_t aarq_mechanism;
+	bool aarq_has_mechanism;
+	bool aarq_has_calling_auth;
+	bool aarq_ireq_ok;
+	uint8_t aarq_dlms_version;
+	uint32_t aarq_conformance;
+	uint16_t aarq_client_pdu;
+	uint8_t aare_result;
+	uint8_t aare_diagnostic;
+	uint8_t aare_diag_is_provider;
+	uint8_t aare_initiate_error;
+	bool aare_hls_pending;
+	uint8_t aare_application_context;
+	osp_acse_user_info_kind_t aare_user_info;
+	bool hls_pass3_ok;
+} osp_acse_log_event_t;
+
+typedef void (*osp_server_acse_log_fn)(void *ctx, const osp_acse_log_event_t *ev);
+
 typedef struct {
 	bool active;
 	uint8_t data[OSP_SERVER_PENDING_MAX];
@@ -92,6 +126,10 @@ typedef struct {
 	osp_server_pending_action_out_t pending_action_out;
 	osp_server_pending_push_t pending_push;
 
+	/* Optional ACSE/HLS logging (spodes-server sets via osp_server_set_acse_log_cb). */
+	osp_server_acse_log_fn acse_log_cb;
+	void *acse_log_ctx;
+
 	/* Buffers */
 	uint8_t rx_buf[OSP_SERVER_MAX_PDU];
 	uint8_t tx_buf[OSP_SERVER_MAX_PDU];
@@ -114,6 +152,9 @@ void osp_server_set_ciphering(osp_server_t *s, const osp_sec_context_t *tx, cons
 
 /** @brief Disable APDU ciphering (e.g. after AA release). */
 void osp_server_clear_ciphering(osp_server_t *s);
+
+/** @brief Register callback for AARQ/AARE and HLS pass-3 association logging. */
+void osp_server_set_acse_log_cb(osp_server_t *s, osp_server_acse_log_fn fn, void *ctx);
 
 /**
  * @brief Send unsolicited event-notification (0xC2) to the associated client.
