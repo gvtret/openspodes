@@ -1512,6 +1512,7 @@ static void test_aare_encode(void **state) {
 	memset(&aare, 0, sizeof(aare));
 	aare.result = OSP_RESULT_ACCEPTED;
 	aare.mechanism = 1;
+	aare.include_authentication = 1;
 
 	const uint8_t user_info[] = {0x01, 0x00, 0x00, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x62, 0x1E, 0x5D, 0xFF, 0xFF};
 	memcpy(aare.user_info, user_info, sizeof(user_info));
@@ -1520,10 +1521,11 @@ static void test_aare_encode(void **state) {
 	int rc = osp_aare_encode(&aare, &w);
 	assert_int_equal(rc, 0);
 
-	/* mechanism-name [9] is IMPLICIT OID (no universal 0x06 wrapper) */
+	/* With include_authentication: result + diagnostic + 88/89/AA + user-info */
 	const uint8_t expected[] = {
-	    0x61, 0x28,
+	    0x61, 0x2F,
 	    0xA2, 0x03, 0x02, 0x01, 0x00,
+	    0xA3, 0x05, 0xA1, 0x03, 0x02, 0x01, 0x00,
 	    0x88, 0x02, 0x07, 0x80,
 	    0x89, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x02, 0x01,
 	    0xAA, 0x02, 0x80, 0x00,
@@ -1603,6 +1605,7 @@ static void test_aare_roundtrip(void **state) {
 	memset(&aare, 0, sizeof(aare));
 	aare.result = OSP_RESULT_ACCEPTED;
 	aare.mechanism = 1;
+	aare.include_authentication = 1;
 	const uint8_t user_info[] = {0x01, 0x00, 0x00, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x62, 0x1E, 0x5D, 0xFF, 0xFF};
 	memcpy(aare.user_info, user_info, sizeof(user_info));
 	aare.user_info_len = sizeof(user_info);
@@ -1666,6 +1669,7 @@ static void test_aare_rejected(void **state) {
 	aare.result = OSP_RESULT_REJECTED_PERMANENT;
 	aare.result_source_diagnostic = 1;
 	aare.mechanism = 1;
+	aare.include_authentication = 1;
 
 	int rc = osp_aare_encode(&aare, &w);
 	assert_int_equal(rc, 0);

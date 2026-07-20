@@ -82,6 +82,8 @@ typedef struct {
 	osp_hdlc_address_t destination;
 	osp_hdlc_address_t source;
 	osp_hdlc_control_t control;
+	uint8_t control_raw; /* raw control octet (for FRMR rejected-control field) */
+	uint8_t segmented; /* format-field S bit: more segments follow */
 	uint8_t info[OSP_HDLC_MAX_FRAME_SIZE];
 	uint16_t info_len;
 } osp_hdlc_frame_t;

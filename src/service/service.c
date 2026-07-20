@@ -277,6 +277,26 @@ int osp_aare_encode(osp_aare_t *aare, osp_buf_t *buf) {
 		return -1;
 	buf->buf[buf->wr++] = 0x00;
 
+	/* [0] protocol-version: IMPLICIT BIT STRING (optional) */
+	if (aare->has_protocol_version) {
+		osp_ber_write_tag(buf, 2, false, 0);
+		osp_ber_write_length(buf, 2);
+		osp_axdr_write_u8(buf, aare->protocol_version[0]);
+		osp_axdr_write_u8(buf, aare->protocol_version[1]);
+	}
+
+	/* [1] application-context-name: EXPLICIT OID (optional) */
+	if (aare->application_context != 0) {
+		osp_ber_write_tag(buf, 2, true, 1);
+		uint32_t oid_len_pos = buf->wr;
+		if (osp_buf_free(buf) < 1)
+			return -1;
+		buf->buf[buf->wr++] = 0x00;
+		ber_write_oid(buf, OID_PREFIX_APP, 6, aare->application_context);
+		if (ber_backpatch_length(buf, oid_len_pos) != 0)
+			return -1;
+	}
+
 	/* [2] result: EXPLICIT wraps INTEGER
 	 * Per Green Book Table D.6: A2 03 02 01 <value> */
 	osp_ber_write_tag(buf, 2, true, 2);
@@ -285,17 +305,14 @@ int osp_aare_encode(osp_aare_t *aare, osp_buf_t *buf) {
 	osp_axdr_write_u8(buf, 1); /* length */
 	osp_axdr_write_u8(buf, aare->result);
 
-	/* [3] result-source-diagnostic: EXPLICIT wraps CHOICE
-	 * Per Green Book: A3 05 A1 03 02 01 <value> */
-	if (aare->result_source_diagnostic != 0) {
-		osp_ber_write_tag(buf, 2, true, 3);
-		osp_ber_write_length(buf, 5);
-		osp_ber_write_tag(buf, 2, true, 1); /* [1] acse-service-user */
-		osp_ber_write_length(buf, 3);
-		osp_axdr_write_u8(buf, 2); /* INTEGER tag */
-		osp_axdr_write_u8(buf, 1); /* length */
-		osp_axdr_write_u8(buf, aare->result_source_diagnostic);
-	}
+	/* [3] result-source-diagnostic: always present (null = 0 on accept) */
+	osp_ber_write_tag(buf, 2, true, 3);
+	osp_ber_write_length(buf, 5);
+	osp_ber_write_tag(buf, 2, true, 1); /* [1] acse-service-user */
+	osp_ber_write_length(buf, 3);
+	osp_axdr_write_u8(buf, 2); /* INTEGER tag */
+	osp_axdr_write_u8(buf, 1); /* length */
+	osp_axdr_write_u8(buf, aare->result_source_diagnostic);
 
 	/* [4] responding-AP-title: EXPLICIT wraps OCTET STRING */
 	if (aare->responding_ap_title_len > 0) {
@@ -308,28 +325,30 @@ int osp_aare_encode(osp_aare_t *aare, osp_buf_t *buf) {
 		}
 	}
 
-	/* [8] responder-acse-requirements: IMPLICIT BIT STRING */
-	osp_ber_write_tag(buf, 2, false, 8);
-	osp_ber_write_length(buf, 2);
-	osp_axdr_write_u8(buf, 7);
-	osp_axdr_write_u8(buf, 0x80);
+	/* Auth fields: SPODES etalon LLS AARE omits these; HLS needs StoC in AA. */
+	if (aare->include_authentication) {
+		/* [8] responder-acse-requirements: IMPLICIT BIT STRING */
+		osp_ber_write_tag(buf, 2, false, 8);
+		osp_ber_write_length(buf, 2);
+		osp_axdr_write_u8(buf, 7);
+		osp_axdr_write_u8(buf, 0x80);
 
-	/* [9] mechanism-name: IMPLICIT OID (no universal 06 tag) */
-	osp_ber_write_tag(buf, 2, false, 9);
-	osp_ber_write_length(buf, sizeof(OID_PREFIX_MECH) + 1);
-	for (uint8_t i = 0; i < sizeof(OID_PREFIX_MECH); i++) {
-		osp_axdr_write_u8(buf, OID_PREFIX_MECH[i]);
-	}
-	osp_axdr_write_u8(buf, aare->mechanism);
+		/* [9] mechanism-name: IMPLICIT OID (no universal 06 tag) */
+		osp_ber_write_tag(buf, 2, false, 9);
+		osp_ber_write_length(buf, sizeof(OID_PREFIX_MECH) + 1);
+		for (uint8_t i = 0; i < sizeof(OID_PREFIX_MECH); i++) {
+			osp_axdr_write_u8(buf, OID_PREFIX_MECH[i]);
+		}
+		osp_axdr_write_u8(buf, aare->mechanism);
 
-	/* [10] responding-authentication-value: EXPLICIT Authentication-value
-	 * Per Green Book: AA <len> 80 <datalen> <data> */
-	osp_ber_write_tag(buf, 2, true, 10);
-	osp_ber_write_length(buf, aare->responding_auth_value_len + 2);
-	osp_axdr_write_u8(buf, 0x80); /* charstring [0] */
-	osp_axdr_write_u8(buf, aare->responding_auth_value_len);
-	for (uint8_t i = 0; i < aare->responding_auth_value_len; i++) {
-		osp_axdr_write_u8(buf, aare->responding_auth_value[i]);
+		/* [10] responding-authentication-value */
+		osp_ber_write_tag(buf, 2, true, 10);
+		osp_ber_write_length(buf, aare->responding_auth_value_len + 2);
+		osp_axdr_write_u8(buf, 0x80); /* charstring [0] */
+		osp_axdr_write_u8(buf, aare->responding_auth_value_len);
+		for (uint8_t i = 0; i < aare->responding_auth_value_len; i++) {
+			osp_axdr_write_u8(buf, aare->responding_auth_value[i]);
+		}
 	}
 
 	/* [30] user-information: EXPLICIT wraps OCTET STRING */
