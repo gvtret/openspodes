@@ -102,6 +102,15 @@ static void server_apply_ciphering_for_aarq(osp_server_t *s, const osp_aarq_t *a
 		s->cipher_tx = s->security;
 		s->cipher_rx = s->security;
 	}
+	/* Fresh AA: reset IC replay state; adopt client system title for RX IV. */
+	s->cipher_tx.ic_valid = false;
+	s->cipher_tx.last_peer_ic = 0;
+	s->cipher_rx.ic_valid = false;
+	s->cipher_rx.last_peer_ic = 0;
+	if (aarq->calling_ap_title_len == OSP_SEC_SYSTEM_TITLE_SIZE) {
+		memcpy(s->cipher_rx.peer_system_title, aarq->calling_ap_title, OSP_SEC_SYSTEM_TITLE_SIZE);
+		memcpy(s->cipher_tx.peer_system_title, aarq->calling_ap_title, OSP_SEC_SYSTEM_TITLE_SIZE);
+	}
 	s->ciphering_enabled = true;
 }
 
@@ -359,6 +368,24 @@ static bool aarq_mechanism_known(uint8_t mechanism) {
 	       osp_hls_requires_handshake((osp_auth_mechanism_t)mechanism);
 }
 
+/* Ciphering and title-bound HLS need an 8-octet client system title in calling-AP-title. */
+static bool aarq_requires_calling_ap_title(const osp_aarq_t *aarq) {
+	if (app_context_requires_ciphering(aarq->application_context)) {
+		return true;
+	}
+	switch (aarq->mechanism) {
+	case OSP_MECH_HLS_GMAC:
+	case OSP_MECH_HLS_SHA256:
+	case OSP_MECH_HLS_ECDSA:
+	case OSP_MECH_HLS_GOST_CMAC:
+	case OSP_MECH_HLS_GOST_STREEBOG:
+	case OSP_MECH_HLS_GOST_SIG:
+		return true;
+	default:
+		return false;
+	}
+}
+
 typedef struct {
 	uint8_t acse_diag;
 	uint8_t acse_diag_is_provider;
@@ -376,6 +403,10 @@ static aarq_reject_info_t aarq_validate(const osp_aarq_t *aarq, const osp_ic_ass
 	if (aarq->has_protocol_version && (aarq->protocol_version[0] != 0x02 || aarq->protocol_version[1] != 0x84)) {
 		r.acse_diag = OSP_ACSE_PROVIDER_NO_COMMON_ACSE_VERSION;
 		r.acse_diag_is_provider = 1;
+		return r;
+	}
+	if (aarq_requires_calling_ap_title(aarq) && aarq->calling_ap_title_len != OSP_SEC_SYSTEM_TITLE_SIZE) {
+		r.acse_diag = OSP_ACSE_DIAG_CALLING_AP_TITLE_NOT_RECOGNIZED;
 		return r;
 	}
 	if (ireq_ok) {
@@ -523,7 +554,7 @@ static osp_err_t handle_aarq(osp_server_t *s, const osp_aarq_t *aarq) {
 					} else {
 						memcpy(s->security.ctos, aarq->calling_auth_value, ctos_len);
 						s->security.ctos_len = ctos_len;
-						if (aarq->calling_ap_title_len >= OSP_SEC_SYSTEM_TITLE_SIZE) {
+						if (aarq->calling_ap_title_len == OSP_SEC_SYSTEM_TITLE_SIZE) {
 							memcpy(s->security.peer_system_title, aarq->calling_ap_title, OSP_SEC_SYSTEM_TITLE_SIZE);
 						}
 
@@ -1256,6 +1287,13 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 		memcpy(s->rx_buf, plain, plain_len);
 		rx_len = plain_len;
 		tag = s->rx_buf[0];
+		/* Keep outbound cipher IC/policy aligned with the peer frame we just accepted. */
+		if (s->cipher_rx.ic_valid) {
+			if (s->cipher_tx.invocation_counter <= s->cipher_rx.last_peer_ic) {
+				s->cipher_tx.invocation_counter = s->cipher_rx.last_peer_ic + 1;
+			}
+			s->cipher_tx.policy = s->cipher_rx.policy;
+		}
 	}
 
 	/* HLS pass 3 is allowed before associated (after AARE with StoC) */

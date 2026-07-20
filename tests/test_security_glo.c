@@ -68,6 +68,35 @@ static void test_glo_e5_vector(void **state) {
 	assert_memory_equal(recovered, plain, plain_len);
 }
 
+static void test_glo_peer_iv_decrypt(void **state) {
+	(void)state;
+	mock_crypto_init();
+	mock_crypto_init_real_gcm();
+	if (!osp_hal_gcm_crypt) {
+		skip();
+	}
+
+	osp_sec_context_t tx, rx;
+	fill_e5_ctx(&tx);
+	fill_e5_ctx(&rx);
+	tx.invocation_counter = 1;
+	const uint8_t client_st[8] = {'T', 'S', 'T', '1', '2', '3', '4', '5'};
+	memcpy(tx.system_title, client_st, 8);
+	memcpy(rx.peer_system_title, client_st, 8);
+	tx.policy = OSP_POLICY_ENCR_AUTH;
+
+	const uint8_t plain[] = {0xC3, 0x01, 0xC1, 0x00, 0x0F, 0x00, 0x00, 0x28, 0x00, 0x00, 0xFF, 0x01, 0x01, 0x09, 0x11, 0x10};
+	uint8_t ciphered[128];
+	uint32_t ciphered_len = 0;
+	assert_int_equal(osp_glo_protect(&tx, OSP_GLO_ACTION_REQUEST, plain, sizeof(plain), ciphered, &ciphered_len), 0);
+
+	uint8_t recovered[128];
+	uint32_t recovered_len = 0;
+	assert_int_equal(osp_glo_unprotect(&rx, ciphered, ciphered_len, recovered, &recovered_len), 0);
+	assert_int_equal(recovered_len, sizeof(plain));
+	assert_memory_equal(recovered, plain, sizeof(plain));
+}
+
 static void test_glo_get_roundtrip(void **state) {
 	(void)state;
 	mock_crypto_init();
@@ -162,6 +191,7 @@ static void test_gen_ciphering_roundtrip(void **state) {
 int main(void) {
 	const struct CMUnitTest tests[] = {
 	    cmocka_unit_test(test_glo_e5_vector),
+	    cmocka_unit_test(test_glo_peer_iv_decrypt),
 	    cmocka_unit_test(test_glo_get_roundtrip),
 	    cmocka_unit_test(test_ded_get_roundtrip),
 	    cmocka_unit_test(test_gen_ciphering_roundtrip),
