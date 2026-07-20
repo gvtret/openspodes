@@ -82,6 +82,7 @@ void osp_sec_context_destroy(osp_sec_context_t *ctx) {
 	osp_memzero(ctx->peer_public_key, sizeof(ctx->peer_public_key));
 	osp_memzero(ctx->ctos, sizeof(ctx->ctos));
 	osp_memzero(ctx->stoc, sizeof(ctx->stoc));
+	osp_memzero(ctx->hls_secret, sizeof(ctx->hls_secret));
 }
 
 bool osp_sec_key_rotation_needed(const osp_sec_context_t *ctx) {
@@ -418,6 +419,14 @@ static int hls_pass4_sig_verify(osp_sec_context_t *ctx, const uint8_t *f_ctos, u
 	return -1;
 }
 
+static int hls_pass_high(const osp_sec_context_t *ctx, const uint8_t *challenge, uint32_t challenge_len, uint8_t *out,
+                         uint32_t *out_len) {
+	if (!ctx || !challenge || !out || !out_len || ctx->hls_secret_len == 0) {
+		return -1;
+	}
+	return osp_hls_high_secure(challenge, challenge_len, ctx->hls_secret, ctx->hls_secret_len, out, out_len);
+}
+
 static int hls_pass3_gmac_build(const osp_sec_context_t *ctx, uint8_t *out, uint32_t out_size, uint32_t *out_len) {
 	if (!ctx || !out || out_size < 17 || !out_len) {
 		return -1;
@@ -466,6 +475,9 @@ int osp_hls_pass3_build(const osp_sec_context_t *ctx, uint8_t *out, uint32_t out
 	if (!ctx || !out || !out_len) {
 		return -1;
 	}
+	if (ctx->mechanism == OSP_MECH_HLS) {
+		return hls_pass_high(ctx, ctx->stoc, ctx->stoc_len, out, out_len);
+	}
 	if (ctx->mechanism == OSP_MECH_HLS_GMAC) {
 		return hls_pass3_gmac_build(ctx, out, out_size, out_len);
 	}
@@ -490,6 +502,21 @@ int osp_hls_pass3_verify(osp_sec_context_t *ctx, const uint8_t *f_stoc, uint32_t
 		return -1;
 	}
 
+	if (ctx->mechanism == OSP_MECH_HLS) {
+		uint8_t expected[OSP_SEC_CHALLENGE_MAX];
+		uint32_t expected_len = 0;
+		if (hls_pass_high(ctx, ctx->stoc, ctx->stoc_len, expected, &expected_len) != 0) {
+			return -1;
+		}
+		if (len != expected_len) {
+			return -5;
+		}
+		uint8_t diff = 0;
+		for (uint32_t i = 0; i < expected_len; i++) {
+			diff |= f_stoc[i] ^ expected[i];
+		}
+		return (diff == 0) ? 0 : -5;
+	}
 	if (ctx->mechanism == OSP_MECH_HLS_GMAC) {
 		if (len < 17) {
 			return -1;
@@ -588,6 +615,9 @@ int osp_hls_pass4_build(osp_sec_context_t *ctx, uint8_t *out, uint32_t out_size,
 	if (!ctx || !out || !out_len) {
 		return -1;
 	}
+	if (ctx->mechanism == OSP_MECH_HLS) {
+		return hls_pass_high(ctx, ctx->ctos, ctx->ctos_len, out, out_len);
+	}
 	if (ctx->mechanism == OSP_MECH_HLS_GMAC) {
 		return hls_pass4_gmac_build(ctx, out, out_size, out_len);
 	}
@@ -618,7 +648,17 @@ int osp_hls_pass4_verify(osp_sec_context_t *ctx, const uint8_t *f_ctos, uint32_t
 
 	bool ok = false;
 
-	if (ctx->mechanism == OSP_MECH_HLS_GMAC) {
+	if (ctx->mechanism == OSP_MECH_HLS) {
+		uint8_t expected[OSP_SEC_CHALLENGE_MAX];
+		uint32_t expected_len = 0;
+		if (hls_pass_high(ctx, ctx->ctos, ctx->ctos_len, expected, &expected_len) == 0 && len == expected_len) {
+			uint8_t diff = 0;
+			for (uint32_t i = 0; i < expected_len; i++) {
+				diff |= f_ctos[i] ^ expected[i];
+			}
+			ok = (diff == 0);
+		}
+	} else if (ctx->mechanism == OSP_MECH_HLS_GMAC) {
 		if (len >= 17) {
 			uint32_t ic = ((uint32_t)f_ctos[1] << 24) | ((uint32_t)f_ctos[2] << 16) | ((uint32_t)f_ctos[3] << 8) | (uint32_t)f_ctos[4];
 			uint8_t expected_tag[OSP_SEC_TAG_SIZE];

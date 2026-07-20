@@ -97,6 +97,13 @@ typedef enum {
 /* ACSE associate-source-diagnostic (service-provider) */
 #define OSP_ACSE_PROVIDER_NO_COMMON_ACSE_VERSION   2
 
+/** Human-readable ACSE / initiate names for logging. */
+const char *osp_acse_result_name(uint8_t result);
+const char *osp_acse_diag_name(uint8_t diag, int is_provider);
+const char *osp_app_context_name(uint8_t ctx);
+const char *osp_auth_mechanism_name(uint8_t mech);
+const char *osp_initiate_error_name(uint8_t err);
+
 /* AARQ encode/decode */
 typedef struct {
 	uint8_t application_context; /* OSP_CTX_* */

@@ -73,6 +73,7 @@ add_library(openspodes STATIC
     src/service/gbt.c
     src/service/initiate.c
     src/security/security.c
+    src/security/hls_high.c
     src/security/streebog/gost3411-2012-core.c
     src/security/streebog_wrap.c
     src/security/kuznyechik.c
