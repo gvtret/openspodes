@@ -24,7 +24,7 @@ extern "C" {
 #define OSP_HDLC_FLAG           0x7E
 #define OSP_HDLC_MAX_ADDR_LEN   4
 #ifndef OSP_HDLC_MAX_FRAME_SIZE
-#define OSP_HDLC_MAX_FRAME_SIZE 2048
+#define OSP_HDLC_MAX_FRAME_SIZE 1024
 #endif
 
 /** @brief Compute CRC-16/X.25 (polynomial 0x8408 reflected, init 0xFFFF). */

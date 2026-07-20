@@ -68,12 +68,36 @@ The `f()` function depends on the mechanism:
 |-----------|------|
 | 3 | MD5(x) |
 | 4 | SHA-1(x) |
-| 5 | GMAC(StoC, system_title, IC) |
+| 5 | GMAC(StoC, GUEK key, AAD=[GAK,system_title,IC], peer_system_title IV) |
 | 6 | SHA-256(x) |
 | 7 | ECDSA-Sign(x) |
 | 8 | CMAC-Kuznyechik(x) |
 | 9 | HMAC-Streebog256(x) |
 | 10 | GOST-Sign(x) |
+
+## HLS Mechanism 2 (Password AES)
+
+Mechanism 2 (generic HLS) is mapped to GMAC (5) for Suite 0 via `osp_hls_effective_mechanism()`. This allows certification AARQs that use mechanism ID 2 to work with the GMAC implementation.
+
+The `hls_high.c` module implements the password-AES variant of mechanism 2 using:
+- Key derivation via `HLS_HIGH_KDF` (S-Box + Galois multiply)
+- AES-ECB encryption of challenge data
+- 8-bit truncation semantics matching Gurux `GXCipher::GaloisMultiply`
+
+## AARQ Validation
+
+Centralized validation in `aarq_validate()` rejects malformed AARQs with specific ACSE diagnostics:
+
+| Diagnostic | Code | Condition |
+|-----------|------|-----------|
+| `APP_CONTEXT_NOT_SUPPORTED` | 2 | Unknown application context |
+| `CALLING_AP_TITLE_NOT_RECOGNIZED` | 3 | Title not 8 octets for ciphering/HLS |
+| `AUTH_MECH_NOT_RECOGNISED` | 11 | Unknown mechanism |
+| `AUTH_FAILURE` | 13 | Wrong password, mechanism mismatch |
+| `AUTH_REQUIRED` | 14 | No mechanism/calling-auth for protected association |
+| `NO_COMMON_ACSE_VERSION` | provider=2 | Protocol version mismatch |
+
+**Calling-AP-title Validation**: Ciphering and title-bound HLS (GMAC, SHA256, ECDSA, GOST variants) require an exactly 8-octet calling-AP-title. AARQs with wrong-length titles are rejected with `CALLING_AP_TITLE_NOT_RECOGNIZED`.
 
 ## Key Types
 
@@ -87,8 +111,8 @@ The `f()` function depends on the mechanism:
 
 ### Key Usage
 
-- **GUEK**: Used for glo-encryption (AES-GCM key)
-- **GAK**: Used for GMAC authentication (AES-GCM key for auth-only mode)
+- **GUEK**: Used for glo-encryption (AES-GCM key) AND for HLS-GMAC authentication (AES-GCM key, AAD carries GAK)
+- **GAK**: Included in GMAC AAD as the authentication key identifier; not used as the AES-GCM key
 - **DEK**: Installed via `InitiateRequest` when ciphering is active; replaces GUEK for the association
 
 ## Glo-Ciphering
@@ -102,11 +126,17 @@ APDU-level encryption using AES-GCM or Kuznyechik-GCM:
 │ security_control_byte (1 byte)              │
 │ authentication_key (16 bytes, AAD)          │
 │ invocation_counter (4 bytes, AAD + IV)      │
-│ system_title (8 bytes, IV)                  │
+│ originator_system_title (8 bytes, IV)       │
 │ plaintext (encrypted)                       │
 │ authentication_tag (12 bytes)               │
 └─────────────────────────────────────────────┘
 ```
+
+**IV Construction (per IEC 62056-5-3):**
+- IV = originator_system_title (8 bytes) || invocation_counter (4 bytes)
+- TX (protect): uses local `system_title` as originator
+- RX (unprotect): uses peer `peer_system_title` as originator (falls back to local if zero)
+- Fresh AA: IC replay state reset, peer title adopted from calling-AP-title
 
 ### Tag Mapping
 
@@ -134,6 +164,7 @@ The invocation counter (IC) is a monotonically increasing 32-bit value used for:
 - IC starts at 0 after association
 - IC increments after each successful glo-protect/unprotect operation
 - The peer's IC is tracked in `last_peer_ic` for replay detection
+- After successful unprotect: outbound IC syncs to `max(local, peer_ic + 1)`, outbound policy syncs from peer
 
 ## General Ciphering (0xDB-0xDD)
 

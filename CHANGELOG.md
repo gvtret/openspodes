@@ -4,6 +4,45 @@ All notable changes to this project are documented in this file.
 
 Format is based on [Keep a Changelog](https://keepachangelog.com/), project follows [Semantic Versioning](https://semver.org/).
 
+## [2.2.0] - 2026-07-20
+
+### Fixed (HDLC Session Hardening)
+- Inter-octet timeout (20–6000 ms) and inactivity timeout (0–120 s) per IEC 62056-46
+- RX pending buffer for coalesced TCP reads — correct frame parsing from buffer
+- I-frame segmentation reassembly (format-field S bit)
+- DISC handling: NRM→UA+NDM, NDM→DM (correct lifecycle)
+- FRMR response (W/X/Y/Z reason bits) per ISO 13239
+- State/timeout callbacks for host integration
+- XID negotiation: server resets to configured ceiling on new SNRM
+- Bad FCS/HCS frames silently dropped with retry (DISC may follow)
+
+### Fixed (Security)
+- HLS-GMAC: AES-GCM key changed from GAK to GUEK (AAD still carries GAK) — aligns with Gurux/DLMS
+- HLS mechanism 2: maps generic HLS to GMAC (5) for Suite 0 via `osp_hls_effective_mechanism()`
+- Glo IV: TX uses local system_title, RX uses peer_system_title (fallback to local if zero)
+- Fresh AA: IC replay state reset, peer title adopted from calling-AP-title
+- Calling-AP-title validation: must be exactly 8 octets for ciphering and title-bound HLS
+
+### Fixed (AARQ/AARE Protocol)
+- Centralized `aarq_validate()` with structured ACSE diagnostics (0x0E auth required, 0x0D auth failure, 0x02 app context, 0x03 calling-AP-title, 0x0B mech not recognised)
+- AARE: protocol-version echo, conditional auth fields (LLS omits 88/89/AA for SPODES etalon)
+- Malformed GET/SET: returns DAR response instead of session drop for associated clients
+- HLS HIGH Galois multiply: explicit 8-bit truncation matching Gurux `GXCipher::GaloisMultiply`
+
+### Changed
+- `OSP_HDLC_MAX_FRAME_SIZE` increased from 512 to 1024 (configurable via #ifndef, matches `OSP_SERVER_MAX_PDU`)
+- `OSP_SERVER_PENDING_MAX` increased from 4KB to 16KB (×16 for ALN object_list with ACLs)
+- `OSP_MAX_OBJECTS` default increased from 64 to 320 in dispatcher.h
+- `server_max_receive_pdu_size` default increased from 0x01F4 to 0x0800
+
+### Added
+- `osp_hls_effective_mechanism()` — mechanism-2 to GMAC mapping
+- `osp_hdlc_session_set_state_callback()` / `osp_hdlc_session_set_timeout_callback()`
+- `osp_server_clear_ciphering()` / `osp_server_clear_current_association()`
+- `osp_initiate_error_encode()` — ConfirmedServiceError for initiate rejection
+- `OSP_ACSE_DIAG_CALLING_AP_TITLE_NOT_RECOGNIZED` (3)
+- `test_glo_peer_iv_decrypt` — peer system title IV test
+
 ## [2.1.0] - 2026-07-17
 
 ### Added (Yellow Book Conformance Tests)

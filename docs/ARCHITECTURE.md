@@ -78,13 +78,25 @@ Two sublayers: HDLC (IEC 62056-46) and Wrapper (IEC 62056-47).
 
 **HDLC Session Layer:**
 ```
-IDLE ──connect──► CONNECTING ──UA received──► CONNECTED
-                         │                           │
-                      timeout                      disconnect
-                         │                           │
-                         ▼                           ▼
-                       IDLE ◄──── DISC/DM ──── DISCONNECTING
+IDLE ──SNRM──► CONNECTING ──UA received──► CONNECTED (NRM)
+  ▲                                          │
+  │                                     SNRM (reconnect)
+  │                                     DISC → UA + NDM
+  │                                          │
+  └──────── DISC/DM ◄───────────────────────┘
 ```
+
+**HDLC Timeouts (IEC 62056-46 / Blue Book):**
+- Inter-octet: 20–6000 ms (default 25 ms) — pause between bytes within a frame
+- Inactivity: 0–120 s (default 120 s, 0 = disabled) — inter-frame timeout
+- Bad FCS/HCS: silently dropped, keep waiting (DISC may follow)
+
+**HDLC Features:**
+- FRMR response (W/X/Y/Z) per ISO 13239 for invalid frames
+- I-frame segmentation reassembly (format-field S bit)
+- RX pending buffer for coalesced TCP reads
+- State/timeout callbacks for host integration
+- XID negotiation: server resets to configured ceiling on new SNRM
 
 **Wrapper (IEC 62056-47):**
 - 8-byte header: version(2) + source(2) + destination(2) + length(2)
@@ -104,9 +116,21 @@ DLMS/COSEM protocol — ACSE + xDLMS APDUs.
 | `notification.c` | Event/Data notifications |
 
 **ACSE (IEC 62056-5-3):**
-- AARQ (0x60): application_context, mechanism, calling_ap_title, auth_value, user_info
-- AARE (0x61): result, source_diagnostic, responding_ap_title, auth_value, user_info
+- AARQ (0x60): protocol_version, application_context, mechanism, calling_ap_title, sender_acse_requirements, auth_value, user_info
+- AARE (0x61): protocol_version, application_context, result, source_diagnostic, responding_ap_title, auth_value, user_info
 - RLRQ/RLRE: release
+
+**AARQ Validation:**
+- Centralized `aarq_validate()` with structured `aarq_reject_info_t` output
+- ACSE diagnostics: APP_CONTEXT_NOT_SUPPORTED (2), CALLING_AP_TITLE_NOT_RECOGNIZED (3), AUTH_MECH_NOT_RECOGNISED (11), AUTH_FAILURE (13), AUTH_REQUIRED (14)
+- Calling-AP-title must be exactly 8 octets for ciphering and title-bound HLS mechanisms
+- ConfirmedServiceError for invalid InitiateRequest (wrong DLMS version, zero conformance, short PDU)
+
+**AARE Format (SPODES etalon):**
+- Protocol-version always echoed (0x02, 0x84)
+- result-source-diagnostic always present (null=0 on accept, service-user or service-provider)
+- LLS/Lowest: omits auth fields (88/89/AA) — SPODES etalon compatibility
+- HLS: includes auth fields (88/89/AA) with StoC challenge
 
 **xDLMS APDUs:**
 - GET: normal, with-block, with-list
@@ -133,11 +157,11 @@ DLMS/COSEM protocol — ACSE + xDLMS APDUs.
 | ID | Name | Implementation |
 |----|------|---------------|
 | 0 | Lowest (no authentication) | N/A |
-| 1 | LLS | Password |
-| 2 | HLS (no crypto) | Challenge |
+| 1 | LLS | Password (constant-time verify) |
+| 2 | HLS (no crypto) | Maps to GMAC (5) for Suite 0 |
 | 3 | HLS-MD5 | `osp_hal_md5` |
 | 4 | HLS-SHA1 | `osp_hal_sha1` |
-| 5 | HLS-GMAC | `osp_hal_gcm_crypt` |
+| 5 | HLS-GMAC | AES-GCM auth-only (key=GUEK, AAD carries GAK) |
 | 6 | HLS-SHA256 | `osp_hal_sha256` |
 | 7 | HLS-ECDSA | `osp_hal_ecdsa_sign/verify` |
 | 8 | HLS-GOST-CMAC | Built-in (Kuznyechik) |
@@ -231,7 +255,7 @@ osp_server_init()
 **Dispatcher** (`dispatcher.c`):
 - Routing by (class_id, OBIS)
 - ACL checking via Association LN
-- Maximum 64 objects
+- Maximum 320 objects (`OSP_MAX_OBJECTS`)
 
 ### 7. SPODUS Concentrator (`src/spodus/`)
 
@@ -312,9 +336,10 @@ Client:                              Server:
 |----------|-------|-------------|
 | `OSP_CLIENT_MAX_PDU` | 1024 | Maximum client APDU |
 | `OSP_SERVER_MAX_PDU` | 1024 | Maximum server APDU |
+| `OSP_SERVER_PENDING_MAX` | 16384 | Block transfer reassembly buffer (OSP_SERVER_MAX_PDU × 16) |
 | `OSP_CLIENT_REASSEMBLE_MAX` | 4096 | Reassembly buffer |
 | `OSP_CLIENT_BLOCK_SIZE` | 64 | Block transfer block size |
-| `OSP_HDLC_MAX_FRAME_SIZE` | 512 | Maximum HDLC frame |
+| `OSP_HDLC_MAX_FRAME_SIZE` | 1024 | Maximum HDLC frame (configurable via #ifndef) |
 | `OSP_HDLC_MAX_ADDR_LEN` | 4 | Maximum HDLC address length |
 | `OSP_SPODUS_MAX_METERS` | 16 | Maximum meters in concentrator |
 | `OSP_MAX_OBJECTS` | 320 | Maximum IC objects in dispatcher |

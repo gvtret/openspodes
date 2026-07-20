@@ -325,8 +325,8 @@ The library uses static buffers sized by these constants:
 |----------|---------|---------|
 | `OSP_CLIENT_MAX_PDU` | 1024 | Client TX/RX buffer size |
 | `OSP_SERVER_MAX_PDU` | 1024 | Server TX/RX buffer size |
-| `OSP_SERVER_PENDING_MAX` | 4096 | Block transfer reassembly buffer |
-| `OSP_HDLC_MAX_FRAME_SIZE` | 512 | Maximum HDLC frame |
+| `OSP_SERVER_PENDING_MAX` | 16384 | Block transfer reassembly buffer (×16 for ALN object_list) |
+| `OSP_HDLC_MAX_FRAME_SIZE` | 1024 | Maximum HDLC frame (configurable via #ifndef) |
 | `OSP_GLO_MAX_PLAIN` | 1024 | Max plaintext for glo-ciphering |
 
 **Recommendations:**

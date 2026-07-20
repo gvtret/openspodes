@@ -211,3 +211,39 @@ TableManager(8200) ProfileDataFilter(8201)
 - Coverage script default: `build-coverage` (not `build-cov`)
 - Branch: `master` (not `main` — remote had both, `main` was deleted)
 - Tags: v1.0.0–v1.9.0 existed as dev bumps, v2.0.0 is the first "real" release since v1.4.0
+
+---
+
+## 2026-07-19 — Yellow Book conformance tests: 100% coverage achieved
+
+**Done:**
+- **All 6 remaining Yellow Book tests implemented** in this session:
+  - `APPL_DATA_SN_N1/N2/N3` — SN-referencing service rejection tests (Tables 26-28)
+  - `SYMSEC_0_FraCount_3` — Send frame counter monotonicity
+  - `SYMSEC_0_SecDataX_N1` — Incorrect ciphering rejection
+  - `SYMSEC_0_SecPol_2/3` — Security policy activation transitions
+- **Server fix**: Unknown APDU tags now send ExceptionResponse (ServiceNotAllowed/OperationNotPossible) instead of returning `OSP_ERR_UNSUPPORTED` (per IEC 62056-6-2 §9.1.2)
+- **7.3.11 Multiple references** test: 3 subtests (10 value attrs together, short+long, first 4 attrs of object with ≥4)
+- **7.3.12 Mandatory objects** test: ALN object_list populated with access rights → all 8 ALN attrs + SAP Assignment + LDN readable
+- **Documentation** (`docs/DLMS_COSEM_conformance_tests.md`): Updated with implementation status, all "not implemented" items removed
+- **test_errors.c**: 2 tests updated to match new server behavior
+
+**State:** `master` @ `8978aab`, 31/31 CTest targets pass. All CI green. Full Yellow Book coverage:
+- HDLC (1001-3): 22/22
+- APPL (1001-6 §6): 20/20 (17 LN + 3 SN)
+- COSEM objects (1001-6 §7): 7/7 procedural tests
+- SYMSEC_0 (1001-6 §8): 19 tests (15 Yellow Book + 4 extended)
+- E2E integration: 26/26
+- ATS_DL unit: 34/34
+
+**Next:** No pending work. Ready for:
+1. Any new features or bugfixs
+2. Coverage improvement (serialize.c 63%, notification.c 64%, server.c 69%, client.c 70%)
+3. СПОДУС concentrator features (§10.5-10.6 discovered meters / access policies)
+
+**Notes:**
+- SN tests use `server.framing = OSP_FRAMING_NONE` after connect to inject raw SN APDUs
+- `osp_wrapper_encode()` produces 8-byte header (version + src(2) + dst(2) + len(2)), not 3 bytes
+- SYMSEC_0 tests gated behind `#ifdef OSP_HAVE_OPENSSL_GCM` / `skip()` when no OpenSSL
+- `osp_glo_protect` signature: `(ctx, ciphered_tag, plaintext, plain_len, out, *out_len)`
+- Commits this session: `2a55ea6` → `fd671d3` → `a0016b2` → `c1de073` → `8978aab`

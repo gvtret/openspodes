@@ -8,7 +8,7 @@ Portable **C11** implementation of **IEC 62056 DLMS/COSEM** (LN referencing), mo
 
 Designed for embedded and server use: **no heap allocation in the core library**, HAL crypto via function pointers, static buffers.
 
-**Version:** 1.10.0
+**Version:** 2.2.0
 **License:** GPL-3.0-or-later (see [LICENSE](LICENSE))
 
 ## Documentation
@@ -27,12 +27,12 @@ Designed for embedded and server use: **no heap allocation in the core library**
 |------|--------|
 | Codec (BER/AXDR, compact-array) | ✅ |
 | Transport (HDLC session + wrapper) | ✅ |
-| HDLC session: SNRM/UA + XID + N(S)/N(R) + DISC/DM + REJ retransmission | ✅ |
+| HDLC session: SNRM/UA + XID + N(S)/N(R) + DISC/DM + FRMR + segmentation reassembly | ✅ |
 | Client / Server session drivers | ✅ |
 | GET / SET / ACTION (+ with-list, block transfer) | ✅ |
 | General block transfer (unconfirmed + confirmed + lost-block recovery) | ✅ |
 | glo- / ded-ciphering (AES-GCM + Kuznyechik suite 8/9) | ✅ |
-| HLS mechanisms 0–10 (GMAC, MD5/SHA1/SHA256, GOST CMAC/Sig) | ✅ |
+| HLS mechanisms 0–10 (GMAC, MD5/SHA1/SHA256, GOST CMAC/Sig, mechanism-2→GMAC) | ✅ |
 | General ciphering / general-signing | ✅ |
 | Push + event notifications | ✅ |
 | 42 COSEM IC classes (36 full + 6 stub) | ✅ |
