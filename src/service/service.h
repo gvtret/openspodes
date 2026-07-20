@@ -89,6 +89,7 @@ typedef enum {
 #define OSP_ACSE_DIAG_NULL                         0
 #define OSP_ACSE_DIAG_NO_REASON                    1
 #define OSP_ACSE_DIAG_APP_CONTEXT_NOT_SUPPORTED    2
+#define OSP_ACSE_DIAG_CALLING_AP_TITLE_NOT_RECOGNIZED 3
 #define OSP_ACSE_DIAG_AUTH_MECH_NOT_RECOGNISED     11
 #define OSP_ACSE_DIAG_AUTH_MECH_REQUIRED           12
 #define OSP_ACSE_DIAG_AUTH_FAILURE                 13

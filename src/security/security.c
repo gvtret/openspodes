@@ -115,6 +115,22 @@ void osp_sec_rotate_keys(osp_sec_context_t *ctx, const uint8_t *new_guek, const 
 	ctx->dedicated_key_len = 0;
 }
 
+static bool sec_system_title_is_zero(const uint8_t st[OSP_SEC_SYSTEM_TITLE_SIZE]) {
+	for (uint32_t i = 0; i < OSP_SEC_SYSTEM_TITLE_SIZE; i++) {
+		if (st[i] != 0) {
+			return false;
+		}
+	}
+	return true;
+}
+
+static const uint8_t *hls_gmac_iv_title(const osp_sec_context_t *ctx, bool peer_originator) {
+	if (peer_originator && !sec_system_title_is_zero(ctx->peer_system_title)) {
+		return ctx->peer_system_title;
+	}
+	return ctx->system_title;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  *  GMAC computation using HAL crypto
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -144,14 +160,13 @@ int osp_hls_gmac(
 		memcpy(&aad_buf[17], data, data_len);
 	}
 
-	/* Per IEC 62056-5-3, GMAC uses GAK (Authentication Key), not GUEK.
-	 * Prefer one-shot osp_hal_gcm_crypt; fall back to streaming init/update/finish. */
+	/* Gurux/DLMS: AES-GCM key = GUEK, AAD includes GAK + challenge (auth-only tag). */
 	if (osp_hal_gcm_crypt != NULL) {
-		if (osp_hal_gcm_crypt(OSP_GCM_ENCRYPT, ctx->gak, 16, iv, aad_buf, 17 + data_len, NULL, 0, NULL, NULL, tag) != 0) {
+		if (osp_hal_gcm_crypt(OSP_GCM_ENCRYPT, ctx->guek, 16, iv, aad_buf, 17 + data_len, NULL, 0, NULL, NULL, tag) != 0) {
 			return -1;
 		}
 	} else if (osp_hal_gcm_init != NULL && osp_hal_gcm_update != NULL && osp_hal_gcm_finish != NULL) {
-		osp_hal_gcm_init(OSP_SEC_GAK, 16, iv, 12, aad_buf, 17 + data_len);
+		osp_hal_gcm_init(OSP_SEC_GUEK, 16, iv, 12, aad_buf, 17 + data_len);
 		osp_hal_gcm_update(NULL, 0, NULL); /* zero-length plaintext */
 		osp_hal_gcm_finish(tag);
 	} else {
@@ -530,7 +545,7 @@ int osp_hls_pass3_verify(osp_sec_context_t *ctx, const uint8_t *f_stoc, uint32_t
 			return -3;
 		}
 		uint8_t expected_tag[OSP_SEC_TAG_SIZE];
-		if (osp_hls_gmac(ctx, ctx->system_title, ic, ctx->stoc, ctx->stoc_len, expected_tag) != 0) {
+		if (osp_hls_gmac(ctx, hls_gmac_iv_title(ctx, true), ic, ctx->stoc, ctx->stoc_len, expected_tag) != 0) {
 			ctx->hls_failures++;
 			return -4;
 		}
@@ -662,7 +677,7 @@ int osp_hls_pass4_verify(osp_sec_context_t *ctx, const uint8_t *f_ctos, uint32_t
 		if (len >= 17) {
 			uint32_t ic = ((uint32_t)f_ctos[1] << 24) | ((uint32_t)f_ctos[2] << 16) | ((uint32_t)f_ctos[3] << 8) | (uint32_t)f_ctos[4];
 			uint8_t expected_tag[OSP_SEC_TAG_SIZE];
-			if (osp_hls_gmac(ctx, ctx->system_title, ic, ctx->ctos, ctx->ctos_len, expected_tag) == 0) {
+			if (osp_hls_gmac(ctx, hls_gmac_iv_title(ctx, true), ic, ctx->ctos, ctx->ctos_len, expected_tag) == 0) {
 				uint8_t diff = 0;
 				for (uint32_t i = 0; i < OSP_SEC_TAG_SIZE; i++) {
 					diff |= f_ctos[5 + i] ^ expected_tag[i];
@@ -831,8 +846,30 @@ static void sec_gost_k_em_for_cipher(const osp_sec_context_t *ctx, uint8_t k_em[
 	}
 }
 
-static void glo_build_iv(const osp_sec_context_t *ctx, uint32_t ic, uint8_t iv[12]) {
+static bool glo_system_title_is_zero(const uint8_t st[OSP_SEC_SYSTEM_TITLE_SIZE]) {
+	for (uint32_t i = 0; i < OSP_SEC_SYSTEM_TITLE_SIZE; i++) {
+		if (st[i] != 0) {
+			return false;
+		}
+	}
+	return true;
+}
+
+/* IV = originator system title || IC (IEC 62056-5-3). */
+static void glo_build_iv_tx(const osp_sec_context_t *ctx, uint32_t ic, uint8_t iv[12]) {
 	memcpy(iv, ctx->system_title, 8);
+	iv[8] = (uint8_t)(ic >> 24);
+	iv[9] = (uint8_t)(ic >> 16);
+	iv[10] = (uint8_t)(ic >> 8);
+	iv[11] = (uint8_t)(ic);
+}
+
+static void glo_build_iv_rx(const osp_sec_context_t *ctx, uint32_t ic, uint8_t iv[12]) {
+	const uint8_t *st = ctx->peer_system_title;
+	if (glo_system_title_is_zero(st)) {
+		st = ctx->system_title;
+	}
+	memcpy(iv, st, 8);
 	iv[8] = (uint8_t)(ic >> 24);
 	iv[9] = (uint8_t)(ic >> 16);
 	iv[10] = (uint8_t)(ic >> 8);
@@ -872,7 +909,7 @@ int osp_glo_protect(const osp_sec_context_t *ctx, uint8_t ciphered_tag, const ui
 	bool encr = (sc & 0x20u) != 0;
 
 	uint8_t iv[12];
-	glo_build_iv(ctx, ic, iv);
+	glo_build_iv_tx(ctx, ic, iv);
 
 	uint32_t aes_key_len;
 	const uint8_t *aes_key = sec_aes_encryption_key(ctx, &aes_key_len);
@@ -973,7 +1010,7 @@ int osp_glo_unprotect(osp_sec_context_t *ctx, const uint8_t *ciphered, uint32_t 
 	bool auth = (sc & 0x10u) != 0;
 	bool encr = (sc & 0x20u) != 0;
 	uint8_t iv[12];
-	glo_build_iv(ctx, ic, iv);
+	glo_build_iv_rx(ctx, ic, iv);
 
 	uint32_t aes_key_len;
 	const uint8_t *aes_key = sec_aes_encryption_key(ctx, &aes_key_len);

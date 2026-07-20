@@ -668,9 +668,18 @@ osp_err_t osp_hdlc_session_recv_apdu(osp_hdlc_session_t *s, uint8_t *buf, uint32
 		return OSP_ERR_INVALID;
 
 	osp_hdlc_frame_t frame;
-	osp_err_t r = session_recv_frame(s, &frame, timeout_ms);
-	if (r != OSP_OK)
-		return r;
+	osp_err_t r;
+	for (;;) {
+		r = session_recv_frame(s, &frame, timeout_ms);
+		if (r == OSP_ERR_INVALID) {
+			/* Bad FCS/HCS: drop frame and keep waiting (DISC may follow). */
+			continue;
+		}
+		if (r != OSP_OK) {
+			return r;
+		}
+		break;
+	}
 
 	/* Info field present when control format forbids it → FRMR (W+X). */
 	if (frame.info_len > 0 && !frame_allows_info(frame.control.type)) {

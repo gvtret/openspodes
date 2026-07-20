@@ -96,6 +96,8 @@ const char *osp_acse_diag_name(uint8_t diag, int is_provider) {
 		return "no-reason";
 	case OSP_ACSE_DIAG_APP_CONTEXT_NOT_SUPPORTED:
 		return "application-context-not-supported";
+	case OSP_ACSE_DIAG_CALLING_AP_TITLE_NOT_RECOGNIZED:
+		return "calling-AP-title-not-recognized";
 	case OSP_ACSE_DIAG_AUTH_MECH_NOT_RECOGNISED:
 		return "authentication-mechanism-not-recognised";
 	case OSP_ACSE_DIAG_AUTH_MECH_REQUIRED:
@@ -297,10 +299,14 @@ int osp_aarq_decode(osp_buf_t *buf, osp_aarq_t *aarq) {
 					uint32_t olen;
 					if (osp_ber_read_length(buf, &olen) != OSP_OK)
 						return -1;
-					aarq->calling_ap_title_len = (uint8_t)olen;
-					for (uint32_t i = 0; i < olen && i < 8; i++) {
-						if (osp_axdr_read_u8(buf, &aarq->calling_ap_title[i]) != OSP_OK)
+					aarq->calling_ap_title_len = (uint8_t)(olen > 255u ? 255u : olen);
+					for (uint32_t i = 0; i < olen; i++) {
+						uint8_t b;
+						if (osp_axdr_read_u8(buf, &b) != OSP_OK)
 							return -1;
+						if (i < sizeof(aarq->calling_ap_title)) {
+							aarq->calling_ap_title[i] = b;
+						}
 					}
 				}
 					break;
