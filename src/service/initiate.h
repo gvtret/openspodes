@@ -14,6 +14,14 @@ extern "C" {
 #define OSP_INITIATE_REQUEST_TAG  0x01
 #define OSP_INITIATE_RESPONSE_TAG 0x08
 
+#define OSP_DLMS_VERSION_NUMBER       6
+#define OSP_INITIATE_MIN_CLIENT_PDU   12
+
+/* Confirmed-service-error initiate category values (IEC 62056-5-3) */
+#define OSP_INITIATE_ERR_DLMS_VERSION_TOO_LOW   1
+#define OSP_INITIATE_ERR_INCOMPATIBLE_CONFORMANCE 2
+#define OSP_INITIATE_ERR_PDU_SIZE_TOO_SHORT     3
+
 #define OSP_INITIATE_DEDICATED_KEY_MAX 32
 
 typedef struct {
@@ -45,6 +53,9 @@ osp_err_t osp_initiate_request_decode(osp_buf_t *buf, osp_initiate_request_t *re
 
 osp_err_t osp_initiate_response_encode(const osp_initiate_response_t *resp, osp_buf_t *buf);
 osp_err_t osp_initiate_response_decode(osp_buf_t *buf, osp_initiate_response_t *resp);
+
+/** Encode Initiate user-information reject blob (ConfirmedServiceError). */
+osp_err_t osp_initiate_error_encode(osp_buf_t *buf, uint8_t initiate_error_value);
 
 #ifdef __cplusplus
 }

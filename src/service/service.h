@@ -85,10 +85,28 @@ typedef enum {
 #define OSP_RESULT_REJECTED_PERMANENT 1
 #define OSP_RESULT_REJECTED_TRANSIENT 2
 
+/* ACSE associate-source-diagnostic (service-user) */
+#define OSP_ACSE_DIAG_NULL                         0
+#define OSP_ACSE_DIAG_NO_REASON                    1
+#define OSP_ACSE_DIAG_APP_CONTEXT_NOT_SUPPORTED    2
+#define OSP_ACSE_DIAG_AUTH_MECH_NOT_RECOGNISED     11
+#define OSP_ACSE_DIAG_AUTH_MECH_REQUIRED           12
+#define OSP_ACSE_DIAG_AUTH_FAILURE                 13
+#define OSP_ACSE_DIAG_AUTH_REQUIRED                14
+
+/* ACSE associate-source-diagnostic (service-provider) */
+#define OSP_ACSE_PROVIDER_NO_COMMON_ACSE_VERSION   2
+
 /* AARQ encode/decode */
 typedef struct {
 	uint8_t application_context; /* OSP_CTX_* */
 	uint8_t mechanism;           /* OSP_MECH_* */
+	uint8_t has_protocol_version;
+	uint8_t protocol_version[2];
+	uint8_t has_sender_acse_requirement;
+	uint8_t sender_acse_requirement;
+	uint8_t has_mechanism;
+	uint8_t has_calling_auth;
 	uint8_t calling_ap_title[8]; /* system title (8 bytes) */
 	uint8_t calling_ap_title_len;
 	uint8_t calling_auth_value[64]; /* CtoS challenge */
@@ -113,6 +131,7 @@ int osp_aarq_decode(osp_buf_t *buf, osp_aarq_t *aarq);
 typedef struct {
 	uint8_t result; /* OSP_RESULT_* */
 	uint8_t result_source_diagnostic;
+	uint8_t result_source_is_provider; /* 0=acse-service-user, 1=acse-service-provider */
 	uint8_t application_context; /* OSP_CTX_*; 0 = omit field */
 	uint8_t has_protocol_version;
 	uint8_t protocol_version[2]; /* typically 02 84 (version 2) */
