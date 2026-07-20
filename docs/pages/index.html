@@ -53,10 +53,10 @@
             <div class="features">
                 <div class="feature">
                     <h3>DLMS/COSEM Full Stack</h3>
-                    <p>BER/AXDR codec, HDLC session + wrapper framing, ACSE, xDLMS GET/SET/ACTION</p>
+                    <p>BER/AXDR codec, HDLC session + wrapper framing, ACSE, xDLMS GET/SET/ACTION with block transfer</p>
                 </div>
                 <div class="feature">
-                    <h3>42 COSEM IC Classes</h3>
+                    <h3>40 COSEM IC Classes</h3>
                     <p>Data, Register, ProfileGeneric, Clock, AssociationLN, SecuritySetup, and more</p>
                 </div>
                 <div class="feature">
@@ -69,7 +69,15 @@
                 </div>
                 <div class="feature">
                     <h3>HAL Abstraction</h3>
-                    <p>Pluggable transport, crypto, timer, random — port to any MCU/RTOS</p>
+                    <p>Transport, crypto, random, timer, system, mutex — port to any MCU/RTOS</p>
+                </div>
+                <div class="feature">
+                    <h3>Data HAL</h3>
+                    <p>Read current data, write setpoints, execute commands on hardware via (obis, attr_id)</p>
+                </div>
+                <div class="feature">
+                    <h3>HDLC Hardening</h3>
+                    <p>FRMR, segmentation reassembly, inter-octet/inactivity timeouts, XID negotiation</p>
                 </div>
                 <div class="feature">
                     <h3>Thread-Safe</h3>
@@ -143,10 +151,34 @@ ctest --test-dir build --output-on-failure</code></pre>
             <h2>HLS Authentication</h2>
             <p>OpenSPODES supports all 11 HLS mechanisms (0-10) per IEC 62056-5-3 Green Book:</p>
             <ul style="margin: 1rem 0; padding-left: 1.5rem;">
+                <li><strong>Mechanism 0 (Lowest)</strong> — No authentication</li>
+                <li><strong>Mechanism 1 (LLS)</strong> — Password-based</li>
+                <li><strong>Mechanism 2 (HLS)</strong> — Maps to GMAC for Suite 0</li>
                 <li><strong>Mechanism 5 (GMAC)</strong> — AES-GCM authentication tag</li>
                 <li><strong>Mechanism 8 (GOST-CMAC)</strong> — Kuznyechik CMAC</li>
                 <li><strong>Mechanism 10 (GOST-Sig)</strong> — GOST 34.10 digital signature</li>
             </ul>
+        </section>
+
+        <section>
+            <h2>Data HAL</h2>
+            <p>New in v2.3.0: pluggable interface for reading current data, writing setpoints, and executing commands on hardware.</p>
+            <pre><code>typedef struct {
+    osp_err_t (*read)(void *ctx, const osp_obis_t *obis,
+                      uint8_t attr_id, osp_value_t *result);
+    osp_err_t (*write)(void *ctx, const osp_obis_t *obis,
+                       uint8_t attr_id, const osp_value_t *value);
+    osp_err_t (*execute)(void *ctx, const osp_obis_t *obis,
+                         uint8_t method_id, const osp_value_t *param,
+                         osp_value_t *result);
+    void *ctx;
+} osp_hal_data_t;
+
+// Set before server loop
+osp_hal_data = &my_hal;
+
+// Poll periodically to refresh caches
+osp_hal_data_poll(&server);</code></pre>
         </section>
     </div>
 
