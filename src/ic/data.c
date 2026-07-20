@@ -8,13 +8,19 @@
 #include "../codec/codec.h"
 #include "../codec/ic_serialize.h"
 #include "../codec/serialize.h"
+#include "../data_hal.h"
 #include <string.h>
 
 /* Attribute: value (get/set) — attr_id=1 returns value per implementation convention */
-static osp_err_t data_get_attr(const void *inst, uint8_t attr_id, osp_value_t *result) {
+/* Attribute: value (get/set) -- attr_id=1 returns value per implementation convention */static osp_err_t data_get_attr(const void *inst, uint8_t attr_id, osp_value_t *result) {
 	const osp_ic_data_t *d = (const osp_ic_data_t *)inst;
 	if (attr_id != 1 || !result) {
 		return OSP_ERR_NOT_FOUND;
+	}
+	if (osp_hal_data && osp_hal_data->read) {
+		osp_err_t r = osp_hal_data->read(osp_hal_data->ctx, &d->logical_name, attr_id, result);
+		if (r == OSP_OK) return OSP_OK;
+		if (r != OSP_ERR_NOT_FOUND) return r;
 	}
 	*result = d->value;
 	return OSP_OK;
@@ -24,6 +30,10 @@ static osp_err_t data_set_attr(void *inst, uint8_t attr_id, const osp_value_t *v
 	osp_ic_data_t *d = (osp_ic_data_t *)inst;
 	if (attr_id != 1 || !value) {
 		return OSP_ERR_NOT_FOUND;
+	}
+	if (osp_hal_data && osp_hal_data->write) {
+		osp_err_t r = osp_hal_data->write(osp_hal_data->ctx, &d->logical_name, attr_id, value);
+		if (r != OSP_OK && r != OSP_ERR_NOT_FOUND) return r;
 	}
 	d->value = *value;
 	return OSP_OK;
@@ -35,6 +45,11 @@ static osp_err_t data_invoke(void *inst, uint8_t method_id, const osp_value_t *p
 	(void)param;
 	if (method_id != 1 || !result) {
 		return OSP_ERR_NOT_FOUND;
+	}
+	if (osp_hal_data && osp_hal_data->execute) {
+		osp_err_t r = osp_hal_data->execute(osp_hal_data->ctx, &d->logical_name, method_id, param, result);
+		if (r == OSP_OK) return OSP_OK;
+		if (r != OSP_ERR_NOT_FOUND) return r;
 	}
 	*result = d->value;
 	return OSP_OK;

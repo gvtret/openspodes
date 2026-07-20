@@ -4,6 +4,27 @@ All notable changes to this project are documented in this file.
 
 Format is based on [Keep a Changelog](https://keepachangelog.com/), project follows [Semantic Versioning](https://semver.org/).
 
+## [2.3.0] - 2026-07-20
+
+### Added
+
+**Data HAL Interface (`src/data_hal.h`):**
+- `osp_hal_data_t` — generic HAL for reading current data, writing setpoints, executing commands
+- Three callbacks: `read(obis, attr_id)`, `write(obis, attr_id, value)`, `execute(obis, method_id, param)`
+- Global pointer `osp_hal_data` — set before server loop, NULL = no hardware access (default)
+- `osp_hal_data_poll()` — scan dispatcher objects, refresh IC caches from HAL
+- HAL + cache strategy: polling updates caches, DLMS GET returns cached values
+
+**IC Class HAL Delegation (all 40 classes):**
+- Every IC class now delegates get_attr/set_attr/invoke to HAL when `osp_hal_data != NULL`
+- Transparent fallback: if HAL returns OSP_ERR_NOT_FOUND, IC uses its cached value
+- Zero memory overhead — global pointer, no per-instance storage
+
+**Tests:**
+- `tests/test_data_hal.h` + `test_data_hal_db.c` — simple Dataset/Datapoint DB for testing
+- `tests/test_data_hal.c` — 12 tests: null HAL, read/write/execute, IO error, NOT_FOUND, poll, integration, password from DB
+- `openspodes_test_data_hal` CTest target
+
 ## [2.2.0] - 2026-07-20
 
 ### Fixed (HDLC Session Hardening)

@@ -1,6 +1,7 @@
 #include "extended_register.h"
 #include "ic_common.h"
 #include <string.h>
+#include "../data_hal.h"
 
 static const uint8_t er_attrs[] = {1, 2, 3, 4, 5};
 
@@ -13,6 +14,13 @@ static osp_value_t er_capture_time_value(const osp_ic_ext_register_t *r) {
 }
 
 static osp_err_t er_get(const void *inst, uint8_t attr_id, osp_value_t *result) {
+	if (osp_hal_data && osp_hal_data->read) {
+		const osp_obis_t *obis = (const osp_obis_t *)inst;
+		osp_err_t r = osp_hal_data->read(osp_hal_data->ctx, obis, attr_id, result);
+		if (r == OSP_OK) return OSP_OK;
+		if (r != OSP_ERR_NOT_FOUND) return r;
+	}
+
 	const osp_ic_ext_register_t *r = (const osp_ic_ext_register_t *)inst;
 	switch (attr_id) {
 		case 1:
@@ -35,6 +43,12 @@ static osp_err_t er_get(const void *inst, uint8_t attr_id, osp_value_t *result) 
 }
 
 static osp_err_t er_set(void *inst, uint8_t attr_id, const osp_value_t *value) {
+	if (osp_hal_data && osp_hal_data->write) {
+		const osp_obis_t *obis = (const osp_obis_t *)inst;
+		osp_err_t r = osp_hal_data->write(osp_hal_data->ctx, obis, attr_id, value);
+		if (r != OSP_OK && r != OSP_ERR_NOT_FOUND) return r;
+	}
+
 	osp_ic_ext_register_t *r = (osp_ic_ext_register_t *)inst;
 	if (!value) {
 		return OSP_ERR_INVALID;
@@ -60,6 +74,13 @@ static osp_err_t er_set(void *inst, uint8_t attr_id, const osp_value_t *value) {
 }
 
 static osp_err_t er_invoke(void *inst, uint8_t method_id, const osp_value_t *param, osp_value_t *result) {
+	if (osp_hal_data && osp_hal_data->execute) {
+		const osp_obis_t *obis = (const osp_obis_t *)inst;
+		osp_err_t r = osp_hal_data->execute(osp_hal_data->ctx, obis, method_id, param, result);
+		if (r == OSP_OK) return OSP_OK;
+		if (r != OSP_ERR_NOT_FOUND) return r;
+	}
+
 	osp_ic_ext_register_t *r = (osp_ic_ext_register_t *)inst;
 	(void)param;
 	if (method_id == 1) {

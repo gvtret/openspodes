@@ -417,6 +417,49 @@ The library is safe for multi-threaded use when:
 - [ ] Run `openspodes_test_security` to verify crypto (requires OpenSSL or hardware)
 - [ ] Test end-to-end: connect, GET, SET, disconnect
 
+
+### 7. Data HAL (`osp_hal_data_t`)
+
+Optional. Provides read/write/execute access to hardware data (sensors, setpoints, commands).
+
+```c
+typedef struct {
+    osp_err_t (*read)(void *ctx, const osp_obis_t *obis, uint8_t attr_id, osp_value_t *result);
+    osp_err_t (*write)(void *ctx, const osp_obis_t *obis, uint8_t attr_id, const osp_value_t *value);
+    osp_err_t (*execute)(void *ctx, const osp_obis_t *obis, uint8_t method_id,
+                         const osp_value_t *param, osp_value_t *result);
+    void *ctx;
+} osp_hal_data_t;
+
+extern osp_hal_data_t *osp_hal_data;  // NULL = no hardware access (default)
+```
+
+| Pointer | Purpose | Returns |
+|---------|---------|---------|
+| `read` | Read current value from hardware | OSP_OK, OSP_ERR_NOT_FOUND, OSP_ERR_IO |
+| `write` | Write setpoint to hardware | OSP_OK, OSP_ERR_NOT_FOUND, OSP_ERR_IO |
+| `execute` | Execute command on hardware | OSP_OK, OSP_ERR_NOT_FOUND, OSP_ERR_IO |
+
+**Caching strategy:** HAL + cache. IC classes call HAL during polling/set operations. DLMS GET returns cached value (fast, no HAL in response path).
+
+**Usage:**
+```c
+// 1. Implement HAL callbacks
+static osp_err_t my_read(void *ctx, const osp_obis_t *obis, uint8_t attr_id, osp_value_t *result) {
+    // Read from sensors, ADC, Modbus, etc.
+    // Return OSP_ERR_NOT_FOUND if obis/attr_id not mapped to hardware
+}
+
+// 2. Set HAL pointer before server loop
+osp_hal_data_t my_hal = { .read = my_read, .write = my_write, .execute = my_execute, .ctx = NULL };
+osp_hal_data = &my_hal;
+
+// 3. Optionally call osp_hal_data_poll() periodically to refresh caches
+osp_hal_data_poll(&server);
+```
+
+---
+
 ---
 
 ## Quick Start (Linux)

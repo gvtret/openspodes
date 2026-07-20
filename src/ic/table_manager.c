@@ -6,6 +6,7 @@
 #include "ic_common.h"
 #include "../codec/serialize.h"
 #include <string.h>
+#include "../data_hal.h"
 
 static int find_row_index(const osp_ic_table_manager_t *tm, const osp_value_t *key) {
 	for (uint8_t i = 0; i < tm->row_count; i++) {
@@ -89,6 +90,13 @@ static osp_err_t tm_retrieve(osp_ic_table_manager_t *tm, const osp_value_t *keys
 }
 
 static osp_err_t tm_invoke(void *inst, uint8_t method_id, const osp_value_t *param, osp_value_t *result) {
+	if (osp_hal_data && osp_hal_data->execute) {
+		const osp_obis_t *obis = (const osp_obis_t *)inst;
+		osp_err_t r = osp_hal_data->execute(osp_hal_data->ctx, obis, method_id, param, result);
+		if (r == OSP_OK) return OSP_OK;
+		if (r != OSP_ERR_NOT_FOUND) return r;
+	}
+
 	osp_ic_table_manager_t *tm = (osp_ic_table_manager_t *)inst;
 	osp_value_t entries[OSP_MAX_ARRAY_LEN];
 	uint8_t count = 0;
@@ -128,6 +136,13 @@ static osp_err_t tm_invoke(void *inst, uint8_t method_id, const osp_value_t *par
 static const uint8_t tm_attrs[] = {1};
 
 static osp_err_t tm_get_attr_fixed(const void *inst, uint8_t attr_id, osp_value_t *result) {
+	if (osp_hal_data && osp_hal_data->read) {
+		const osp_obis_t *obis = (const osp_obis_t *)inst;
+		osp_err_t r = osp_hal_data->read(osp_hal_data->ctx, obis, attr_id, result);
+		if (r == OSP_OK) return OSP_OK;
+		if (r != OSP_ERR_NOT_FOUND) return r;
+	}
+
 	const osp_ic_table_manager_t *tm = (const osp_ic_table_manager_t *)inst;
 	if (attr_id != 1 || !result) {
 		return OSP_ERR_NOT_FOUND;

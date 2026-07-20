@@ -1,6 +1,7 @@
 #include "single_action_schedule.h"
 #include "ic_common.h"
 #include <string.h>
+#include "../data_hal.h"
 
 static const uint8_t sas_attrs[] = {1, 2, 3, 4};
 
@@ -13,6 +14,13 @@ static osp_value_t sas_time(const uint8_t *t) {
 }
 
 static osp_err_t sas_get(const void *inst, uint8_t attr_id, osp_value_t *result) {
+	if (osp_hal_data && osp_hal_data->read) {
+		const osp_obis_t *obis = (const osp_obis_t *)inst;
+		osp_err_t r = osp_hal_data->read(osp_hal_data->ctx, obis, attr_id, result);
+		if (r == OSP_OK) return OSP_OK;
+		if (r != OSP_ERR_NOT_FOUND) return r;
+	}
+
 	const osp_ic_single_action_schedule_t *s = (const osp_ic_single_action_schedule_t *)inst;
 	switch (attr_id) {
 		case 1:
@@ -32,6 +40,12 @@ static osp_err_t sas_get(const void *inst, uint8_t attr_id, osp_value_t *result)
 }
 
 static osp_err_t sas_set(void *inst, uint8_t attr_id, const osp_value_t *value) {
+	if (osp_hal_data && osp_hal_data->write) {
+		const osp_obis_t *obis = (const osp_obis_t *)inst;
+		osp_err_t r = osp_hal_data->write(osp_hal_data->ctx, obis, attr_id, value);
+		if (r != OSP_OK && r != OSP_ERR_NOT_FOUND) return r;
+	}
+
 	osp_ic_single_action_schedule_t *s = (osp_ic_single_action_schedule_t *)inst;
 	if (!value) {
 		return OSP_ERR_INVALID;

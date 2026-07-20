@@ -8,7 +8,7 @@ Portable **C11** implementation of **IEC 62056 DLMS/COSEM** (LN referencing), mo
 
 Designed for embedded and server use: **no heap allocation in the core library**, HAL crypto via function pointers, static buffers.
 
-**Version:** 2.2.0
+**Version:** 2.3.0
 **License:** GPL-3.0-or-later (see [LICENSE](LICENSE))
 
 ## Documentation
@@ -35,7 +35,7 @@ Designed for embedded and server use: **no heap allocation in the core library**
 | HLS mechanisms 0–10 (GMAC, MD5/SHA1/SHA256, GOST CMAC/Sig, mechanism-2→GMAC) | ✅ |
 | General ciphering / general-signing | ✅ |
 | Push + event notifications | ✅ |
-| 42 COSEM IC classes (36 full + 6 stub) | ✅ |
+| 40 COSEM IC classes | ✅ |
 | GOST (Streebog, Kuznyechik, GOST 34.10, VKO/KDF) | ✅ |
 | Thread safety via HAL mutex + TLS | ✅ |
 | Linux HAL (TCP, OpenSSL, timer, random) | ✅ |

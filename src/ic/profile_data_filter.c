@@ -6,6 +6,7 @@
 #include "ic_common.h"
 #include "../codec/serialize.h"
 #include <string.h>
+#include "../data_hal.h"
 
 static int column_index(const osp_ic_profile_data_filter_t *f, const osp_value_t *capture_object) {
 	const osp_value_t *name = NULL;
@@ -120,6 +121,13 @@ static osp_err_t filtered(const osp_ic_profile_data_filter_t *f, const osp_value
 static const uint8_t pdf_attrs[] = {1};
 
 static osp_err_t pdf_get_attr(const void *inst, uint8_t attr_id, osp_value_t *result) {
+	if (osp_hal_data && osp_hal_data->read) {
+		const osp_obis_t *obis = (const osp_obis_t *)inst;
+		osp_err_t r = osp_hal_data->read(osp_hal_data->ctx, obis, attr_id, result);
+		if (r == OSP_OK) return OSP_OK;
+		if (r != OSP_ERR_NOT_FOUND) return r;
+	}
+
 	const osp_ic_profile_data_filter_t *f = (const osp_ic_profile_data_filter_t *)inst;
 	if (attr_id != 1 || !result) {
 		return OSP_ERR_NOT_FOUND;
@@ -128,6 +136,13 @@ static osp_err_t pdf_get_attr(const void *inst, uint8_t attr_id, osp_value_t *re
 }
 
 static osp_err_t pdf_invoke(void *inst, uint8_t method_id, const osp_value_t *param, osp_value_t *result) {
+	if (osp_hal_data && osp_hal_data->execute) {
+		const osp_obis_t *obis = (const osp_obis_t *)inst;
+		osp_err_t r = osp_hal_data->execute(osp_hal_data->ctx, obis, method_id, param, result);
+		if (r == OSP_OK) return OSP_OK;
+		if (r != OSP_ERR_NOT_FOUND) return r;
+	}
+
 	osp_ic_profile_data_filter_t *f = (osp_ic_profile_data_filter_t *)inst;
 	osp_value_t selected[OSP_MAX_ARRAY_LEN];
 	osp_value_t filters[OSP_MAX_ARRAY_LEN];

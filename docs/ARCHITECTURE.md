@@ -31,6 +31,7 @@ OpenSPODES implements the full DLMS/COSEM stack for communicating with electrici
 │  HAL                      Transport, crypto, timer       │
 │  osp_transport_t          osp_crypto_t                   │
 │  osp_random_t             osp_timer_t                    │
+│  osp_hal_data_t           Data access (read/write/exec)  │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -272,7 +273,7 @@ SPODUS IVCV implementation (STO 34.01-5.1):
 | `tasks.c` | Data exchange tasks (§10.7) |
 | `spodus_server.c` | Data IC for server registration |
 
-### 8. HAL (`src/openspodes.h`)
+### 8. HAL (`src/openspodes.h`, `src/data_hal.h`)
 
 Hardware Abstraction Layer — interfaces for MCU porting:
 
@@ -283,6 +284,9 @@ Hardware Abstraction Layer — interfaces for MCU porting:
 | `osp_random_t` | fill(buf, len) |
 | `osp_timer_t` | now_ms() + delay_ms(ms) |
 | `osp_system_t` | system_title[8] + get_key(sap, key_id) |
+| `osp_hal_data_t` | Data access: read/write/execute by (obis, attr_id) |
+
+**Data HAL** (`osp_hal_data_t`): Optional interface for reading current data, writing setpoints, and executing commands on hardware. All 40 IC classes delegate to HAL when `osp_hal_data != NULL`. Uses HAL + cache: polling updates caches, GET returns cached values. Call `osp_hal_data_poll()` periodically.
 
 ## Data Flows
 
@@ -353,7 +357,7 @@ Client:                              Server:
 | `test_core` | test_core.c | 30 | BER/AXDR codec, selective access, IC vtable |
 | `test_golden` | test_codec_golden.c | 104 | Golden vectors +  |
 | `test_errors` | test_errors.c | 34 | Error paths |
-| `test_ic` | test_ic_smoke.c | 3 | Smoke test for all 42 IC classes |
+| `test_ic` | test_ic_smoke.c | 3 | Smoke test for all 40 IC classes |
 | `test_integration` | test_integration.c | 26 | E2E client↔server loopback |
 | `test_phase0` | test_phase0.c | 7 | SPODUS helpers |
 | `test_phase1` | test_phase1.c | 8 | Table manager |

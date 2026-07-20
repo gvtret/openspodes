@@ -3,6 +3,7 @@
 #include "../codec/serialize.h"
 #include "../server/dispatcher.h"
 #include <string.h>
+#include "../data_hal.h"
 
 static const uint8_t cd_attrs[] = {1};
 
@@ -58,6 +59,13 @@ static osp_err_t cd_read_octets(const osp_value_t *value, uint8_t *out, uint32_t
 }
 
 static osp_err_t cd_get(const void *inst, uint8_t attr_id, osp_value_t *result) {
+	if (osp_hal_data && osp_hal_data->read) {
+		const osp_obis_t *obis = (const osp_obis_t *)inst;
+		osp_err_t r = osp_hal_data->read(osp_hal_data->ctx, obis, attr_id, result);
+		if (r == OSP_OK) return OSP_OK;
+		if (r != OSP_ERR_NOT_FOUND) return r;
+	}
+
 	const osp_ic_compact_data_t *c = (const osp_ic_compact_data_t *)inst;
 	if (!result) {
 		return OSP_ERR_INVALID;
@@ -86,6 +94,12 @@ static osp_err_t cd_get(const void *inst, uint8_t attr_id, osp_value_t *result) 
 }
 
 static osp_err_t cd_set(void *inst, uint8_t attr_id, const osp_value_t *value) {
+	if (osp_hal_data && osp_hal_data->write) {
+		const osp_obis_t *obis = (const osp_obis_t *)inst;
+		osp_err_t r = osp_hal_data->write(osp_hal_data->ctx, obis, attr_id, value);
+		if (r != OSP_OK && r != OSP_ERR_NOT_FOUND) return r;
+	}
+
 	osp_ic_compact_data_t *c = (osp_ic_compact_data_t *)inst;
 	if (!value) {
 		return OSP_ERR_INVALID;
@@ -154,6 +168,13 @@ static osp_err_t cd_capture_from_dispatcher(osp_ic_compact_data_t *c) {
 }
 
 static osp_err_t cd_invoke(void *inst, uint8_t method_id, const osp_value_t *param, osp_value_t *result) {
+	if (osp_hal_data && osp_hal_data->execute) {
+		const osp_obis_t *obis = (const osp_obis_t *)inst;
+		osp_err_t r = osp_hal_data->execute(osp_hal_data->ctx, obis, method_id, param, result);
+		if (r == OSP_OK) return OSP_OK;
+		if (r != OSP_ERR_NOT_FOUND) return r;
+	}
+
 	osp_ic_compact_data_t *c = (osp_ic_compact_data_t *)inst;
 	(void)param;
 	if (result) {

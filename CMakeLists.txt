@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(openspodes VERSION 2.2.0 LANGUAGES C)
+project(openspodes VERSION 2.3.0 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -81,6 +81,7 @@ add_library(openspodes STATIC
     src/security/general_ciphering.c
     src/client/client.c
     src/server/server.c
+    src/data_hal.c
     src/spodus/meter_registry.c
     src/spodus/direct_channel.c
     src/spodus/channel_list.c
@@ -213,6 +214,12 @@ if(OpenSSL_FOUND)
 	target_link_libraries(openspodes_test PRIVATE OpenSSL::Crypto)
 	target_compile_definitions(openspodes_test PRIVATE OSP_HAVE_OPENSSL_GCM=1)
 endif()
+
+add_executable(openspodes_test_data_hal tests/test_data_hal.c tests/test_data_hal_db.c)
+target_include_directories(openspodes_test_data_hal PRIVATE ${cmocka_SOURCE_DIR}/include tests)
+target_link_libraries(openspodes_test_data_hal PRIVATE openspodes cmocka)
+target_compile_definitions(openspodes_test_data_hal PRIVATE ${YB_OSP_MAX_OBJECTS})
+add_test(NAME openspodes_test_data_hal COMMAND openspodes_test_data_hal)
 
 add_executable(openspodes_loopback_cli
 	examples/loopback_cli.c

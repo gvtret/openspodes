@@ -1,6 +1,7 @@
 #include "sap_assignment.h"
 #include "ic_common.h"
 #include <string.h>
+#include "../data_hal.h"
 
 static const uint8_t sap_attrs[] = {1, 2};
 
@@ -27,6 +28,13 @@ static osp_value_t sap_list_value(const osp_ic_sap_assignment_t *s) {
 }
 
 static osp_err_t sap_get(const void *inst, uint8_t attr_id, osp_value_t *result) {
+	if (osp_hal_data && osp_hal_data->read) {
+		const osp_obis_t *obis = (const osp_obis_t *)inst;
+		osp_err_t r = osp_hal_data->read(osp_hal_data->ctx, obis, attr_id, result);
+		if (r == OSP_OK) return OSP_OK;
+		if (r != OSP_ERR_NOT_FOUND) return r;
+	}
+
 	const osp_ic_sap_assignment_t *s = (const osp_ic_sap_assignment_t *)inst;
 	if (attr_id == 1) {
 		return osp_ic_get_logical_name(result, &s->logical_name);
@@ -48,6 +56,12 @@ static int sap_find(const osp_ic_sap_assignment_t *s, uint16_t sap) {
 }
 
 static osp_err_t sap_set(void *inst, uint8_t attr_id, const osp_value_t *value) {
+	if (osp_hal_data && osp_hal_data->write) {
+		const osp_obis_t *obis = (const osp_obis_t *)inst;
+		osp_err_t r = osp_hal_data->write(osp_hal_data->ctx, obis, attr_id, value);
+		if (r != OSP_OK && r != OSP_ERR_NOT_FOUND) return r;
+	}
+
 	osp_ic_sap_assignment_t *s = (osp_ic_sap_assignment_t *)inst;
 	if (!value || attr_id != 2 || value->tag != OSP_TAG_ARRAY) {
 		return OSP_ERR_NOT_FOUND;
@@ -74,6 +88,13 @@ static osp_err_t sap_set(void *inst, uint8_t attr_id, const osp_value_t *value) 
 }
 
 static osp_err_t sap_invoke(void *inst, uint8_t method_id, const osp_value_t *param, osp_value_t *result) {
+	if (osp_hal_data && osp_hal_data->execute) {
+		const osp_obis_t *obis = (const osp_obis_t *)inst;
+		osp_err_t r = osp_hal_data->execute(osp_hal_data->ctx, obis, method_id, param, result);
+		if (r == OSP_OK) return OSP_OK;
+		if (r != OSP_ERR_NOT_FOUND) return r;
+	}
+
 	osp_ic_sap_assignment_t *s = (osp_ic_sap_assignment_t *)inst;
 	if (method_id != 1 || !param || param->tag != OSP_TAG_STRUCTURE || param->as.structure.elements.count < 2) {
 		return OSP_ERR_UNSUPPORTED;
