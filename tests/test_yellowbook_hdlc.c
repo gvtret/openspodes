@@ -107,7 +107,7 @@ static void test_hdlc_frame_p1_connection(void **state) {
 
 	/* GET via I-frame */
 	osp_value_t result;
-	r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result);
+	r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &result);
 	assert_int_equal(r, OSP_OK);
 	assert_int_equal(result.as.uint32.value, 42);
 	printf("  GET value=%u via I-frame\n", result.as.uint32.value);
@@ -326,7 +326,7 @@ static void test_hdlc_ndm2nrm_p1_snrm_ua(void **state) {
 
 	/* Verify: GET works over I-frame */
 	osp_value_t result;
-	r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result);
+	r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &result);
 	assert_int_equal(r, OSP_OK);
 	printf("  I-frame GET value=%u\n", result.as.uint32.value);
 
@@ -419,7 +419,7 @@ static void test_hdlc_info_p1_iframe_exchange(void **state) {
 	/* Send multiple I-frames and verify N(S) increments */
 	for (int i = 0; i < 3; i++) {
 		osp_value_t result;
-		r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result);
+		r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &result);
 		assert_int_equal(r, OSP_OK);
 		printf("  GET #%d: value=%u (send_seq=%u, recv_seq=%u)\n",
 		       i + 1, result.as.uint32.value, client.hdlc.send_seq, client.hdlc.recv_seq);

@@ -134,7 +134,7 @@ static void test_hdlc_01_basic_connection(void **state) {
 	mock_transport_trace_dump(&pair);
 
 	osp_value_t result;
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 2, &result), OSP_OK);
 	printf("--- HDLC #1: GET active_energy = %u ---\n", result.as.uint32.value);
 	mock_transport_trace_dump(&pair);
 
@@ -282,7 +282,7 @@ static void test_dlms_20_get_errors(void **state) {
 
 	/* GET on non-existent object → error */
 	osp_value_t result;
-	osp_err_t r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 99, 255, 255, 255}, 1, &result);
+	osp_err_t r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 99, 255, 255, 255}, 2, &result);
 	printf("  DLMS#20: GET non-existent OBIS → err=%d\n", r);
 	mock_transport_trace_dump(&pair);
 	assert_int_not_equal(r, OSP_OK);
@@ -314,7 +314,7 @@ static void test_dlms_21_set_errors(void **state) {
 
 	/* SET on non-existent object → error */
 	osp_value_t val = osp_val_u32(100);
-	osp_err_t r = osp_client_set(&client, 1, &(osp_obis_t){0, 0, 99, 255, 255, 255}, 1, &val);
+	osp_err_t r = osp_client_set(&client, 1, &(osp_obis_t){0, 0, 99, 255, 255, 255}, 2, &val);
 	assert_int_not_equal(r, OSP_OK);
 
 	/* SET on non-existent attr → error */
@@ -364,7 +364,7 @@ static void test_dlms_23_service_not_allowed(void **state) {
 
 	/* Try GET without connecting first */
 	osp_value_t result;
-	osp_err_t r = osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 1, &result);
+	osp_err_t r = osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 2, &result);
 	assert_int_not_equal(r, OSP_OK);
 }
 
@@ -499,11 +499,11 @@ static void test_cosem_35_public_client_read(void **state) {
 
 	/* Read active energy */
 	osp_value_t result;
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 2, &result), OSP_OK);
 	assert_int_equal(result.as.uint32.value, 12345678);
 
 	/* Read voltage */
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 96, 1, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 96, 1, 0, 255}, 2, &result), OSP_OK);
 	assert_int_equal(result.as.uint32.value, 230);
 
 	assert_int_equal(osp_client_release(&client), OSP_OK);
@@ -527,7 +527,7 @@ static void test_cosem_36_system_info(void **state) {
 
 	/* Read data object 0.0.43.1.2.255 (packet counter) if registered */
 	osp_value_t result;
-	osp_err_t r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 43, 1, 2, 255}, 1, &result);
+	osp_err_t r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 43, 1, 2, 255}, 2, &result);
 	/* Object may not be registered — that's OK */
 	(void)r;
 
@@ -563,13 +563,13 @@ static void test_cosem_read_all_objects(void **state) {
 	osp_value_t result;
 
 	/* Read all Data objects */
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 2, &result), OSP_OK);
 	assert_int_equal(result.as.uint32.value, 12345678);
 
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 96, 1, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 96, 1, 0, 255}, 2, &result), OSP_OK);
 	assert_int_equal(result.as.uint32.value, 230);
 
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 96, 3, 10, 255}, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 96, 3, 10, 255}, 2, &result), OSP_OK);
 	assert_int_equal(result.as.uint32.value, 0);
 
 	/* Read Register objects */
@@ -580,12 +580,12 @@ static void test_cosem_read_all_objects(void **state) {
 	assert_int_equal(result.as.uint32.value, 1100);
 
 	/* Write-back: read, modify, write back */
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 2, &result), OSP_OK);
 	osp_value_t new_val = osp_val_u32(result.as.uint32.value + 1);
-	assert_int_equal(osp_client_set(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 1, &new_val), OSP_OK);
+	assert_int_equal(osp_client_set(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 2, &new_val), OSP_OK);
 
 	/* Verify write took effect */
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 2, &result), OSP_OK);
 	assert_int_equal(result.as.uint32.value, 12345679);
 
 	assert_int_equal(osp_client_release(&client), OSP_OK);
@@ -642,13 +642,13 @@ static void test_release_rlrq_rlre(void **state) {
 
 	/* Read something to confirm connection works */
 	osp_value_t result;
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 2, &result), OSP_OK);
 
 	/* Release */
 	assert_int_equal(osp_client_release(&client), OSP_OK);
 
 	/* GET after release should fail */
-	osp_err_t r2 = osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 1, &result);
+	osp_err_t r2 = osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 2, &result);
 	assert_int_not_equal(r2, OSP_OK);
 }
 
@@ -741,7 +741,7 @@ static void test_block_transfer_get(void **state) {
 
 	/* GET a value — block transfer may kick in for large values */
 	osp_value_t result;
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 2, &result), OSP_OK);
 
 	assert_int_equal(osp_client_release(&client), OSP_OK);
 }
@@ -766,12 +766,12 @@ static void test_block_transfer_set(void **state) {
 	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
 
 	osp_value_t val = osp_val_u32(99999);
-	assert_int_equal(osp_client_set(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 1, &val), OSP_OK);
+	assert_int_equal(osp_client_set(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 2, &val), OSP_OK);
 	printf("  BlockTransfer: SET 99999 → OK\n");
 	mock_transport_trace_dump(&pair);
 
 	osp_value_t result;
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 2, &result), OSP_OK);
 	assert_int_equal(result.as.uint32.value, 99999);
 	printf("  BlockTransfer: GET → %u\n", result.as.uint32.value);
 

@@ -67,7 +67,7 @@ static void test_symsec0_glo_get(void **state) {
 	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
 
 	osp_value_t result;
-	osp_err_t r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result);
+	osp_err_t r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &result);
 	assert_int_equal(r, OSP_OK);
 
 	assert_int_equal(osp_client_release(&client), OSP_OK);
@@ -112,12 +112,12 @@ static void test_symsec0_glo_set(void **state) {
 	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
 
 	osp_value_t new_val = osp_val_u32(100);
-	osp_err_t r = osp_client_set(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &new_val);
+	osp_err_t r = osp_client_set(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &new_val);
 	assert_int_equal(r, OSP_OK);
 
 	/* Verify write took effect */
 	osp_value_t result;
-	r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result);
+	r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &result);
 	assert_int_equal(r, OSP_OK);
 	assert_int_equal(result.as.uint32.value, 100);
 

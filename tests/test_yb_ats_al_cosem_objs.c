@@ -121,7 +121,7 @@ static void test_cosem_read_object_list(void **state) {
 	elem.logical_name = (osp_obis_t){1, 0, 1, 8, 0, 255};
 	memset(&elem.access_rights, 0, sizeof(elem.access_rights));
 	elem.access_rights.attr_count = 1;
-	elem.access_rights.attr_items[0].attribute_id = 1;
+	elem.access_rights.attr_items[0].attribute_id = 2;
 	elem.access_rights.attr_items[0].access_mode = OSP_ACCESS_READ_ONLY;
 	osp_ic_association_ln_add_object(&g_aln, &elem);
 
@@ -153,17 +153,17 @@ static void test_cosem_read_object_list(void **state) {
 
 	/* Read logical device name (Data IC 0.0.42.0.0.255) */
 	osp_value_t ldn;
-	r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 42, 0, 0, 255}, 1, &ldn);
+	r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 42, 0, 0, 255}, 2, &ldn);
 	printf("  COSEM: Read LDN → err=%d\n", r);
 
 	/* Read all registered objects */
 	osp_value_t result;
-	r = osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 1, &result);
+	r = osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 2, &result);
 	assert_int_equal(r, OSP_OK);
 	assert_int_equal(result.as.uint32.value, 12345678);
 	printf("  COSEM: Read energy=%u OK\n", result.as.uint32.value);
 
-	r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 96, 1, 0, 255}, 1, &result);
+	r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 96, 1, 0, 255}, 2, &result);
 	assert_int_equal(r, OSP_OK);
 	assert_int_equal(result.as.uint32.value, 230);
 	printf("  COSEM: Read voltage=%u OK\n", result.as.uint32.value);
@@ -202,15 +202,15 @@ static void test_cosem_write_back(void **state) {
 
 	/* Read original value */
 	osp_value_t result;
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 2, &result), OSP_OK);
 	assert_int_equal(result.as.uint32.value, 12345678);
 
 	/* Write back original value */
-	assert_int_equal(osp_client_set(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_set(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 2, &result), OSP_OK);
 
 	/* Verify value unchanged */
 	osp_value_t verify;
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 1, &verify), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 2, &verify), OSP_OK);
 	assert_int_equal(verify.as.uint32.value, 12345678);
 	printf("  COSEM: Write-back test OK\n");
 
@@ -390,7 +390,7 @@ static void test_cosem_mandatory_objects(void **state) {
 	/* === Subtest 3: Logical Device Name === */
 	printf("  7.3.12 Subtest 3: Logical Device Name\n");
 	total++;
-	r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 42, 0, 0, 255}, 1, &result);
+	r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 42, 0, 0, 255}, 2, &result);
 	printf("    LDN → err=%d\n", r);
 	if (r == OSP_OK)
 		passed++;
@@ -434,10 +434,10 @@ static void test_cosem_access_rights(void **state) {
 
 	/* Read each attribute of the registered objects */
 	osp_value_t result;
-	/* Data IC: attr 1 = value */
-	osp_err_t r = osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 1, &result);
+	/* Data IC: attr 2 = value */
+	osp_err_t r = osp_client_get(&client, 1, &(osp_obis_t){1, 0, 1, 8, 0, 255}, 2, &result);
 	assert_int_equal(r, OSP_OK);
-	printf("  COSEM: Data IC attr 1 = %u (readable)\n", result.as.uint32.value);
+	printf("  COSEM: Data IC attr 2 = %u (readable)\n", result.as.uint32.value);
 
 	/* Register IC: attr 1 = value */
 	r = osp_client_get(&client, 3, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result);
@@ -524,14 +524,14 @@ static void test_cosem_multiple_references(void **state) {
 	printf("  7.3.11 Subtest 1: Read 10 value attributes together\n");
 
 	osp_client_attr_ref_t attrs_10[] = {
-		{.class_id = 1, .instance_id = {1, 0, 1, 8, 0, 255}, .attribute_id = 1},
-		{.class_id = 1, .instance_id = {0, 0, 96, 1, 0, 255}, .attribute_id = 1},
-		{.class_id = 1, .instance_id = {0, 0, 96, 3, 10, 255}, .attribute_id = 1},
-		{.class_id = 1, .instance_id = {0, 0, 42, 0, 0, 255}, .attribute_id = 1},
-		{.class_id = 1, .instance_id = {1, 0, 2, 8, 0, 255}, .attribute_id = 1},
-		{.class_id = 1, .instance_id = {1, 0, 3, 8, 0, 255}, .attribute_id = 1},
-		{.class_id = 1, .instance_id = {0, 0, 11, 0, 0, 255}, .attribute_id = 1},
-		{.class_id = 1, .instance_id = {0, 0, 12, 0, 0, 255}, .attribute_id = 1},
+		{.class_id = 1, .instance_id = {1, 0, 1, 8, 0, 255}, .attribute_id = 2},
+		{.class_id = 1, .instance_id = {0, 0, 96, 1, 0, 255}, .attribute_id = 2},
+		{.class_id = 1, .instance_id = {0, 0, 96, 3, 10, 255}, .attribute_id = 2},
+		{.class_id = 1, .instance_id = {0, 0, 42, 0, 0, 255}, .attribute_id = 2},
+		{.class_id = 1, .instance_id = {1, 0, 2, 8, 0, 255}, .attribute_id = 2},
+		{.class_id = 1, .instance_id = {1, 0, 3, 8, 0, 255}, .attribute_id = 2},
+		{.class_id = 1, .instance_id = {0, 0, 11, 0, 0, 255}, .attribute_id = 2},
+		{.class_id = 1, .instance_id = {0, 0, 12, 0, 0, 255}, .attribute_id = 2},
 	};
 	osp_get_result_item_t results_8[OSP_XDLMS_MAX_LIST];
 	memset(results_8, 0, sizeof(results_8));
@@ -560,8 +560,8 @@ static void test_cosem_multiple_references(void **state) {
 
 	/* Batch 2: remaining 2 */
 	osp_client_attr_ref_t attrs_2[] = {
-		{.class_id = 1, .instance_id = {1, 0, 4, 8, 0, 255}, .attribute_id = 1},
-		{.class_id = 1, .instance_id = {1, 0, 5, 8, 0, 255}, .attribute_id = 1},
+		{.class_id = 1, .instance_id = {1, 0, 4, 8, 0, 255}, .attribute_id = 2},
+		{.class_id = 1, .instance_id = {1, 0, 5, 8, 0, 255}, .attribute_id = 2},
 	};
 	osp_get_result_item_t results_2[2];
 	memset(results_2, 0, sizeof(results_2));
@@ -572,7 +572,7 @@ static void test_cosem_multiple_references(void **state) {
 	printf("  7.3.11 Subtest 2: Short + Long attribute\n");
 	osp_client_attr_ref_t attrs_short_long[] = {
 		/* Short: Data IC value (1-4 bytes) */
-		{.class_id = 1, .instance_id = {1, 0, 1, 8, 0, 255}, .attribute_id = 1},
+		{.class_id = 1, .instance_id = {1, 0, 1, 8, 0, 255}, .attribute_id = 2},
 		/* Long: PushSetup push_object_list (array, potentially long) */
 		{.class_id = 40, .instance_id = {0, 0, 25, 9, 0, 255}, .attribute_id = 2},
 	};

@@ -203,10 +203,10 @@ static void test_poll_meter_updates_cache(void **state) {
 	osp_spodus_downstream_t *link = osp_spodus_concentrator_downstream(&conc, mid, desc.meter_id_len);
 	assert_non_null(link);
 
-	osp_spodus_attr_ref_t attrs[] = {{1, energy, 1}};
+	osp_spodus_attr_ref_t attrs[] = {{1, energy, 2}};
 	uint32_t n = osp_spodus_poll_meter(&link->client, &conc.registry, mid, desc.meter_id_len, attrs, 1);
 	assert_int_equal(n, 1);
-	const osp_value_t *cached = osp_spodus_registry_cached(&conc.registry, mid, desc.meter_id_len, &energy, 1);
+	const osp_value_t *cached = osp_spodus_registry_cached(&conc.registry, mid, desc.meter_id_len, &energy, 2);
 	assert_non_null(cached);
 	assert_int_equal(cached->as.uint32.value, 123456);
 }

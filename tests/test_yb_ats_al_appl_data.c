@@ -37,7 +37,7 @@ static void test_data_get_nonexistent_obj(void **state) {
 	/* GET on an OBIS that doesn't exist */
 	osp_value_t result;
 	osp_obis_t bad_obis = {0, 0, 99, 0, 0, 255};
-	osp_err_t r = osp_client_get(&client, 1, &bad_obis, 1, &result);
+	osp_err_t r = osp_client_get(&client, 1, &bad_obis, 2, &result);
 	assert_int_not_equal(r, OSP_OK);
 
 	assert_int_equal(osp_client_release(&client), OSP_OK);
@@ -118,8 +118,8 @@ static void test_data_withlist_partial_fail(void **state) {
 	/* GET with-list: one valid, one invalid.
 	 * The server may return partial results or fail entirely. */
 	osp_client_attr_ref_t attrs[2] = {
-		{.class_id = 1, .instance_id = {0, 0, 1, 0, 0, 255}, .attribute_id = 1},
-		{.class_id = 1, .instance_id = {0, 0, 99, 0, 0, 255}, .attribute_id = 1},
+		{.class_id = 1, .instance_id = {0, 0, 1, 0, 0, 255}, .attribute_id = 2},
+		{.class_id = 1, .instance_id = {0, 0, 99, 0, 0, 255}, .attribute_id = 2},
 	};
 	osp_get_result_item_t results[2];
 	memset(results, 0, sizeof(results));
@@ -157,7 +157,7 @@ static void test_data_unassociated_request(void **state) {
 
 	/* Try GET without connecting first */
 	osp_value_t result;
-	osp_err_t r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result);
+	osp_err_t r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &result);
 	assert_int_not_equal(r, OSP_OK);
 }
 
