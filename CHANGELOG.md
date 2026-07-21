@@ -4,6 +4,27 @@ All notable changes to this project are documented in this file.
 
 Format is based on [Keep a Changelog](https://keepachangelog.com/), project follows [Semantic Versioning](https://semver.org/).
 
+## [2.4.0] - 2026-07-21
+
+### Fixed (Blue Book Compliance)
+
+**Data IC (class_id=1) method 1:**
+- Changed from "return value" to "reset" (set value to null) per Blue Book 4.3.1.3.1
+- Updated integration tests to match new behavior
+
+**Association LN (class_id=15) method 2:**
+- Added `change_HLS_secret` — updates secret and secret_len from param
+
+**Schedule IC (class_id=10) methods 1-3:**
+- Method 1: enable/disable — toggle enable flag by index
+- Method 2: insert — add new entry with start_time, end_time, scripts
+- Method 3: delete — remove entry by index with array shift
+- Added `enable` field to `osp_schedule_entry_t` structure
+
+**Tests:**
+- Updated `test_client_with_list` and `test_action_return_param_blocks` for Data IC method 1 change
+- All 30/30 CTest targets pass
+
 ## [2.3.0] - 2026-07-20
 
 ### Added
