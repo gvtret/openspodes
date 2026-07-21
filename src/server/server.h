@@ -32,7 +32,7 @@ extern "C" {
 
 #define OSP_SERVER_MAX_PDU 1024
 /* Association LN object_list with ACLs is several KB even for 64 entries. */
-#define OSP_SERVER_PENDING_MAX (OSP_SERVER_MAX_PDU * 16)
+#define OSP_SERVER_PENDING_MAX (OSP_SERVER_MAX_PDU * 32)
 
 typedef enum {
 	OSP_ACSE_LOG_AARE = 0,
@@ -96,6 +96,7 @@ typedef struct {
 
 typedef struct {
 	bool pending;
+	bool defer_flush; /* HDLC: send DN on the next service response after ACTION */
 	osp_data_notification_t notification;
 } osp_server_pending_push_t;
 
@@ -107,6 +108,7 @@ typedef struct {
 	bool associated;
 	bool hls_pending; /* AARE ok; waiting for HLS pass 3 before full AA */
 	uint8_t invoke_id;
+	uint32_t long_invoke_id; /* 24-bit Data-Notification invoke counter */
 	uint32_t max_pdu;
 	bool gbt_enabled;
 	uint32_t gbt_block_size;
@@ -171,6 +173,12 @@ osp_err_t osp_server_send_event_notification(osp_server_t *s, const osp_event_no
  * @return 0 on success, negative on failure.
  */
 osp_err_t osp_server_send_data_notification(osp_server_t *s, const osp_data_notification_t *dn);
+
+/**
+ * @brief Queue in-band Data-Notification for the active HDLC association.
+ * Flushed after the ACTION response (deferred) or immediately on non-HDLC links.
+ */
+osp_err_t osp_server_queue_pending_push(osp_server_t *s, const osp_value_t *body, bool confirmed);
 
 /**
  * @brief Initialize a server context.

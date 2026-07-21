@@ -189,13 +189,15 @@ osp_err_t osp_ic_read_threshold(const osp_value_t *val, osp_threshold_t *t) {
 osp_value_t osp_ic_val_emergency_profile(const osp_emergency_profile_t *ep) {
 	OSP_TLS osp_value_t fields[3];
 	osp_value_t v = {0};
-	fields[0] = osp_val_i32(ep ? ep->id : 0);
-	fields[1] = osp_val_bool(ep ? ep->active : false);
-	fields[2].tag = OSP_TAG_OCTETSTRING;
+	fields[0] = osp_val_u16(ep ? ep->emergency_profile_id : 0);
+	fields[1].tag = OSP_TAG_OCTETSTRING;
+	fields[1].as.octetstring.len = OSP_COSEM_DATETIME_LEN;
 	if (ep) {
-		fields[2].as.octetstring.len = 6;
-		memcpy(fields[2].as.octetstring.data, &ep->activation_time, 6);
+		memcpy(fields[1].as.octetstring.data, ep->emergency_activation_time, OSP_COSEM_DATETIME_LEN);
+	} else {
+		memset(fields[1].as.octetstring.data, 0, OSP_COSEM_DATETIME_LEN);
 	}
+	fields[2] = osp_val_u32(ep ? ep->emergency_duration : 0);
 	v.tag = OSP_TAG_STRUCTURE;
 	v.as.structure.elements.items = fields;
 	v.as.structure.elements.count = 3;
@@ -207,18 +209,20 @@ osp_err_t osp_ic_read_emergency_profile(const osp_value_t *val, osp_emergency_pr
 	if (!val || !ep || val->tag != OSP_TAG_STRUCTURE || val->as.structure.elements.count < 3) {
 		return OSP_ERR_INVALID;
 	}
-	ep->id = osp_get_i32(&val->as.structure.elements.items[0]);
-	ep->active = osp_get_bool(&val->as.structure.elements.items[1]);
-	const osp_value_t *ln = &val->as.structure.elements.items[2];
-	if (ln->tag != OSP_TAG_OCTETSTRING || ln->as.octetstring.len != 6) {
+	ep->emergency_profile_id = osp_get_u16(&val->as.structure.elements.items[0]);
+	const osp_value_t *tm = &val->as.structure.elements.items[1];
+	if (tm->tag != OSP_TAG_OCTETSTRING || tm->as.octetstring.len != OSP_COSEM_DATETIME_LEN) {
 		return OSP_ERR_INVALID;
 	}
-	memcpy(&ep->activation_time, ln->as.octetstring.data, 6);
+	memcpy(ep->emergency_activation_time, tm->as.octetstring.data, OSP_COSEM_DATETIME_LEN);
+	ep->emergency_duration = osp_get_u32(&val->as.structure.elements.items[2]);
 	return OSP_OK;
 }
 
 osp_value_t osp_ic_val_capture_object(const osp_capture_object_t *co) {
-	OSP_TLS osp_value_t fields[5];
+	/* Blue Book / IEC 62056-6-2: capture_object_definition ::= structure {
+	 *   class_id, logical_name, attribute_index, data_index } — exactly 4 fields. */
+	OSP_TLS osp_value_t fields[4];
 	osp_value_t v = {0};
 	fields[0] = osp_val_u16(co ? co->class_id : 0);
 	fields[1].tag = OSP_TAG_OCTETSTRING;
@@ -227,12 +231,11 @@ osp_value_t osp_ic_val_capture_object(const osp_capture_object_t *co) {
 		memcpy(fields[1].as.octetstring.data, &co->logical_name, 6);
 	}
 	fields[2] = osp_val_i8(co ? co->attribute_index : 0);
-	fields[3] = osp_val_u32(co ? co->data_index : 0);
-	fields[4] = osp_val_null();
+	fields[3] = osp_val_u16((uint16_t)(co ? co->data_index : 0));
 	v.tag = OSP_TAG_STRUCTURE;
 	v.as.structure.elements.items = fields;
-	v.as.structure.elements.count = 5;
-	v.as.structure.elements.capacity = 5;
+	v.as.structure.elements.count = 4;
+	v.as.structure.elements.capacity = 4;
 	return v;
 }
 
@@ -335,21 +338,40 @@ static osp_value_t ic_val_access_right(const osp_access_right_t *ar, osp_value_t
 	return v;
 }
 
+/*
+ * Scratch for object_list → osp_value_t encode.
+ * Must NOT be _Thread_local: multi-MB TLS is carved from each pthread's stack
+ * on glibc and leaves ~0 usable stack (SEGV on first non-trivial call).
+ * Process-wide BSS is fine for host; encode is not re-entrant across threads.
+ */
+typedef struct {
+	osp_value_t rows[OSP_MAX_OBJECT_LIST];
+	osp_value_t fields[OSP_MAX_OBJECT_LIST][4];
+	osp_value_t ar_outer[OSP_MAX_OBJECT_LIST][2];
+	osp_value_t ar_attr_rows[OSP_MAX_OBJECT_LIST][OSP_MAX_ACCESS_ITEMS];
+	osp_value_t ar_method_rows[OSP_MAX_OBJECT_LIST][OSP_MAX_ACCESS_ITEMS];
+	osp_value_t ar_attr_fields[OSP_MAX_OBJECT_LIST][OSP_MAX_ACCESS_ITEMS][3];
+	osp_value_t ar_method_fields[OSP_MAX_OBJECT_LIST][OSP_MAX_ACCESS_ITEMS][2];
+} osp_ol_encode_scratch_t;
+
+static osp_ol_encode_scratch_t g_ol_encode_scratch;
+
 osp_value_t osp_ic_val_object_list(const osp_object_list_t *ol) {
 	/* Per-element buffers: access-right trees must stay alive until encode finishes. */
-	OSP_TLS osp_value_t rows[OSP_MAX_OBJECT_LIST];
-	OSP_TLS osp_value_t fields[OSP_MAX_OBJECT_LIST][4];
-	OSP_TLS osp_value_t ar_outer[OSP_MAX_OBJECT_LIST][2];
-	OSP_TLS osp_value_t ar_attr_rows[OSP_MAX_OBJECT_LIST][OSP_MAX_ACCESS_ITEMS];
-	OSP_TLS osp_value_t ar_method_rows[OSP_MAX_OBJECT_LIST][OSP_MAX_ACCESS_ITEMS];
-	OSP_TLS osp_value_t ar_attr_fields[OSP_MAX_OBJECT_LIST][OSP_MAX_ACCESS_ITEMS][3];
-	OSP_TLS osp_value_t ar_method_fields[OSP_MAX_OBJECT_LIST][OSP_MAX_ACCESS_ITEMS][2];
+	osp_ol_encode_scratch_t *s = &g_ol_encode_scratch;
+	osp_value_t *rows = s->rows;
+	osp_value_t(*fields)[4] = s->fields;
+	osp_value_t(*ar_outer)[2] = s->ar_outer;
+	osp_value_t(*ar_attr_rows)[OSP_MAX_ACCESS_ITEMS] = s->ar_attr_rows;
+	osp_value_t(*ar_method_rows)[OSP_MAX_ACCESS_ITEMS] = s->ar_method_rows;
+	osp_value_t(*ar_attr_fields)[OSP_MAX_ACCESS_ITEMS][3] = s->ar_attr_fields;
+	osp_value_t(*ar_method_fields)[OSP_MAX_ACCESS_ITEMS][2] = s->ar_method_fields;
 	osp_value_t v = {0};
-	uint8_t n = ol ? ol->count : 0;
+	uint16_t n = ol ? ol->count : 0;
 	if (n > OSP_MAX_OBJECT_LIST) {
 		n = OSP_MAX_OBJECT_LIST;
 	}
-	for (uint8_t i = 0; i < n; i++) {
+	for (uint16_t i = 0; i < n; i++) {
 		const osp_object_list_element_t *e = &ol->elements[i];
 		fields[i][0] = osp_val_u16(e->class_id);
 		fields[i][1] = osp_val_u8(e->version);
@@ -365,8 +387,8 @@ osp_value_t osp_ic_val_object_list(const osp_object_list_t *ol) {
 	}
 	v.tag = OSP_TAG_ARRAY;
 	v.as.array.elements.items = rows;
-	v.as.array.elements.count = n;
-	v.as.array.elements.capacity = OSP_MAX_OBJECT_LIST;
+	v.as.array.elements.count = (uint8_t)n;
+	v.as.array.elements.capacity = (uint8_t)OSP_MAX_OBJECT_LIST;
 	return v;
 }
 
@@ -375,7 +397,7 @@ osp_err_t osp_ic_read_object_list(const osp_value_t *val, osp_object_list_t *ol)
 		return OSP_ERR_INVALID;
 	}
 	ol->count = 0;
-	for (uint8_t i = 0; i < val->as.array.elements.count && ol->count < OSP_MAX_OBJECT_LIST; i++) {
+	for (uint16_t i = 0; i < val->as.array.elements.count && ol->count < OSP_MAX_OBJECT_LIST; i++) {
 		const osp_value_t *row = &val->as.array.elements.items[i];
 		if (row->tag != OSP_TAG_STRUCTURE || row->as.structure.elements.count < 4) {
 			return OSP_ERR_INVALID;

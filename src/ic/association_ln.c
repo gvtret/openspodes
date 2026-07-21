@@ -6,10 +6,10 @@
 /* ── Helper: match OBIS + class_id in object_list ────────────────────────── */
 
 static int find_index(const osp_ic_association_ln_t *a, uint16_t class_id, const osp_obis_t *ln) {
-	for (uint8_t i = 0; i < a->object_list.count; i++) {
+	for (uint16_t i = 0; i < a->object_list.count; i++) {
 		const osp_object_list_element_t *e = &a->object_list.elements[i];
 		if (e->class_id == class_id && osp_obis_eq(&e->logical_name, ln)) {
-			return i;
+			return (int)i;
 		}
 	}
 	return -1;
@@ -37,7 +37,7 @@ osp_err_t osp_ic_association_ln_remove_object(osp_ic_association_ln_t *a, uint16
 	}
 
 	/* Shift remaining entries down */
-	for (uint8_t i = (uint8_t)idx; i + 1 < a->object_list.count; i++) {
+	for (uint16_t i = (uint16_t)idx; i + 1 < a->object_list.count; i++) {
 		a->object_list.elements[i] = a->object_list.elements[i + 1];
 	}
 	a->object_list.count--;

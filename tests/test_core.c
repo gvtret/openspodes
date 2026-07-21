@@ -373,15 +373,19 @@ static void test_ic_data_getset(void **state) {
 
 	osp_value_t set_val = osp_val_u32(42);
 	const osp_ic_class_t *cls = osp_ic_data_class();
-	assert_int_equal(cls->set_attr(&data, 1, &set_val), OSP_OK);
+	assert_int_equal(cls->set_attr(&data, 2, &set_val), OSP_OK);
 
 	osp_value_t get_val = osp_val_null();
-	assert_int_equal(cls->get_attr(&data, 1, &get_val), OSP_OK);
+	assert_int_equal(cls->get_attr(&data, 2, &get_val), OSP_OK);
 	assert_int_equal(get_val.tag, OSP_TAG_DOUBLE_LONG_UNS);
 	assert_int_equal(get_val.as.uint32.value, 42);
 
+	/* logical_name */
+	assert_int_equal(cls->get_attr(&data, 1, &get_val), OSP_OK);
+	assert_int_equal(get_val.tag, OSP_TAG_OCTETSTRING);
+
 	/* Wrong attr_id */
-	assert_int_equal(cls->get_attr(&data, 2, &get_val), OSP_ERR_NOT_FOUND);
+	assert_int_equal(cls->get_attr(&data, 3, &get_val), OSP_ERR_NOT_FOUND);
 }
 
 static void test_dispatcher_get_set(void **state) {
@@ -394,20 +398,20 @@ static void test_dispatcher_get_set(void **state) {
 	const osp_ic_class_t *cls = osp_ic_data_class();
 	assert_int_equal(osp_dispatcher_register(&disp, cls, &data1), OSP_OK);
 
-	/* Set */
+	/* Set value (attr 2) */
 	osp_value_t val = osp_val_u32(100);
 	osp_obis_t ln1 = {0, 0, 1, 0, 0, 255};
-	assert_int_equal(osp_dispatcher_set(&disp, 1, &ln1, 1, &val), OSP_OK);
+	assert_int_equal(osp_dispatcher_set(&disp, 1, &ln1, 2, &val), OSP_OK);
 
-	/* Get */
+	/* Get value (attr 2) */
 	osp_value_t result = osp_val_null();
-	assert_int_equal(osp_dispatcher_get(&disp, 1, &ln1, 1, &result), OSP_OK);
+	assert_int_equal(osp_dispatcher_get(&disp, 1, &ln1, 2, &result), OSP_OK);
 	assert_int_equal(result.tag, OSP_TAG_DOUBLE_LONG_UNS);
 	assert_int_equal(result.as.uint32.value, 100);
 
 	/* Not found */
 	osp_obis_t ln_unknown = {0, 0, 99, 0, 0, 255};
-	assert_int_equal(osp_dispatcher_get(&disp, 99, &ln_unknown, 1, &result), OSP_ERR_NOT_FOUND);
+	assert_int_equal(osp_dispatcher_get(&disp, 99, &ln_unknown, 2, &result), OSP_ERR_NOT_FOUND);
 }
 
 static void test_dispatcher_multiple_objects(void **state) {
@@ -425,12 +429,12 @@ static void test_dispatcher_multiple_objects(void **state) {
 
 	osp_value_t v1 = osp_val_u32(111);
 	osp_value_t v2 = osp_val_u32(222);
-	osp_dispatcher_set(&disp, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &v1);
-	osp_dispatcher_set(&disp, 1, &(osp_obis_t){0, 0, 8, 0, 0, 255}, 1, &v2);
+	osp_dispatcher_set(&disp, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &v1);
+	osp_dispatcher_set(&disp, 1, &(osp_obis_t){0, 0, 8, 0, 0, 255}, 2, &v2);
 
 	osp_value_t r1, r2;
-	osp_dispatcher_get(&disp, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &r1);
-	osp_dispatcher_get(&disp, 1, &(osp_obis_t){0, 0, 8, 0, 0, 255}, 1, &r2);
+	osp_dispatcher_get(&disp, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &r1);
+	osp_dispatcher_get(&disp, 1, &(osp_obis_t){0, 0, 8, 0, 0, 255}, 2, &r2);
 	assert_int_equal(r1.as.uint32.value, 111);
 	assert_int_equal(r2.as.uint32.value, 222);
 }

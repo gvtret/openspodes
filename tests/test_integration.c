@@ -829,7 +829,7 @@ static void test_push_compact_notification(void **state) {
 	osp_obis_t push_obis = {0, 0, 25, 0, 0, 255};
 	osp_ic_push_setup_t push;
 	osp_ic_push_setup_init(&push, push_obis);
-	push.push_object_list[0] = (osp_push_object_t){62, cd_obis, 2};
+	push.push_object_list[0] = (osp_push_object_t){62, cd_obis, 2, 0};
 	push.push_object_count = 1;
 	osp_server_register(&server, osp_ic_push_setup_class(), &push);
 

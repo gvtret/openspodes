@@ -187,6 +187,9 @@ osp_err_t osp_client_recv_data_notification(osp_client_t *c, osp_data_notificati
 /** @brief Receive unsolicited event-notification APDU (0xC2). */
 osp_err_t osp_client_recv_event_notification(osp_client_t *c, osp_event_notification_t *ev, uint32_t timeout_ms);
 
+/** @brief Send unsolicited data-notification APDU (push client → listener). */
+osp_err_t osp_client_send_data_notification(osp_client_t *c, const osp_data_notification_t *dn);
+
 #ifdef __cplusplus
 }
 #endif
