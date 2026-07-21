@@ -284,6 +284,19 @@ static osp_err_t aln_invoke(void *inst, uint8_t method_id, const osp_value_t *pa
 	switch (method_id) {
 		case 1: /* reply_to_HLS_authentication — handled by channel, not here */
 			return OSP_ERR_NOT_FOUND;
+		case 2: { /* change_HLS_secret */
+			osp_ic_association_ln_t *a = (osp_ic_association_ln_t *)inst;
+			if (!param || param->tag != OSP_TAG_OCTETSTRING) {
+				return OSP_ERR_INVALID;
+			}
+			uint32_t len = param->as.octetstring.len;
+			if (len > sizeof(a->secret)) {
+				len = sizeof(a->secret);
+			}
+			memcpy(a->secret, param->as.octetstring.data, len);
+			a->secret_len = (uint8_t)len;
+			return OSP_OK;
+		}
 		case 3: /* add_object */
 			return OSP_OK;
 		case 4: /* remove_object */

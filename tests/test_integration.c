@@ -223,8 +223,9 @@ static void test_client_with_list(void **state) {
 	assert_int_equal(osp_client_action_with_list(&client, methods, NULL, 2, act_results), OSP_OK);
 	assert_int_equal(act_results[0].result, OSP_DAR_SUCCESS);
 	assert_int_equal(act_results[1].result, OSP_DAR_SUCCESS);
-	assert_int_equal(act_results[0].return_data.as.uint32.value, 110);
-	assert_int_equal(act_results[1].return_data.as.uint32.value, 220);
+	/* method 1 = reset: return_data is null */
+	assert_int_equal(act_results[0].return_data.tag, OSP_TAG_NULL);
+	assert_int_equal(act_results[1].return_data.tag, OSP_TAG_NULL);
 }
 
 /* ── Test: SET+GET roundtrip ─────────────────────────────────────────────── */
@@ -753,11 +754,11 @@ static void test_action_return_param_blocks(void **state) {
 
 	osp_value_t result;
 	assert_int_equal(osp_client_action(&client, 1, &obis, 1, NULL, &result), OSP_OK);
-	assert_int_equal(result.tag, OSP_TAG_OCTETSTRING);
-	assert_int_equal(result.as.octetstring.len, 120);
-	for (uint32_t i = 0; i < 120; i++) {
-		assert_int_equal(result.as.octetstring.data[i], 0xCD);
-	}
+	/* method 1 = reset: returns null, value is now null */
+	assert_int_equal(result.tag, OSP_TAG_NULL);
+	osp_value_t get_val;
+	assert_int_equal(osp_client_get(&client, 1, &obis, 2, &get_val), OSP_OK);
+	assert_int_equal(get_val.tag, OSP_TAG_NULL);
 }
 
 static void test_compact_data_capture_via_dispatcher(void **state) {

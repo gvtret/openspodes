@@ -59,11 +59,11 @@ static osp_err_t data_set_attr(void *inst, uint8_t attr_id, const osp_value_t *v
 	}
 }
 
-/* Method 1: return value attribute (stack integration tests). */
+/* Method 1: reset — set value to default (null-data) per Blue Book 4.3.1.3.1. */
 static osp_err_t data_invoke(void *inst, uint8_t method_id, const osp_value_t *param, osp_value_t *result) {
-	const osp_ic_data_t *d = (const osp_ic_data_t *)inst;
+	osp_ic_data_t *d = (osp_ic_data_t *)inst;
 	(void)param;
-	if (method_id != 1 || !result) {
+	if (method_id != 1) {
 		return OSP_ERR_NOT_FOUND;
 	}
 	if (osp_hal_data && osp_hal_data->execute) {
@@ -75,7 +75,10 @@ static osp_err_t data_invoke(void *inst, uint8_t method_id, const osp_value_t *p
 			return r;
 		}
 	}
-	*result = d->value;
+	d->value = osp_val_null();
+	if (result) {
+		*result = osp_val_null();
+	}
 	return OSP_OK;
 }
 
