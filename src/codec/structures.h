@@ -391,8 +391,9 @@ typedef struct {
 	int32_t script_selector;
 } osp_schedule_entry_script_t;
 
-/* schedule_entry ::= structure { start_time, end_time, scripts } */
+/* schedule_entry ::= structure { enable, start_time, end_time, scripts } */
 typedef struct {
+	bool enable;
 	uint8_t start_time[4]; /* HH:MM:SS:ms */
 	uint8_t end_time[4];
 	osp_schedule_entry_script_t scripts[OSP_MAX_SCRIPT_PER_ACTION];
