@@ -35,7 +35,7 @@ static void test_appl_rel_normal(void **state) {
 	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
 
 	osp_value_t result;
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &result), OSP_OK);
 	assert_int_equal(result.as.uint32.value, 42);
 
 	/* Normal release */
@@ -59,7 +59,7 @@ static void test_appl_rel_then_get_fails(void **state) {
 
 	/* GET after release should fail */
 	osp_value_t result;
-	osp_err_t r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result);
+	osp_err_t r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &result);
 	assert_int_not_equal(r, OSP_OK);
 }
 
@@ -96,7 +96,7 @@ static void test_appl_rel_reconnect_cycle(void **state) {
 
 	/* Verify connection works */
 	osp_value_t result;
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &result), OSP_OK);
 
 	/* Release */
 	assert_int_equal(osp_client_release(&client), OSP_OK);
@@ -113,7 +113,7 @@ static void test_appl_rel_reconnect_cycle(void **state) {
 
 	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
 
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &result), OSP_OK);
 	assert_int_equal(result.as.uint32.value, 42);
 
 	assert_int_equal(osp_client_release(&client), OSP_OK);

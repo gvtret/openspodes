@@ -89,7 +89,7 @@ static void test_appl_idle_n1(void **state) {
 
 	/* Do NOT connect — try GET in IDLE state */
 	osp_value_t result;
-	osp_err_t r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result);
+	osp_err_t r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &result);
 	printf("  APPL_IDLE_N1: GET without AA → err=%d (expected error)\n", r);
 	assert_int_not_equal(r, OSP_OK);
 }
@@ -113,7 +113,7 @@ static void test_appl_open_1(void **state) {
 	mock_transport_trace_dump(&pair);
 
 	osp_value_t result;
-	r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result);
+	r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &result);
 	assert_int_equal(r, OSP_OK);
 	assert_int_equal(result.as.uint32.value, 42);
 
@@ -165,7 +165,7 @@ static void test_appl_open_3(void **state) {
 	/* If connected, verify and release */
 	if (r == OSP_OK) {
 		osp_value_t result;
-		osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result);
+		osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &result);
 		osp_client_release(&client);
 	}
 }
@@ -355,7 +355,7 @@ static void test_appl_data_ln_n1(void **state) {
 
 	/* Subtest 1: GET on non-existent object */
 	osp_value_t result;
-	osp_err_t r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 99, 255, 255, 255}, 1, &result);
+	osp_err_t r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 99, 255, 255, 255}, 2, &result);
 	printf("  APPL_DATA_LN_N1: GET non-existent OBIS → err=%d\n", r);
 	assert_int_not_equal(r, OSP_OK);
 	mock_transport_trace_dump(&pair);
@@ -381,7 +381,7 @@ static void test_appl_data_ln_n3(void **state) {
 
 	/* Subtest 1: SET on non-existent object */
 	osp_value_t val = osp_val_u32(100);
-	osp_err_t r = osp_client_set(&client, 1, &(osp_obis_t){0, 0, 99, 255, 255, 255}, 1, &val);
+	osp_err_t r = osp_client_set(&client, 1, &(osp_obis_t){0, 0, 99, 255, 255, 255}, 2, &val);
 	printf("  APPL_DATA_LN_N3: SET non-existent OBIS → err=%d\n", r);
 	assert_int_not_equal(r, OSP_OK);
 	mock_transport_trace_dump(&pair);
@@ -594,7 +594,7 @@ static void test_appl_rel_p1(void **state) {
 
 	/* Verify connection works */
 	osp_value_t result;
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &result), OSP_OK);
 	assert_int_equal(result.as.uint32.value, 42);
 
 	/* Graceful release via RLRQ/RLRE */
@@ -604,7 +604,7 @@ static void test_appl_rel_p1(void **state) {
 	mock_transport_trace_dump(&pair);
 
 	/* GET after release should fail */
-	r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result);
+	r = osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &result);
 	assert_int_not_equal(r, OSP_OK);
 }
 

@@ -937,6 +937,22 @@ osp_err_t osp_client_recv_data_notification(osp_client_t *c, osp_data_notificati
 	return OSP_OK;
 }
 
+osp_err_t osp_client_send_data_notification(osp_client_t *c, const osp_data_notification_t *dn) {
+	if (!c || !c->transport || !dn) {
+		return OSP_ERR_INVALID;
+	}
+	if (c->framing == OSP_FRAMING_HDLC && !c->hdlc_active) {
+		return OSP_ERR_DISCONNECTED;
+	}
+
+	osp_buf_t buf;
+	osp_buf_init(&buf, c->tx_buf, sizeof(c->tx_buf));
+	if (osp_data_notification_encode(&buf, dn) != 0) {
+		return OSP_ERR_INVALID;
+	}
+	return client_send_apdu(c, buf.buf, buf.wr);
+}
+
 osp_err_t osp_client_recv_event_notification(osp_client_t *c, osp_event_notification_t *ev, uint32_t timeout_ms) {
 	if (!c || !c->transport || !ev) {
 		return OSP_ERR_INVALID;

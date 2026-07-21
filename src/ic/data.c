@@ -1,45 +1,65 @@
 /**
- * data.c — Data interface class (class_id = 1)
+ * data.c — Data interface class (class_id = 1, IEC 62056-6-2)
  *
- * Minimal IC proving the vtable + osp_value_t architecture works.
+ * Attributes: 1 = logical_name, 2 = value.
  */
 
 #include "data.h"
+#include "ic_common.h"
 #include "../codec/codec.h"
 #include "../codec/ic_serialize.h"
 #include "../codec/serialize.h"
 #include "../data_hal.h"
 #include <string.h>
 
-/* Attribute: value (get/set) — attr_id=1 returns value per implementation convention */
-/* Attribute: value (get/set) -- attr_id=1 returns value per implementation convention */static osp_err_t data_get_attr(const void *inst, uint8_t attr_id, osp_value_t *result) {
+static osp_err_t data_get_attr(const void *inst, uint8_t attr_id, osp_value_t *result) {
 	const osp_ic_data_t *d = (const osp_ic_data_t *)inst;
-	if (attr_id != 1 || !result) {
+	if (!result) {
 		return OSP_ERR_NOT_FOUND;
 	}
 	if (osp_hal_data && osp_hal_data->read) {
 		osp_err_t r = osp_hal_data->read(osp_hal_data->ctx, &d->logical_name, attr_id, result);
-		if (r == OSP_OK) return OSP_OK;
-		if (r != OSP_ERR_NOT_FOUND) return r;
+		if (r == OSP_OK) {
+			return OSP_OK;
+		}
+		if (r != OSP_ERR_NOT_FOUND) {
+			return r;
+		}
 	}
-	*result = d->value;
-	return OSP_OK;
+	switch (attr_id) {
+		case 1:
+			return osp_ic_get_logical_name(result, &d->logical_name);
+		case 2:
+			*result = d->value;
+			return OSP_OK;
+		default:
+			return OSP_ERR_NOT_FOUND;
+	}
 }
 
 static osp_err_t data_set_attr(void *inst, uint8_t attr_id, const osp_value_t *value) {
 	osp_ic_data_t *d = (osp_ic_data_t *)inst;
-	if (attr_id != 1 || !value) {
+	if (!value) {
 		return OSP_ERR_NOT_FOUND;
 	}
 	if (osp_hal_data && osp_hal_data->write) {
 		osp_err_t r = osp_hal_data->write(osp_hal_data->ctx, &d->logical_name, attr_id, value);
-		if (r != OSP_OK && r != OSP_ERR_NOT_FOUND) return r;
+		if (r != OSP_OK && r != OSP_ERR_NOT_FOUND) {
+			return r;
+		}
 	}
-	d->value = *value;
-	return OSP_OK;
+	switch (attr_id) {
+		case 1:
+			return osp_ic_set_logical_name(&d->logical_name, value);
+		case 2:
+			d->value = *value;
+			return OSP_OK;
+		default:
+			return OSP_ERR_NOT_FOUND;
+	}
 }
 
-/* Method 1: return attribute value (used by stack integration tests). */
+/* Method 1: return value attribute (stack integration tests). */
 static osp_err_t data_invoke(void *inst, uint8_t method_id, const osp_value_t *param, osp_value_t *result) {
 	const osp_ic_data_t *d = (const osp_ic_data_t *)inst;
 	(void)param;
@@ -48,8 +68,12 @@ static osp_err_t data_invoke(void *inst, uint8_t method_id, const osp_value_t *p
 	}
 	if (osp_hal_data && osp_hal_data->execute) {
 		osp_err_t r = osp_hal_data->execute(osp_hal_data->ctx, &d->logical_name, method_id, param, result);
-		if (r == OSP_OK) return OSP_OK;
-		if (r != OSP_ERR_NOT_FOUND) return r;
+		if (r == OSP_OK) {
+			return OSP_OK;
+		}
+		if (r != OSP_ERR_NOT_FOUND) {
+			return r;
+		}
 	}
 	*result = d->value;
 	return OSP_OK;

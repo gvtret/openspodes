@@ -24,7 +24,8 @@ extern "C" {
 #define OSP_MAX_NAME_LEN 64
 #endif
 #ifndef OSP_MAX_OBJECT_LIST
-#define OSP_MAX_OBJECT_LIST 64
+/* Must fit in osp_value array count/capacity (uint8_t); Category A needs ~205. */
+#define OSP_MAX_OBJECT_LIST 255
 #endif
 #ifndef OSP_MAX_ACCESS_ITEMS
 #define OSP_MAX_ACCESS_ITEMS 16
@@ -33,7 +34,8 @@ extern "C" {
 #define OSP_MAX_METHOD_ITEMS 16
 #endif
 #ifndef OSP_MAX_CAPTURE_OBJECTS
-#define OSP_MAX_CAPTURE_OBJECTS 16
+/* Monthly billing profile (1.0.98.1) needs ~30 capture columns (SPODES / test #40). */
+#define OSP_MAX_CAPTURE_OBJECTS 32
 #endif
 #ifndef OSP_MAX_BUFFER_ROWS
 #define OSP_MAX_BUFFER_ROWS 32
@@ -422,7 +424,7 @@ typedef struct {
 
 typedef struct {
 	osp_object_list_element_t elements[OSP_MAX_OBJECT_LIST];
-	uint8_t count;
+	uint16_t count;
 } osp_object_list_t;
 
 /* ── Associated partners ─────────────────────────────────────────────────── */
@@ -678,25 +680,27 @@ typedef struct {
  *  CLASS 40: Push Setup
  * ═══════════════════════════════════════════════════════════════════════════ */
 
+/* Same shape as capture_object_definition (class_id, LN, attr, data_index). */
 typedef struct {
 	uint16_t class_id;
 	osp_obis_t logical_name;
 	int8_t attribute_index;
+	uint16_t data_index;
 } osp_push_object_t;
 
 typedef enum {
 	OSP_PUSH_TRANSPORT_TCP = 0,
 	OSP_PUSH_TRANSPORT_UDP = 1,
 	OSP_PUSH_TRANSPORT_SMS = 2,
-	OSP_PUSH_TRANSPORT_GPRS = 3,
-	OSP_PUSH_TRANSPORT_HDLC = 4,
-	OSP_PUSH_TRANSPORT_WRAPPER = 5,
-	OSP_PUSH_TRANSPORT_MBUS = 6,
+	OSP_PUSH_TRANSPORT_HDLC = 3,
+	OSP_PUSH_TRANSPORT_M_BUS = 4,
+	OSP_PUSH_TRANSPORT_ZIGBEE = 5,
 } osp_push_transport_t;
 
 typedef enum {
 	OSP_PUSH_MSG_DATA_NOTIFICATION = 0,
-	OSP_PUSH_MSG_GLO_REQUEST = 1,
+	OSP_PUSH_MSG_UNCONFIRMED_WRITE = 1,
+	OSP_PUSH_MSG_GENERAL_GLO_CIPHERING = 2,
 } osp_push_message_t;
 
 typedef struct {
@@ -706,10 +710,24 @@ typedef struct {
 	osp_push_message_t message;
 } osp_send_destination_t;
 
+/* window_element ::= structure { start_time, end_time } as date-time octet-strings */
 typedef struct {
-	uint8_t start[4];
-	uint8_t end[4];
+	uint8_t start[OSP_COSEM_DATETIME_LEN];
+	uint8_t end[OSP_COSEM_DATETIME_LEN];
 } osp_comm_window_t;
+
+/* Push Setup v2 repetition_delay */
+typedef struct {
+	uint16_t repetition_delay_min;
+	uint16_t repetition_delay_exponent;
+	uint16_t repetition_delay_max;
+} osp_repetition_delay_t;
+
+/* confirmation_parameters ::= structure { confirmation_start_date: date-time, confirmation_interval } */
+typedef struct {
+	osp_datetime_t confirmation_start_date;
+	uint32_t confirmation_interval;
+} osp_confirmation_parameters_t;
 
 /* ═══════════════════════════════════════════════════════════════════════════
  *  CLASS 41: TCP/UDP Setup
@@ -850,7 +868,7 @@ typedef enum {
  *  CLASS 71: Limiter
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-/* threshold ::= structure { normal, threshold, min/max/emergency durations } */
+/* Legacy compound threshold (unused by Limiter IC — threshold is CHOICE). */
 typedef struct {
 	osp_value_t normal_value;
 	osp_value_t threshold_value;
@@ -859,23 +877,26 @@ typedef struct {
 	uint32_t emergency_duration;
 } osp_threshold_t;
 
-/* emergency_profile ::= structure { id, active, activation_time } */
+/* emergency_profile ::= structure {
+ *   emergency_profile_id: long-unsigned,
+ *   emergency_activation_time: octet-string (date-time),
+ *   emergency_duration: double-long-unsigned } */
 typedef struct {
-	int32_t id;
-	bool active;
-	osp_obis_t activation_time;
+	uint16_t emergency_profile_id;
+	uint8_t emergency_activation_time[OSP_COSEM_DATETIME_LEN];
+	uint32_t emergency_duration;
 } osp_emergency_profile_t;
 
-/* action list: connect/disconnect/tripping */
+/* action_item ::= structure { script_logical_name, script_selector } */
 typedef struct {
-	osp_obis_t targets[OSP_MAX_LIMITER_CHANNELS];
-	uint8_t count;
-} osp_action_list_t;
+	osp_obis_t script_logical_name;
+	uint16_t script_selector;
+} osp_action_item_t;
 
+/* action ::= structure { action_over_threshold, action_under_threshold } */
 typedef struct {
-	osp_action_list_t connect;
-	osp_action_list_t disconnect;
-	osp_action_list_t tripping;
+	osp_action_item_t action_over_threshold;
+	osp_action_item_t action_under_threshold;
 } osp_limiter_action_t;
 
 /* ═══════════════════════════════════════════════════════════════════════════

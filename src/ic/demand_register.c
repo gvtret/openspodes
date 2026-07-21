@@ -5,14 +5,6 @@
 
 static const uint8_t dr_attrs[] = {1, 2, 3, 4, 5, 6, 7, 8, 9};
 
-static osp_value_t dr_time_value(const osp_obis_t *t) {
-	osp_value_t v = {0};
-	v.tag = OSP_TAG_OCTETSTRING;
-	v.as.octetstring.len = 6;
-	memcpy(v.as.octetstring.data, t, 6);
-	return v;
-}
-
 static osp_err_t dr_get(const void *inst, uint8_t attr_id, osp_value_t *result) {
 	if (osp_hal_data && osp_hal_data->read) {
 		const osp_obis_t *obis = (const osp_obis_t *)inst;
@@ -38,10 +30,10 @@ static osp_err_t dr_get(const void *inst, uint8_t attr_id, osp_value_t *result) 
 			*result = d->status;
 			return OSP_OK;
 		case 6:
-			*result = dr_time_value(&d->capture_time);
+			*result = osp_val_cosem_datetime(&d->capture_time);
 			return OSP_OK;
 		case 7:
-			*result = dr_time_value(&d->start_time_current);
+			*result = osp_val_cosem_datetime(&d->start_time_current);
 			return OSP_OK;
 		case 8:
 			*result = osp_val_u32(d->period);
@@ -78,16 +70,9 @@ static osp_err_t dr_set(void *inst, uint8_t attr_id, const osp_value_t *value) {
 			d->status = *value;
 			return OSP_OK;
 		case 6:
+			return osp_cosem_datetime_read_value(value, &d->capture_time);
 		case 7:
-			if (value->tag != OSP_TAG_OCTETSTRING || value->as.octetstring.len != 6) {
-				return OSP_ERR_INVALID;
-			}
-			if (attr_id == 6) {
-				memcpy(&d->capture_time, value->as.octetstring.data, 6);
-			} else {
-				memcpy(&d->start_time_current, value->as.octetstring.data, 6);
-			}
-			return OSP_OK;
+			return osp_cosem_datetime_read_value(value, &d->start_time_current);
 		case 8:
 			d->period = osp_get_u32(value);
 			return OSP_OK;
@@ -155,4 +140,10 @@ const osp_ic_class_t *osp_ic_demand_register_class(void) {
 void osp_ic_demand_register_init(osp_ic_demand_register_t *d, osp_obis_t ln) {
 	memset(d, 0, sizeof(*d));
 	d->logical_name = ln;
+	/* Etalon / common default: 1900-01-01 00:00:00 (not unspecified zeros). */
+	d->capture_time.year = 1900;
+	d->capture_time.month = 1;
+	d->capture_time.day = 1;
+	d->capture_time.day_of_week = 7;
+	d->start_time_current = d->capture_time;
 }

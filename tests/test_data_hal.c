@@ -70,7 +70,7 @@ static void test_hal_null_no_change(void **state) {
 
 	osp_value_t result;
 	memset(&result, 0, sizeof(result));
-	osp_err_t r = osp_ic_data_class()->get_attr(&data, 1, &result);
+	osp_err_t r = osp_ic_data_class()->get_attr(&data, 2, &result);
 	assert_int_equal(r, OSP_OK);
 	assert_int_equal(result.tag, OSP_TAG_DOUBLE_LONG_UNS);
 	assert_int_equal(result.as.uint32.value, 42);
@@ -83,7 +83,7 @@ static void test_hal_read_data(void **state) {
 
 	/* Add to DB */
 	osp_obis_t obis = {0, 0, 1, 0, 0, 255};
-	test_db_add(&g_db, "data", &obis, 1, osp_val_u32(999));
+	test_db_add(&g_db, "data", &obis, 2, osp_val_u32(999));
 
 	osp_hal_data = &g_hal;
 
@@ -93,20 +93,10 @@ static void test_hal_read_data(void **state) {
 
 	osp_value_t result;
 	memset(&result, 0, sizeof(result));
-	osp_err_t r = osp_ic_data_class()->get_attr(&data, 1, &result);
+	osp_err_t r = osp_ic_data_class()->get_attr(&data, 2, &result);
 	assert_int_equal(r, OSP_OK);
-	/* HAL should have been called, but attr 1 is logical_name, not the data value.
-	 * For Data IC, attr 1 returns logical_name, attr 2 is the actual value.
-	 * Let's test attr 1 via HAL read directly. */
-
-	/* Actually, Data IC get_attr only supports attr_id=1.
-	 * Let's test the HAL read callback directly. */
-	osp_value_t hal_result;
-	memset(&hal_result, 0, sizeof(hal_result));
-	r = g_hal.read(g_hal.ctx, &obis, 1, &hal_result);
-	assert_int_equal(r, OSP_OK);
-	assert_int_equal(hal_result.tag, OSP_TAG_DOUBLE_LONG_UNS);
-	assert_int_equal(hal_result.as.uint32.value, 999);
+	assert_int_equal(result.tag, OSP_TAG_DOUBLE_LONG_UNS);
+	assert_int_equal(result.as.uint32.value, 999);
 }
 
 /* ── Test 3: HAL read for Register IC ──────────────────────────────────── */
@@ -283,9 +273,10 @@ static void test_hal_poll(void **state) {
 	/* Verify cache updated */
 	osp_value_t result;
 	memset(&result, 0, sizeof(result));
-	osp_err_t r = osp_ic_data_class()->get_attr(&data, 1, &result);
+	osp_err_t r = osp_ic_data_class()->get_attr(&data, 2, &result);
 	assert_int_equal(r, OSP_OK);
-	/* attr 1 returns logical_name (OBIS), not value. Check value via HAL read. */
+	assert_int_equal(result.tag, OSP_TAG_DOUBLE_LONG_UNS);
+	assert_int_equal(result.as.uint32.value, 999);
 	osp_value_t val;
 	memset(&val, 0, sizeof(val));
 	r = g_hal.read(g_hal.ctx, &obis, 2, &val);

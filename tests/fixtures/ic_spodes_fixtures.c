@@ -5,7 +5,6 @@
 #include "ic_spodes_fixtures.h"
 #include "codec/serialize.h"
 #include <string.h>
-#include <string.h>
 
 /* integration.rs test_clock_serialization: 2025-05-01 Tue 16:30 */
 static const uint8_t OSP_DT_2025_05_01_1630[] = {
@@ -79,7 +78,7 @@ void osp_fixture_extended_register(void *inst) {
 
 void osp_fixture_demand_register(void *inst) {
 	osp_ic_demand_register_t *d = (osp_ic_demand_register_t *)inst;
-static const uint8_t start_time[] = {
+	static const uint8_t start_time[] = {
 	    0x07, 0xE9, 0x05, 0x01, 0x02, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 	};
 	osp_ic_demand_register_init(d, OSP_FIXTURE_LN_DEMAND_REGISTER);
@@ -88,8 +87,8 @@ static const uint8_t start_time[] = {
 	d->scaler_unit.scaler = 0;
 	d->scaler_unit.unit = 27;
 	d->status = osp_val_u8(1);
-	osp_fixture_capture_time_obis(OSP_DT_2025_05_01_1630, &d->capture_time);
-	osp_fixture_capture_time_obis(start_time, &d->start_time_current);
+	d->capture_time = osp_fixture_cosem_datetime_bytes(OSP_DT_2025_05_01_1630);
+	d->start_time_current = osp_fixture_cosem_datetime_bytes(start_time);
 	d->period = 3600;
 	d->number_of_periods = 24;
 }
@@ -216,8 +215,12 @@ void osp_fixture_profile_generic_spodes_buffer(void *inst) {
 void osp_fixture_limiter(void *inst) {
 	osp_ic_limiter_t *l = (osp_ic_limiter_t *)inst;
 	osp_ic_limiter_init(l, (osp_obis_t){0, 0, 17, 0, 0, 255});
-	l->threshold_active.threshold_value = osp_val_u32(5000);
-	l->threshold_normal.threshold_value = osp_val_u32(4500);
+	l->monitored_value.class_id = 3;
+	l->monitored_value.logical_name = (osp_obis_t){1, 0, 1, 7, 0, 255};
+	l->monitored_value.attribute_index = 2;
+	l->threshold_active = osp_val_f32(50.0f);
+	l->threshold_normal = osp_val_null();
+	l->threshold_emergency = osp_val_null();
 	l->min_over_threshold_duration = 60;
 	l->min_under_threshold_duration = 120;
 }
@@ -235,17 +238,25 @@ void osp_fixture_sap_assignment(void *inst) {
 void osp_fixture_single_action_schedule(void *inst) {
 	osp_ic_single_action_schedule_t *s = (osp_ic_single_action_schedule_t *)inst;
 	osp_ic_single_action_schedule_init(s, (osp_obis_t){0, 0, 15, 0, 0, 255});
+	s->script_logical_name = (osp_obis_t){0, 0, 10, 0, 1, 255};
+	s->script_selector = 0;
+	s->schedule_type = 1;
+	memset(s->execution_time[0].time, 0xFF, 4);
+	memset(s->execution_time[0].date, 0xFF, 5);
+	s->execution_time_count = 1;
 }
 
 void osp_fixture_iec_hdlc_setup(void *inst) {
 	osp_ic_iec_hdlc_setup_t *h = (osp_ic_iec_hdlc_setup_t *)inst;
 	osp_ic_iec_hdlc_setup_init(h, (osp_obis_t){0, 0, 22, 0, 0, 255});
-	h->communication_speed = 5;
-	h->window_size_tx = 1;
-	h->window_size_rx = 1;
-	h->max_info_field_length_tx = 128;
-	h->max_info_field_length_rx = 128;
-	h->logical_station_address = 16;
+	h->comm_speed = 5;
+	h->window_size_transmit = 1;
+	h->window_size_receive = 1;
+	h->max_info_field_length_transmit = 128;
+	h->max_info_field_length_receive = 128;
+	h->inter_octet_time_out = 30;
+	h->inactivity_time_out = 120;
+	h->device_address = 16;
 }
 
 void osp_fixture_iec_local_port_setup(void *inst) {
@@ -265,6 +276,12 @@ void osp_fixture_tcp_udp_setup(void *inst) {
 void osp_fixture_push_setup(void *inst) {
 	osp_ic_push_setup_t *p = (osp_ic_push_setup_t *)inst;
 	osp_ic_push_setup_init(p, (osp_obis_t){0, 0, 25, 9, 0, 255});
+	p->push_object_list[0] = (osp_push_object_t){40, {0, 0, 25, 9, 0, 255}, 2, 0};
+	p->push_object_count = 1;
+	p->send_destination.transport_service = OSP_PUSH_TRANSPORT_TCP;
+	const char *dest = "127.0.0.0:4059";
+	memcpy(p->send_destination.destination, dest, strlen(dest));
+	p->send_destination.destination_len = (uint32_t)strlen(dest);
 }
 
 void osp_fixture_image_transfer(void *inst) {

@@ -14,7 +14,8 @@
 #include "../transport/hdlc_session.h"
 #include <string.h>
 
-static osp_err_t server_send(osp_server_t *s, const uint8_t *data, uint32_t len);
+static osp_err_t server_flush_pending_push(osp_server_t *s);
+static osp_err_t server_send_service(osp_server_t *s, const uint8_t *data, uint32_t len);
 static osp_err_t server_send_exception(osp_server_t *s, uint8_t state_error, uint8_t service_error);
 static osp_err_t handle_get_next(osp_server_t *s, uint8_t invoke_id_priority, uint32_t acked_block);
 static osp_err_t send_action_response(osp_server_t *s, const osp_action_response_t *resp);
@@ -185,8 +186,6 @@ uint8_t osp_server_get_client_sap(osp_server_t *s) {
 	return (uint8_t)osp_hdlc_address_value(&s->hdlc.received_client_addr);
 }
 
-/* ── Send response ───────────────────────────────────────────────────────── */
-
 static osp_err_t server_send(osp_server_t *s, const uint8_t *data, uint32_t len) {
 	const uint8_t *send_data = data;
 	uint32_t send_len = len;
@@ -218,6 +217,54 @@ static osp_err_t server_send(osp_server_t *s, const uint8_t *data, uint32_t len)
 		return osp_hdlc_session_send_apdu(&s->hdlc, send_data, send_len);
 	}
 	return osp_transport_send_apdu(s->transport, s->framing, send_data, send_len);
+}
+
+static osp_err_t server_flush_pending_push(osp_server_t *s) {
+	if (!s || !s->pending_push.pending) {
+		return OSP_OK;
+	}
+	s->pending_push.pending = false;
+	s->pending_push.defer_flush = false;
+	osp_buf_t buf;
+	osp_buf_init(&buf, s->tx_buf, sizeof(s->tx_buf));
+	if (osp_data_notification_encode(&buf, &s->pending_push.notification) != 0) {
+		return OSP_ERR_INVALID;
+	}
+	return server_send(s, buf.buf, buf.wr);
+}
+
+static osp_err_t server_send_service(osp_server_t *s, const uint8_t *data, uint32_t len) {
+	osp_err_t r = server_send(s, data, len);
+	if (r != OSP_OK) {
+		return r;
+	}
+	if (s->pending_push.defer_flush && s->pending_push.pending) {
+		s->pending_push.defer_flush = false;
+		return server_flush_pending_push(s);
+	}
+	return OSP_OK;
+}
+
+static uint32_t server_build_data_notification_invoke_id(osp_server_t *s, bool confirmed) {
+	uint32_t invoke24 = s->long_invoke_id & 0x00FFFFFFu;
+	uint32_t value = invoke24 | 0x10000000u; /* self-descriptive */
+	if (confirmed) {
+		value |= 0x40000000u;
+	}
+	s->long_invoke_id = invoke24 + 1u;
+	return value;
+}
+
+osp_err_t osp_server_queue_pending_push(osp_server_t *s, const osp_value_t *body, bool confirmed) {
+	if (!s || !body) {
+		return OSP_ERR_INVALID;
+	}
+	s->pending_push.pending = true;
+	s->pending_push.defer_flush = s->hdlc_active;
+	s->pending_push.notification.long_invoke_id_and_priority = server_build_data_notification_invoke_id(s, confirmed);
+	s->pending_push.notification.date_time_len = 0;
+	s->pending_push.notification.notification_body = *body;
+	return OSP_OK;
 }
 
 static osp_err_t server_send_exception(osp_server_t *s, uint8_t state_error, uint8_t service_error) {
@@ -253,23 +300,14 @@ osp_err_t osp_server_send_data_notification(osp_server_t *s, const osp_data_noti
 	return server_send(s, buf.buf, buf.wr);
 }
 
-static osp_err_t server_flush_pending_push(osp_server_t *s) {
-	if (!s || !s->pending_push.pending) {
-		return OSP_OK;
-	}
-	s->pending_push.pending = false;
-	osp_buf_t buf;
-	osp_buf_init(&buf, s->tx_buf, sizeof(s->tx_buf));
-	if (osp_data_notification_encode(&buf, &s->pending_push.notification) != 0) {
-		return OSP_ERR_INVALID;
-	}
-	return server_send(s, buf.buf, buf.wr);
-}
-
 static osp_err_t server_send_action_response(osp_server_t *s, const osp_action_response_t *resp) {
 	osp_err_t r = send_action_response(s, resp);
 	if (r != OSP_OK) {
 		return r;
+	}
+	if (s->hdlc_active && s->pending_push.pending) {
+		s->pending_push.defer_flush = true;
+		return OSP_OK;
 	}
 	return server_flush_pending_push(s);
 }
@@ -357,6 +395,8 @@ void osp_server_clear_current_association(osp_server_t *s) {
 	s->associated = false;
 	s->hls_pending = false;
 	s->ciphering_enabled = false;
+	s->pending_push.pending = false;
+	s->pending_push.defer_flush = false;
 }
 
 static bool aarq_context_supported(uint8_t ctx) {
@@ -616,7 +656,18 @@ static osp_err_t handle_aarq(osp_server_t *s, const osp_aarq_t *aarq) {
 		if (ireq_ok && ireq.has_dedicated_key && s->ciphering_enabled) {
 			osp_sec_cipher_session_use_dedicated(&s->cipher_tx, &s->cipher_rx, ireq.dedicated_key, ireq.dedicated_key_len);
 		}
-		uint32_t conf = (aarq->mechanism == OSP_MECH_LOWEST) ? 0x001010u : 0x001015u;
+		/* SPODES AA conformance (AND with client proposed in aare_fill):
+		 * Public (LOWEST): get + block-get
+		 * Reader (LLS):    + selective + action
+		 * Configurator (HLS): + set + block-set + data-notification (+ general-protection) */
+		uint32_t conf;
+		if (aarq->mechanism == OSP_MECH_LOWEST) {
+			conf = 0x001010u;
+		} else if (osp_hls_requires_handshake((osp_auth_mechanism_t)aarq->mechanism)) {
+			conf = 0x40189Du; /* matches etalon Configurator AARE */
+		} else {
+			conf = 0x001015u; /* LLS Reader */
+		}
 		if (aare_fill_initiate_response(&aare, &ireq, ireq_ok, conf) != OSP_OK) {
 			return OSP_ERR_INVALID;
 		}
@@ -685,7 +736,7 @@ static osp_err_t send_get_response(osp_server_t *s, const osp_get_response_t *re
 	if (osp_get_response_encode(&buf, resp) != 0) {
 		return OSP_ERR_INVALID;
 	}
-	return server_send(s, buf.buf, buf.wr);
+	return server_send_service(s, buf.buf, buf.wr);
 }
 
 static osp_err_t start_get_blocks(osp_server_t *s, uint8_t invoke_id_priority, const uint8_t *data, uint32_t len) {
@@ -837,7 +888,7 @@ static osp_err_t send_set_response(osp_server_t *s, const osp_set_response_t *re
 	if (osp_set_response_encode(&buf, resp) != 0) {
 		return OSP_ERR_INVALID;
 	}
-	return server_send(s, buf.buf, buf.wr);
+	return server_send_service(s, buf.buf, buf.wr);
 }
 
 static osp_err_t accumulate_set_block(osp_server_t *s, uint8_t invoke_id_priority, const osp_data_block_t *block) {

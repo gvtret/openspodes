@@ -35,7 +35,7 @@ static void test_appl_open_lowest(void **state) {
 	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
 
 	osp_value_t result;
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &result), OSP_OK);
 	assert_int_equal(result.as.uint32.value, 42);
 
 	assert_int_equal(osp_client_release(&client), OSP_OK);
@@ -88,7 +88,7 @@ static void test_appl_open_pdu_size(void **state) {
 	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
 
 	osp_value_t result;
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &result), OSP_OK);
 
 	assert_int_equal(osp_client_release(&client), OSP_OK);
 }
@@ -107,7 +107,7 @@ static void test_appl_open_reconnect(void **state) {
 	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
 
 	osp_value_t result;
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &result), OSP_OK);
 
 	/* Release */
 	assert_int_equal(osp_client_release(&client), OSP_OK);
@@ -125,7 +125,7 @@ static void test_appl_open_reconnect(void **state) {
 	/* Reconnect */
 	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
 
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &result), OSP_OK);
 	assert_int_equal(result.as.uint32.value, 42);
 
 	assert_int_equal(osp_client_release(&client), OSP_OK);

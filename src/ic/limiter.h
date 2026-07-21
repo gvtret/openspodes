@@ -3,15 +3,22 @@
 #include "../openspodes.h"
 #include "../codec/structures.h"
 
+#ifndef OSP_MAX_EMERGENCY_GROUP_IDS
+#define OSP_MAX_EMERGENCY_GROUP_IDS 8
+#endif
+
 typedef struct {
 	osp_obis_t logical_name;
 	osp_value_definition_t monitored_value;
-	osp_threshold_t threshold_active;
-	osp_threshold_t threshold_normal;
-	osp_threshold_t threshold_emergency;
+	/* threshold_* are CHOICE — same type as the monitored attribute */
+	osp_value_t threshold_active;
+	osp_value_t threshold_normal;
+	osp_value_t threshold_emergency;
 	uint32_t min_over_threshold_duration;
 	uint32_t min_under_threshold_duration;
 	osp_emergency_profile_t emergency_profile;
+	uint16_t emergency_profile_group_id_list[OSP_MAX_EMERGENCY_GROUP_IDS];
+	uint8_t emergency_profile_group_id_count;
 	bool emergency_profile_active;
 	osp_limiter_action_t actions;
 } osp_ic_limiter_t;

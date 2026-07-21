@@ -96,19 +96,19 @@ static void test_aarq_hls_get(void **state) {
 	/* GET value (should be 42) */
 	osp_value_t result;
 	osp_obis_t dobis = {0, 0, 1, 0, 0, 255};
-	assert_int_equal(osp_client_get(&client, 1, &dobis, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &dobis, 2, &result), OSP_OK);
 	assert_int_equal(result.tag, OSP_TAG_DOUBLE_LONG_UNS);
 	assert_int_equal(result.as.uint32.value, 42);
 
 	/* SET new value */
 	osp_value_t newval = osp_val_u32(100);
-	assert_int_equal(osp_client_set(&client, 1, &dobis, 1, &newval), OSP_OK);
+	assert_int_equal(osp_client_set(&client, 1, &dobis, 2, &newval), OSP_OK);
 	osp_value_t get_val;
 	get_val = data_obj.value;
 	assert_int_equal(get_val.as.uint32.value, 100);
 
 	/* GET back */
-	assert_int_equal(osp_client_get(&client, 1, &dobis, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &dobis, 2, &result), OSP_OK);
 	assert_int_equal(result.as.uint32.value, 100);
 
 	/* Release */
@@ -163,10 +163,10 @@ static void test_multi_object(void **state) {
 	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
 
 	osp_value_t result;
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &result), OSP_OK);
 	assert_int_equal(result.as.uint32.value, 111);
 
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 2, 0, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 2, 0, 0, 255}, 2, &result), OSP_OK);
 	assert_int_equal(result.as.uint32.value, 222);
 }
 
@@ -197,8 +197,8 @@ static void test_client_with_list(void **state) {
 	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
 
 	osp_client_attr_ref_t attrs[] = {
-	    {1, obis_a, 1},
-	    {1, obis_b, 1},
+	    {1, obis_a, 2},
+	    {1, obis_b, 2},
 	};
 	osp_get_result_item_t get_results[2];
 	assert_int_equal(osp_client_get_with_list(&client, attrs, 2, get_results), OSP_OK);
@@ -251,20 +251,20 @@ static void test_set_get(void **state) {
 
 	/* SET 777 */
 	osp_value_t sv = osp_val_u32(777);
-	assert_int_equal(osp_client_set(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &sv), OSP_OK);
+	assert_int_equal(osp_client_set(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &sv), OSP_OK);
 	osp_value_t gv = d.value;
 	assert_int_equal(gv.as.uint32.value, 777);
 
 	/* GET back */
 	osp_value_t result;
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &result), OSP_OK);
 	assert_int_equal(result.as.uint32.value, 777);
 
 	/* SET 999 */
 	osp_value_t sv2 = osp_val_u32(999);
-	assert_int_equal(osp_client_set(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &sv2), OSP_OK);
+	assert_int_equal(osp_client_set(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &sv2), OSP_OK);
 	osp_value_t result2;
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result2), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &result2), OSP_OK);
 	assert_int_equal(result2.as.uint32.value, 999);
 }
 
@@ -301,7 +301,7 @@ static void test_hls_handshake(void **state) {
 
 	/* Verify HLS worked: GET should succeed */
 	osp_value_t result;
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &result), OSP_OK);
 	assert_int_equal(result.as.uint32.value, 555);
 
 	/* Verify server-side IC tracked correctly */
@@ -338,7 +338,7 @@ static void run_hls_hash_handshake(osp_auth_mechanism_t mech, const uint8_t clie
 	assert_true(client.associated);
 
 	osp_value_t result;
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &result), OSP_OK);
 	assert_int_equal(result.as.uint32.value, init_val);
 	assert_true(server.associated);
 }
@@ -416,7 +416,7 @@ static void run_hls_gost_sig_handshake(const uint8_t client_st[8], const uint8_t
 	assert_true(client.associated);
 
 	osp_value_t result;
-	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &(osp_obis_t){0, 0, 1, 0, 0, 255}, 2, &result), OSP_OK);
 	assert_int_equal(result.as.uint32.value, init_val);
 	assert_true(server.associated);
 }
@@ -530,7 +530,7 @@ static void test_get_block_transfer(void **state) {
 	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
 
 	osp_value_t result;
-	assert_int_equal(osp_client_get(&client, 1, &obis, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &obis, 2, &result), OSP_OK);
 	assert_int_equal(result.tag, OSP_TAG_OCTETSTRING);
 	assert_int_equal(result.as.octetstring.len, 200);
 	for (uint32_t i = 0; i < 200; i++) {
@@ -560,7 +560,7 @@ static void test_gbt_get_large_value(void **state) {
 	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
 
 	osp_value_t result;
-	assert_int_equal(osp_client_get(&client, 1, &obis, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &obis, 2, &result), OSP_OK);
 	assert_int_equal(result.tag, OSP_TAG_OCTETSTRING);
 	assert_int_equal(result.as.octetstring.len, 180);
 	for (uint32_t i = 0; i < 180; i++) {
@@ -594,7 +594,7 @@ static void test_gbt_get_large_value_streaming_confirmed(void **state) {
 	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
 
 	osp_value_t result;
-	assert_int_equal(osp_client_get(&client, 1, &obis, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &obis, 2, &result), OSP_OK);
 	assert_int_equal(result.tag, OSP_TAG_OCTETSTRING);
 	assert_int_equal(result.as.octetstring.len, 180);
 	for (uint32_t i = 0; i < 180; i++) {
@@ -634,7 +634,7 @@ static void test_set_block_transfer(void **state) {
 	req1.invoke_id_priority = OSP_IIDP(1, 0);
 	req1.as.first_datablock.attr.class_id = 1;
 	req1.as.first_datablock.attr.instance_id = obis;
-	req1.as.first_datablock.attr.attribute_id = 1;
+	req1.as.first_datablock.attr.attribute_id = 2;
 	req1.as.first_datablock.datablock.last_block = false;
 	req1.as.first_datablock.datablock.block_number = 1;
 	req1.as.first_datablock.datablock.raw_data_len = 20;
@@ -676,7 +676,7 @@ static void test_set_block_transfer(void **state) {
 	assert_int_equal(resp.as.last_datablock.block_number, 2);
 
 	osp_value_t got;
-	assert_int_equal(osp_client_get(&client, 1, &obis, 1, &got), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &obis, 2, &got), OSP_OK);
 	assert_int_equal(got.tag, OSP_TAG_OCTETSTRING);
 	assert_int_equal(got.as.octetstring.len, 40);
 	for (uint32_t i = 0; i < 40; i++) {
@@ -702,10 +702,10 @@ static void test_client_set_via_blocks(void **state) {
 	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
 
 	osp_value_t to_write = make_octets(0x5A, 40);
-	assert_int_equal(osp_client_set(&client, 1, &obis, 1, &to_write), OSP_OK);
+	assert_int_equal(osp_client_set(&client, 1, &obis, 2, &to_write), OSP_OK);
 
 	osp_value_t got;
-	assert_int_equal(osp_client_get(&client, 1, &obis, 1, &got), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &obis, 2, &got), OSP_OK);
 	assert_int_equal(got.tag, OSP_TAG_OCTETSTRING);
 	assert_int_equal(got.as.octetstring.len, 40);
 }
@@ -780,8 +780,8 @@ static void test_compact_data_capture_via_dispatcher(void **state) {
 	osp_obis_t cd_obis = {0, 0, 99, 0, 0, 255};
 	osp_ic_compact_data_t cd;
 	osp_ic_compact_data_init(&cd, cd_obis);
-	cd.capture_objects.items[0] = (osp_capture_object_t){1, obis_a, 1, 0, {0}};
-	cd.capture_objects.items[1] = (osp_capture_object_t){1, obis_b, 1, 0, {0}};
+	cd.capture_objects.items[0] = (osp_capture_object_t){1, obis_a, 2, 0, {0}};
+	cd.capture_objects.items[1] = (osp_capture_object_t){1, obis_b, 2, 0, {0}};
 	cd.capture_objects.count = 2;
 	osp_server_register(&server, osp_ic_compact_data_class(), &cd);
 
@@ -821,15 +821,15 @@ static void test_push_compact_notification(void **state) {
 	osp_obis_t cd_obis = {0, 0, 98, 0, 0, 255};
 	osp_ic_compact_data_t cd;
 	osp_ic_compact_data_init(&cd, cd_obis);
-	cd.capture_objects.items[0] = (osp_capture_object_t){1, obis_a, 1, 0, {0}};
-	cd.capture_objects.items[1] = (osp_capture_object_t){1, obis_b, 1, 0, {0}};
+	cd.capture_objects.items[0] = (osp_capture_object_t){1, obis_a, 2, 0, {0}};
+	cd.capture_objects.items[1] = (osp_capture_object_t){1, obis_b, 2, 0, {0}};
 	cd.capture_objects.count = 2;
 	osp_server_register(&server, osp_ic_compact_data_class(), &cd);
 
 	osp_obis_t push_obis = {0, 0, 25, 0, 0, 255};
 	osp_ic_push_setup_t push;
 	osp_ic_push_setup_init(&push, push_obis);
-	push.push_object_list[0] = (osp_push_object_t){62, cd_obis, 2};
+	push.push_object_list[0] = (osp_push_object_t){62, cd_obis, 2, 0};
 	push.push_object_count = 1;
 	osp_server_register(&server, osp_ic_push_setup_class(), &push);
 
@@ -945,7 +945,7 @@ static void test_glo_get_ciphered(void **state) {
 	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
 
 	osp_value_t result;
-	assert_int_equal(osp_client_get(&client, 1, &obis, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &obis, 2, &result), OSP_OK);
 	assert_int_equal(result.as.uint32.value, 4242);
 }
 
@@ -981,7 +981,7 @@ static void test_ded_get_ciphered(void **state) {
 	assert_int_equal(osp_client_connect(&client, 5000), OSP_OK);
 
 	osp_value_t result;
-	assert_int_equal(osp_client_get(&client, 1, &obis, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &obis, 2, &result), OSP_OK);
 	assert_int_equal(result.as.uint32.value, 9001);
 }
 

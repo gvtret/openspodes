@@ -26,7 +26,9 @@
 #define OSP_IC_ASSOCIATION_LN_H
 #include "../openspodes.h"
 #include "../codec/structures.h"
-#define OSP_MAX_OBJECT_LIST_ENTRIES 64
+#ifndef OSP_MAX_OBJECT_LIST_ENTRIES
+#define OSP_MAX_OBJECT_LIST_ENTRIES OSP_MAX_OBJECT_LIST
+#endif
 
 /**
  * @brief Association LN object structure

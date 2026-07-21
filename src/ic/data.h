@@ -13,7 +13,7 @@
  * @par Methods
  * None.
  *
- * @note attr_id = 2 is the primary attribute. Use attr_id = 1 for logical_name.
+ * @note attr_id = 1 is logical_name; attr_id = 2 is value (IEC 62056-6-2).
  */
 
 #ifndef OSP_IC_DATA_H

@@ -332,17 +332,17 @@ static void test_wrapper_full_e2e(void **state) {
 	/* GET */
 	osp_value_t result;
 	osp_obis_t dobis = {0, 0, 1, 0, 0, 255};
-	assert_int_equal(osp_client_get(&client, 1, &dobis, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &dobis, 2, &result), OSP_OK);
 	assert_int_equal(result.tag, OSP_TAG_DOUBLE_LONG_UNS);
 	assert_int_equal(result.as.uint32.value, 42);
 
 	/* SET */
 	osp_value_t newval = osp_val_u32(100);
-	assert_int_equal(osp_client_set(&client, 1, &dobis, 1, &newval), OSP_OK);
+	assert_int_equal(osp_client_set(&client, 1, &dobis, 2, &newval), OSP_OK);
 	assert_int_equal(data_obj.value.as.uint32.value, 100);
 
 	/* GET back */
-	assert_int_equal(osp_client_get(&client, 1, &dobis, 1, &result), OSP_OK);
+	assert_int_equal(osp_client_get(&client, 1, &dobis, 2, &result), OSP_OK);
 	assert_int_equal(result.as.uint32.value, 100);
 
 	/* Release */
@@ -383,7 +383,7 @@ static void test_hdlc_full_e2e(void **state) {
 	/* GET */
 	osp_value_t result;
 	osp_obis_t dobis = {0, 0, 1, 0, 0, 255};
-	r = osp_client_get(&client, 1, &dobis, 1, &result);
+	r = osp_client_get(&client, 1, &dobis, 2, &result);
 	assert_int_equal(r, OSP_OK);
 	assert_int_equal(result.as.uint32.value, 77);
 
