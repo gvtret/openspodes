@@ -250,7 +250,7 @@ static int cmd_demo(loopback_session_t *s) {
 	osp_value_t v;
 
 	printf("== demo: GET 0.0.1.0.0.255 ==\n");
-	if (osp_client_get(&s->client, 1, &obis, 1, &v) != OSP_OK) {
+	if (osp_client_get(&s->client, 1, &obis, 2, &v) != OSP_OK) {
 		return 1;
 	}
 	printf("value: ");
@@ -259,12 +259,12 @@ static int cmd_demo(loopback_session_t *s) {
 
 	printf("== demo: SET u32:100 ==\n");
 	osp_value_t w = osp_val_u32(100);
-	if (osp_client_set(&s->client, 1, &obis, 1, &w) != OSP_OK) {
+	if (osp_client_set(&s->client, 1, &obis, 2, &w) != OSP_OK) {
 		return 1;
 	}
 
 	printf("== demo: GET again ==\n");
-	if (osp_client_get(&s->client, 1, &obis, 1, &v) != OSP_OK) {
+	if (osp_client_get(&s->client, 1, &obis, 2, &v) != OSP_OK) {
 		return 1;
 	}
 	printf("value: ");
@@ -273,7 +273,7 @@ static int cmd_demo(loopback_session_t *s) {
 
 	osp_obis_t energy = {1, 0, 1, 8, 0, 255};
 	printf("== demo: GET active energy 1.0.1.8.0.255 ==\n");
-	if (osp_client_get(&s->client, 1, &energy, 1, &v) != OSP_OK) {
+	if (osp_client_get(&s->client, 1, &energy, 2, &v) != OSP_OK) {
 		return 1;
 	}
 	printf("value: ");

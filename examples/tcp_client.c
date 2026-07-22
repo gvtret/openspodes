@@ -124,7 +124,7 @@ int main(int argc, char **argv) {
 
 	osp_obis_t obis = {1, 0, 1, 8, 0, 255};
 	osp_value_t result;
-	if (osp_client_get(&client, 1, &obis, 1, &result) != OSP_OK) {
+	if (osp_client_get(&client, 1, &obis, 2, &result) != OSP_OK) {
 		fprintf(stderr, "GET failed\n");
 		osp_client_release(&client);
 		transport.close(transport.ctx);

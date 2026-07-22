@@ -203,7 +203,7 @@ int main(int argc, char **argv) {
 	printf("[6] GET 1.0.1.8.0.255 attr 1...\n");
 	osp_obis_t obis = {1, 0, 1, 8, 0, 255};
 	osp_value_t result;
-	r = osp_client_get(&client, 1, &obis, 1, &result);
+	r = osp_client_get(&client, 1, &obis, 2, &result);
 	if (r == OSP_OK) {
 		print_value("Active energy A+ (kWh)", &result);
 	} else {
@@ -214,7 +214,7 @@ int main(int argc, char **argv) {
 
 	printf("[7] GET 1.0.2.8.0.255 attr 1...\n");
 	osp_obis_t obis2 = {1, 0, 2, 8, 0, 255};
-	r = osp_client_get(&client, 1, &obis2, 1, &result);
+	r = osp_client_get(&client, 1, &obis2, 2, &result);
 	if (r == OSP_OK) {
 		print_value("Active energy R+ (kWh)", &result);
 	} else {
@@ -225,7 +225,7 @@ int main(int argc, char **argv) {
 
 	printf("[8] SET 1.0.1.8.0.255 attr 1 = 999999...\n");
 	osp_value_t newval = osp_val_u32(999999);
-	r = osp_client_set(&client, 1, &obis, 1, &newval);
+	r = osp_client_set(&client, 1, &obis, 2, &newval);
 	if (r == OSP_OK) {
 		printf("    SET successful\n");
 	} else {
