@@ -247,3 +247,35 @@ TableManager(8200) ProfileDataFilter(8201)
 - SYMSEC_0 tests gated behind `#ifdef OSP_HAVE_OPENSSL_GCM` / `skip()` when no OpenSSL
 - `osp_glo_protect` signature: `(ctx, ciphered_tag, plaintext, plain_len, out, *out_len)`
 - Commits this session: `2a55ea6` → `fd671d3` → `a0016b2` → `c1de073` → `8978aab`
+
+## 2026-07-21 18:00 — PR reviews, Data HAL, Blue Book compliance, v2.4.0
+
+**Done:**
+- Reviewed and merged PRs #4–#10 (all on master)
+- PR #4: AA auth, ciphering, large HDLC GETs
+- PR #5: HDLC session hardening, SPODES etalon AARE
+- PR #6: DLMS AARQ validation, HLS mechanism-2, AARE diagnostics
+- PR #7: HLS mechanism 2 password AES
+- PR #8: Malformed GET/SET responses, HLS HIGH Galois multiply
+- PR #9: HighGMAC/glo IV, short calling-AP-title rejection
+- PR #10: Push Setup delivery, SPODES IC attribute support (fixed 11 test files)
+- Data HAL interface: `src/data_hal.h/c`, 40 IC classes with HAL delegation, 12 tests
+- Blue Book compliance fixes:
+  - Data IC method 1 = reset (not read-value)
+  - Association LN method 2 = change_HLS_secret
+  - Schedule methods 1-3 (enable/disable, insert, delete)
+- All 30/30 CTest targets pass
+- GitHub Pages updated (v2.4.0, Data HAL feature)
+
+**State:** master @ `5468143`, version 2.4.0, all tests pass, CI green, no open PRs
+
+**Next:**
+- Coverage improvement (serialize.c 63%, notification.c 64%, server.c 69%, client.c 70%)
+- SPODUS concentrator features (§10.5-10.6)
+- Remaining stub IC classes (Image Transfer attrs 3/4/7, TCP-UDP attrs 2-5, IPv6 attrs 4-6)
+
+**Notes:**
+- attr 1 = logical_name, attr 2 = value for all IC classes per Blue Book
+- `osp_hal_data_t` global pointer: NULL = no HAL (default), set before server loop
+- Schedule `osp_schedule_entry_t` now has `enable` field
+- PR #10 required fixing attr_id in 11 test files (class_id=1 value access)
