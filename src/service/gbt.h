@@ -22,7 +22,9 @@ extern "C" {
 
 #define OSP_TAG_GENERAL_BLOCK_TRANSFER 0xE0
 #define OSP_GBT_HEADER_MAX             8
-#define OSP_GBT_MAX_APDU               4096
+#ifndef OSP_GBT_MAX_APDU
+#define OSP_GBT_MAX_APDU 4096
+#endif
 #define OSP_GBT_DEFAULT_BLOCK_SIZE     64
 #define OSP_GBT_WINDOW_MASK            0x3Fu
 

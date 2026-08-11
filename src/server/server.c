@@ -24,6 +24,12 @@ static osp_err_t handle_action_resp_next(osp_server_t *s, uint8_t invoke_id_prio
 static osp_err_t send_action_invoke_result(osp_server_t *s, uint8_t invoke_id_priority, osp_dar_t dar, const osp_value_t *result);
 static osp_err_t accumulate_action_param_block(osp_server_t *s, uint8_t invoke_id_priority, const osp_data_block_t *block);
 
+/*
+ * Scratch for decipher / GBT reassembly before copying into s->rx_buf.
+ * Paths are sequential — one buffer replaces three OSP_GBT_MAX_APDU statics (~12→4 KiB).
+ */
+static uint8_t server_rx_scratch[OSP_GBT_MAX_APDU];
+
 void osp_server_set_max_pdu(osp_server_t *s, uint32_t max_pdu) {
 	if (s) {
 		s->max_pdu = max_pdu > 0 ? max_pdu : OSP_SERVER_MAX_PDU;
@@ -1336,9 +1342,8 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 	/* Decipher before association gate: HLS pass 3 may arrive glo-/ded-ciphered. */
 	bool arrived_ciphered = false;
 	if (s->ciphering_enabled && osp_svc_is_ciphered_tag(tag)) {
-		static uint8_t plain[OSP_GBT_MAX_APDU];
 		uint32_t plain_len = 0;
-		int ur = osp_glo_unprotect(&s->cipher_rx, s->rx_buf, rx_len, plain, &plain_len);
+		int ur = osp_glo_unprotect(&s->cipher_rx, s->rx_buf, rx_len, server_rx_scratch, &plain_len);
 		if (ur == -2) {
 			return server_send_exception(s, OSP_EXC_STATE_SERVICE_NOT_ALLOWED, OSP_EXC_SVC_IC_ERROR);
 		}
@@ -1348,7 +1353,7 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 		if (plain_len > sizeof(s->rx_buf)) {
 			return OSP_ERR_NOMEM;
 		}
-		memcpy(s->rx_buf, plain, plain_len);
+		memcpy(s->rx_buf, server_rx_scratch, plain_len);
 		rx_len = plain_len;
 		tag = s->rx_buf[0];
 		arrived_ciphered = true;
@@ -1381,25 +1386,24 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 		if (!s->gbt_enabled) {
 			return OSP_ERR_UNSUPPORTED;
 		}
-		static uint8_t apdu[OSP_GBT_MAX_APDU];
 		uint32_t apdu_len = 0;
-		osp_err_t gr = osp_gbt_transport_recv(s->transport, s->framing, s->rx_buf, sizeof(s->rx_buf), apdu, sizeof(apdu), &apdu_len,
-		                                        s->tx_buf, sizeof(s->tx_buf), timeout_ms, s->rx_buf, rx_len);
+		osp_err_t gr = osp_gbt_transport_recv(s->transport, s->framing, s->rx_buf, sizeof(s->rx_buf), server_rx_scratch,
+		                                        sizeof(server_rx_scratch), &apdu_len, s->tx_buf, sizeof(s->tx_buf), timeout_ms,
+		                                        s->rx_buf, rx_len);
 		if (gr != OSP_OK || apdu_len == 0) {
 			return gr != OSP_OK ? gr : OSP_ERR_INVALID;
 		}
 		if (apdu_len > sizeof(s->rx_buf)) {
 			return OSP_ERR_NOMEM;
 		}
-		memcpy(s->rx_buf, apdu, apdu_len);
+		memcpy(s->rx_buf, server_rx_scratch, apdu_len);
 		rx_len = apdu_len;
 		tag = s->rx_buf[0];
 	}
 
 	if (s->ciphering_enabled && osp_svc_is_ciphered_tag(tag)) {
-		static uint8_t plain_gbt[OSP_GBT_MAX_APDU];
 		uint32_t plain_len = 0;
-		int ur = osp_glo_unprotect(&s->cipher_rx, s->rx_buf, rx_len, plain_gbt, &plain_len);
+		int ur = osp_glo_unprotect(&s->cipher_rx, s->rx_buf, rx_len, server_rx_scratch, &plain_len);
 		if (ur == -2) {
 			return server_send_exception(s, OSP_EXC_STATE_SERVICE_NOT_ALLOWED, OSP_EXC_SVC_IC_ERROR);
 		}
@@ -1409,7 +1413,7 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 		if (plain_len > sizeof(s->rx_buf)) {
 			return OSP_ERR_NOMEM;
 		}
-		memcpy(s->rx_buf, plain_gbt, plain_len);
+		memcpy(s->rx_buf, server_rx_scratch, plain_len);
 		rx_len = plain_len;
 		tag = s->rx_buf[0];
 		arrived_ciphered = true;

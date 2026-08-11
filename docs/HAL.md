@@ -345,6 +345,7 @@ The library uses static buffers sized by these constants:
 **Session structs** (order-of-magnitude, depends on PDU macros):
 - `osp_client_t`: ~8 KB
 - `osp_server_t`: ~205 KB with default pending×32 (four pending buffers); ~61 KB with MCU pending=8192
+- Server lib BSS: one shared `server_rx_scratch[OSP_GBT_MAX_APDU]` (~4 KiB) for decipher/GBT (was three×4 KiB)
 - `osp_value_read_pool`: shared codec pool (mutex-protected when `osp_hal_mutex` is set); ~136 KiB default (32×16), ~34 KiB with MCU profile (128)
 - Association LN with object_list=255: ~70 KiB (was ~230 KiB when ACL embedded unused selector blobs)
 - Large IC attributes (object_list, profile buffer, capture objects, day profiles) stream via internal `*_REF` tags — no multi‑MiB encode scratch

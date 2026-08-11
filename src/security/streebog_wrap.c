@@ -45,22 +45,30 @@ int osp_gost_hmac_streebog256(const uint8_t *key, uint32_t key_len, const uint8_
 		opad[i] = (uint8_t)(k_block[i] ^ 0x5C);
 	}
 
-	/* Cap message size: DLMS HLS/KDF use small inputs; avoid 64 KiB BSS/TLS. */
+	/* Cap message size: DLMS HLS/KDF use small inputs. */
 #ifndef OSP_STREEBOG_HMAC_MAX_MSG
 #define OSP_STREEBOG_HMAC_MAX_MSG 1024
 #endif
-	OSP_TLS uint8_t inner[STREEBOG_BLOCK + OSP_STREEBOG_HMAC_MAX_MSG];
 	int rc = -1;
 	if (msg_len <= OSP_STREEBOG_HMAC_MAX_MSG) {
-		memcpy(inner, ipad, STREEBOG_BLOCK);
-		memcpy(inner + STREEBOG_BLOCK, msg, msg_len);
+		/* Stream ipad||msg through Streebog — no multi-KiB TLS scratch. */
+		GOST34112012Context ctx;
 		uint8_t inner_hash[32];
-		if (osp_gost_streebog256(inner, STREEBOG_BLOCK + msg_len, inner_hash) == 0) {
-			uint8_t outer[STREEBOG_BLOCK + 32];
-			memcpy(outer, opad, STREEBOG_BLOCK);
-			memcpy(outer + STREEBOG_BLOCK, inner_hash, 32);
-			rc = osp_gost_streebog256(outer, STREEBOG_BLOCK + 32, mac);
+		memset(&ctx, 0, sizeof(ctx));
+		GOST34112012Init(&ctx, 256);
+		GOST34112012Update(&ctx, ipad, STREEBOG_BLOCK);
+		if (msg_len > 0) {
+			GOST34112012Update(&ctx, msg, msg_len);
 		}
+		GOST34112012Final(&ctx, inner_hash);
+		GOST34112012Cleanup(&ctx);
+
+		uint8_t outer[STREEBOG_BLOCK + 32];
+		memcpy(outer, opad, STREEBOG_BLOCK);
+		memcpy(outer + STREEBOG_BLOCK, inner_hash, 32);
+		rc = osp_gost_streebog256(outer, STREEBOG_BLOCK + 32, mac);
+		osp_memzero(outer, sizeof(outer));
+		osp_memzero(inner_hash, sizeof(inner_hash));
 	}
 
 	/* Phase 3: zeroize all intermediate key material */
