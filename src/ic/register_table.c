@@ -91,6 +91,31 @@ static osp_err_t rt_set(void *inst, uint8_t attr_id, const osp_value_t *value) {
 	}
 }
 
+static osp_err_t rt_invoke(void *inst, uint8_t method_id, const osp_value_t *param, osp_value_t *result) {
+	if (osp_hal_data && osp_hal_data->execute) {
+		const osp_obis_t *obis = (const osp_obis_t *)inst;
+		osp_err_t r = osp_hal_data->execute(osp_hal_data->ctx, obis, method_id, param, result);
+		if (r == OSP_OK) return OSP_OK;
+		if (r != OSP_ERR_NOT_FOUND) return r;
+	}
+
+	osp_ic_register_table_t *i = (osp_ic_register_table_t *)inst;
+	(void)param;
+	if (result) {
+		*result = osp_val_null();
+	}
+	switch (method_id) {
+		case 1: /* reset */
+			i->table_cell_count = 0;
+			memset(i->table_cell_values, 0, sizeof(i->table_cell_values));
+			return OSP_OK;
+		case 2: /* capture — needs live register sources via HAL/dispatcher */
+			return OSP_ERR_UNSUPPORTED;
+		default:
+			return OSP_ERR_UNSUPPORTED;
+	}
+}
+
 static osp_err_t rt_serialize(const void *inst, osp_buf_t *buf) {
 	return osp_ic_serialize_attrs(osp_ic_register_table_class(), inst, buf, rt_attrs, 4);
 }
@@ -105,7 +130,7 @@ static const osp_ic_class_t ic_register_table = {
     .version = 0,
     .get_attr = rt_get,
     .set_attr = rt_set,
-    .invoke = NULL,
+    .invoke = rt_invoke,
     .serialize = rt_serialize,
     .deserialize = rt_deserialize,
     .instance_size = sizeof(osp_ic_register_table_t),

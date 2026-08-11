@@ -5,7 +5,7 @@
 #include <string.h>
 #include "../data_hal.h"
 
-static const uint8_t cd_attrs[] = {1};
+static const uint8_t cd_attrs[] = {1, 2, 3, 4, 5, 6};
 
 static osp_value_t cd_val_capture_objects(const osp_capture_object_list_t *list) {
 	osp_value_t v = {0};
@@ -34,6 +34,9 @@ static osp_err_t cd_read_capture_objects(const osp_value_t *value, osp_capture_o
 static osp_value_t cd_val_octets(const uint8_t *data, uint32_t len) {
 	osp_value_t v;
 	v.tag = OSP_TAG_OCTETSTRING;
+	if (len > OSP_MAX_OCTET_LEN) {
+		len = OSP_MAX_OCTET_LEN;
+	}
 	v.as.octetstring.len = len;
 	if (len > 0 && data) {
 		memcpy(v.as.octetstring.data, data, len);
@@ -188,11 +191,11 @@ static osp_err_t cd_invoke(void *inst, uint8_t method_id, const osp_value_t *par
 }
 
 static osp_err_t cd_serialize(const void *inst, osp_buf_t *buf) {
-	return osp_ic_serialize_attrs(osp_ic_compact_data_class(), inst, buf, cd_attrs, 1);
+	return osp_ic_serialize_attrs(osp_ic_compact_data_class(), inst, buf, cd_attrs, 6);
 }
 
 static osp_err_t cd_deserialize(void *inst, osp_buf_t *buf) {
-	return osp_ic_deserialize_attrs(osp_ic_compact_data_class(), inst, buf, cd_attrs, 1);
+	return osp_ic_deserialize_attrs(osp_ic_compact_data_class(), inst, buf, cd_attrs, 6);
 }
 
 static const osp_ic_class_t ic_compact_data = {

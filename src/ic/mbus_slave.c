@@ -26,12 +26,24 @@ static osp_err_t ms_get(const void *inst, uint8_t attr_id, osp_value_t *result) 
 		case 4:
 			result->tag = OSP_TAG_OCTETSTRING;
 			result->as.octetstring.len = i->id_number_len;
-			memcpy(result->as.octetstring.data, i->id_number, i->id_number_len);
+			if (result->as.octetstring.len > OSP_MAX_OCTET_LEN) {
+				result->as.octetstring.len = OSP_MAX_OCTET_LEN;
+			}
+			if (result->as.octetstring.len > sizeof(i->id_number)) {
+				result->as.octetstring.len = sizeof(i->id_number);
+			}
+			memcpy(result->as.octetstring.data, i->id_number, result->as.octetstring.len);
 			return OSP_OK;
 		case 5:
 			result->tag = OSP_TAG_OCTETSTRING;
 			result->as.octetstring.len = i->manufacturer_len;
-			memcpy(result->as.octetstring.data, i->manufacturer, i->manufacturer_len);
+			if (result->as.octetstring.len > OSP_MAX_OCTET_LEN) {
+				result->as.octetstring.len = OSP_MAX_OCTET_LEN;
+			}
+			if (result->as.octetstring.len > sizeof(i->manufacturer)) {
+				result->as.octetstring.len = sizeof(i->manufacturer);
+			}
+			memcpy(result->as.octetstring.data, i->manufacturer, result->as.octetstring.len);
 			return OSP_OK;
 		case 6:
 			*result = osp_val_u8(i->version);
@@ -54,11 +66,46 @@ static osp_err_t ms_set(void *inst, uint8_t attr_id, const osp_value_t *value) {
 	osp_ic_mbus_slave_t *i = (osp_ic_mbus_slave_t *)inst;
 	if (!value) return OSP_ERR_INVALID;
 	switch (attr_id) {
-		case 2: i->physical_address = osp_get_u16(value); return OSP_OK;
-		case 3: i->logical_address = osp_get_u16(value); return OSP_OK;
-		case 6: i->version = osp_get_u8(value); return OSP_OK;
-		case 7: i->medium = osp_get_u8(value); return OSP_OK;
-		default: return OSP_OK; /* accept but don't store */
+		case 2:
+			i->physical_address = osp_get_u16(value);
+			return OSP_OK;
+		case 3:
+			i->logical_address = osp_get_u16(value);
+			return OSP_OK;
+		case 4:
+			if (value->tag != OSP_TAG_OCTETSTRING) {
+				return OSP_ERR_INVALID;
+			}
+			{
+				uint32_t len = value->as.octetstring.len;
+				if (len > sizeof(i->id_number)) {
+					len = sizeof(i->id_number);
+				}
+				i->id_number_len = (uint8_t)len;
+				memcpy(i->id_number, value->as.octetstring.data, len);
+			}
+			return OSP_OK;
+		case 5:
+			if (value->tag != OSP_TAG_OCTETSTRING) {
+				return OSP_ERR_INVALID;
+			}
+			{
+				uint32_t len = value->as.octetstring.len;
+				if (len > sizeof(i->manufacturer)) {
+					len = sizeof(i->manufacturer);
+				}
+				i->manufacturer_len = (uint8_t)len;
+				memcpy(i->manufacturer, value->as.octetstring.data, len);
+			}
+			return OSP_OK;
+		case 6:
+			i->version = osp_get_u8(value);
+			return OSP_OK;
+		case 7:
+			i->medium = osp_get_u8(value);
+			return OSP_OK;
+		default:
+			return OSP_ERR_NOT_FOUND;
 	}
 }
 

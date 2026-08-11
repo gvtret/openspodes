@@ -1,5 +1,6 @@
 #include "disconnect_control.h"
 #include "ic_common.h"
+#include "../codec/structures.h"
 #include <string.h>
 #include "../data_hal.h"
 
@@ -70,9 +71,12 @@ static osp_err_t dc_invoke(void *inst, uint8_t method_id, const osp_value_t *par
 	switch (method_id) {
 		case 1:
 			d->output_state = 0;
+			d->control_state = OSP_DISCO_OUTPUT_STATE_DISCONNECT;
 			*result = osp_val_null();
 			return OSP_OK; /* remote disconnect */
 		case 2:
+			d->output_state = 1;
+			d->control_state = OSP_DISCO_OUTPUT_STATE_RECONNECT;
 			*result = osp_val_null();
 			return OSP_OK; /* remote reconnect */
 		default:

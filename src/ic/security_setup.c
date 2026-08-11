@@ -25,13 +25,31 @@ static osp_err_t ss_get(const void *inst, uint8_t attr_id, osp_value_t *result) 
 			return OSP_OK;
 		case 4:
 			result->tag = OSP_TAG_OCTETSTRING;
-			result->as.octetstring.len = s->client_system_title.len;
-			memcpy(result->as.octetstring.data, s->client_system_title.data, s->client_system_title.len);
+			{
+				uint32_t len = s->client_system_title.len;
+				if (len > OSP_MAX_OCTET_LEN) {
+					len = OSP_MAX_OCTET_LEN;
+				}
+				if (len > sizeof(s->client_system_title.data)) {
+					len = sizeof(s->client_system_title.data);
+				}
+				result->as.octetstring.len = len;
+				memcpy(result->as.octetstring.data, s->client_system_title.data, len);
+			}
 			return OSP_OK;
 		case 5:
 			result->tag = OSP_TAG_OCTETSTRING;
-			result->as.octetstring.len = s->server_system_title.len;
-			memcpy(result->as.octetstring.data, s->server_system_title.data, s->server_system_title.len);
+			{
+				uint32_t len = s->server_system_title.len;
+				if (len > OSP_MAX_OCTET_LEN) {
+					len = OSP_MAX_OCTET_LEN;
+				}
+				if (len > sizeof(s->server_system_title.data)) {
+					len = sizeof(s->server_system_title.data);
+				}
+				result->as.octetstring.len = len;
+				memcpy(result->as.octetstring.data, s->server_system_title.data, len);
+			}
 			return OSP_OK;
 		default:
 			return OSP_ERR_NOT_FOUND;
@@ -57,14 +75,14 @@ static osp_err_t ss_set(void *inst, uint8_t attr_id, const osp_value_t *value) {
 			s->security_suite = osp_get_u8(value);
 			return OSP_OK;
 		case 4:
-			if (value->tag != OSP_TAG_OCTETSTRING) {
+			if (value->tag != OSP_TAG_OCTETSTRING || value->as.octetstring.len > sizeof(s->client_system_title.data)) {
 				return OSP_ERR_INVALID;
 			}
 			s->client_system_title.len = value->as.octetstring.len;
 			memcpy(s->client_system_title.data, value->as.octetstring.data, value->as.octetstring.len);
 			return OSP_OK;
 		case 5:
-			if (value->tag != OSP_TAG_OCTETSTRING) {
+			if (value->tag != OSP_TAG_OCTETSTRING || value->as.octetstring.len > sizeof(s->server_system_title.data)) {
 				return OSP_ERR_INVALID;
 			}
 			s->server_system_title.len = value->as.octetstring.len;
