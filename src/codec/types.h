@@ -34,6 +34,9 @@ extern "C" {
 #ifndef OSP_MAX_BITSTRING_LEN
 #define OSP_MAX_BITSTRING_LEN 32
 #endif
+#ifndef OSP_VALUE_READ_POOL_LEN
+#define OSP_VALUE_READ_POOL_LEN (OSP_MAX_ARRAY_LEN * OSP_MAX_STRUCT_LEN)
+#endif
 
 /*
  * Memory optimization notes:

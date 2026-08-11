@@ -37,7 +37,7 @@ void osp_hal_mutex_unlock(void) {
 }
 
 /* Bump pool for nested structure/array elements during osp_value_read (no malloc). */
-static osp_value_t value_read_pool[OSP_MAX_ARRAY_LEN * OSP_MAX_STRUCT_LEN];
+static osp_value_t value_read_pool[OSP_VALUE_READ_POOL_LEN];
 static uint16_t value_read_pool_used;
 static uint8_t value_read_depth;
 

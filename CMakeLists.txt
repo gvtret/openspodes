@@ -17,7 +17,7 @@ if(ENABLE_ASAN)
 endif()
 
 # Association LN object_list capacity (ABI). Category A / Yellow Book need 255;
-# MCU builds should use -DOPENSPODES_CATEGORY_A=OFF (header default 32).
+# MCU builds should use -DOPENSPODES_CATEGORY_A=OFF (header default 32 + smaller decode pool).
 option(OPENSPODES_CATEGORY_A "Large object_list (255) for Category A / Yellow Book" ON)
 
 # Library
@@ -105,6 +105,9 @@ target_compile_options(openspodes PRIVATE -Wall -Wextra -Werror -fstack-protecto
 target_compile_definitions(openspodes PRIVATE _FORTIFY_SOURCE=2)
 if(OPENSPODES_CATEGORY_A)
 	target_compile_definitions(openspodes PUBLIC OSP_MAX_OBJECT_LIST=255)
+else()
+	# Nested A-XDR decode pool; default 32×16=512 is ~136 KiB. MCU profile trims it.
+	target_compile_definitions(openspodes PUBLIC OSP_VALUE_READ_POOL_LEN=128)
 endif()
 
 # Tests

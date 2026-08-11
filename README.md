@@ -339,7 +339,7 @@ OpenSPODES is a portable C11 implementation of the IEC 62056 DLMS/COSEM protocol
 
 Yes for the **no-heap** hot path, with caveats on static RAM:
 
-- Build with `-DOPENSPODES_CATEGORY_A=OFF` so `OSP_MAX_OBJECT_LIST` stays at the header default (**32**). Category A / Yellow Book builds keep `ON` (255); object_list encode streams (no multi‑MiB scratch), but storage still scales with N.
+- Build with `-DOPENSPODES_CATEGORY_A=OFF` so `OSP_MAX_OBJECT_LIST` stays at the header default (**32**) and the nested decode pool shrinks to **128**. Category A / Yellow Book builds keep `ON` (255); object_list encode streams (no multi‑MiB scratch), but storage still scales with N.
 - Override PDU / pending sizes with `#ifndef` macros before including `client.h` / `server.h`.
 - HAL interfaces are optional function pointers — see [docs/HAL.md](docs/HAL.md).
 
