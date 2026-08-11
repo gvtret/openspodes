@@ -308,6 +308,47 @@ osp_value_t osp_ic_val_object_list(const osp_object_list_t *ol) {
 	return v;
 }
 
+static osp_err_t osp_ic_read_access_right(const osp_value_t *val, osp_access_right_t *ar) {
+	if (!val || !ar || val->tag != OSP_TAG_STRUCTURE || val->as.structure.elements.count < 2) {
+		return OSP_ERR_INVALID;
+	}
+	const osp_value_t *attrs = &val->as.structure.elements.items[0];
+	const osp_value_t *methods = &val->as.structure.elements.items[1];
+	if (attrs->tag != OSP_TAG_ARRAY || methods->tag != OSP_TAG_ARRAY) {
+		return OSP_ERR_INVALID;
+	}
+
+	memset(ar, 0, sizeof(*ar));
+	uint8_t ac = attrs->as.array.elements.count;
+	if (ac > OSP_MAX_ACCESS_ITEMS) {
+		ac = OSP_MAX_ACCESS_ITEMS;
+	}
+	ar->attr_count = ac;
+	for (uint8_t i = 0; i < ac; i++) {
+		const osp_value_t *item = &attrs->as.array.elements.items[i];
+		if (item->tag != OSP_TAG_STRUCTURE || item->as.structure.elements.count < 2) {
+			return OSP_ERR_INVALID;
+		}
+		ar->attr_items[i].attribute_id = osp_get_i8(&item->as.structure.elements.items[0]);
+		ar->attr_items[i].access_mode = (osp_attr_access_t)osp_get_enum(&item->as.structure.elements.items[1]);
+	}
+
+	uint8_t mc = methods->as.array.elements.count;
+	if (mc > OSP_MAX_METHOD_ITEMS) {
+		mc = OSP_MAX_METHOD_ITEMS;
+	}
+	ar->method_count = mc;
+	for (uint8_t i = 0; i < mc; i++) {
+		const osp_value_t *item = &methods->as.array.elements.items[i];
+		if (item->tag != OSP_TAG_STRUCTURE || item->as.structure.elements.count < 2) {
+			return OSP_ERR_INVALID;
+		}
+		ar->method_items[i].method_id = osp_get_i8(&item->as.structure.elements.items[0]);
+		ar->method_items[i].access_mode = (osp_method_access_t)osp_get_enum(&item->as.structure.elements.items[1]);
+	}
+	return OSP_OK;
+}
+
 osp_err_t osp_ic_read_object_list(const osp_value_t *val, osp_object_list_t *ol) {
 	if (!val || !ol || val->tag != OSP_TAG_ARRAY) {
 		return OSP_ERR_INVALID;
@@ -326,7 +367,9 @@ osp_err_t osp_ic_read_object_list(const osp_value_t *val, osp_object_list_t *ol)
 			return OSP_ERR_INVALID;
 		}
 		memcpy(&e->logical_name, ln->as.octetstring.data, 6);
-		memset(&e->access_rights, 0, sizeof(e->access_rights));
+		if (osp_ic_read_access_right(&row->as.structure.elements.items[3], &e->access_rights) != OSP_OK) {
+			return OSP_ERR_INVALID;
+		}
 		ol->count++;
 	}
 	return OSP_OK;

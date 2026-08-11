@@ -1788,8 +1788,8 @@ osp_err_t osp_object_list_write(osp_buf_t *buf, const osp_object_list_t *ol) {
 		if (ac > OSP_MAX_ACCESS_ITEMS) {
 			ac = OSP_MAX_ACCESS_ITEMS;
 		}
-		if (mc > OSP_MAX_ACCESS_ITEMS) {
-			mc = OSP_MAX_ACCESS_ITEMS;
+		if (mc > OSP_MAX_METHOD_ITEMS) {
+			mc = OSP_MAX_METHOD_ITEMS;
 		}
 		r = osp_struct_begin(buf, 4);
 		if (r != OSP_OK) {

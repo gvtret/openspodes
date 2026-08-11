@@ -19,6 +19,7 @@
 #include "client/client.h"
 #include "server/server.h"
 #include "ic/data.h"
+#include "ic/ic_common.h"
 #include "mock_transport.h"
 #include "mock_crypto.h"
 #include "security/security.h"
@@ -287,6 +288,32 @@ static void test_serialize_access_and_objects(void **state) {
 	assert_int_equal(osp_object_list_element_read(&r, &elem2), OSP_OK);
 	assert_int_equal(elem2.class_id, 3);
 	assert_true(osp_obis_eq(&elem2.logical_name, &elem.logical_name));
+
+	/* Streamed OBJECT_LIST_REF encode → value_read → osp_ic_read_object_list must keep ACL. */
+	{
+		osp_object_list_t ol = {0};
+		ol.count = 1;
+		ol.elements[0] = elem;
+		uint8_t big[512];
+		osp_buf_t wb, rb;
+		osp_buf_init(&wb, big, sizeof(big));
+		osp_value_t encoded = osp_ic_val_object_list(&ol);
+		assert_int_equal(osp_value_write(&wb, &encoded), OSP_OK);
+		osp_buf_init(&rb, big, wb.wr);
+		rb.wr = wb.wr;
+		osp_value_t decoded = {0};
+		assert_int_equal(osp_value_read(&rb, &decoded), OSP_OK);
+		osp_object_list_t ol2 = {0};
+		assert_int_equal(osp_ic_read_object_list(&decoded, &ol2), OSP_OK);
+		assert_int_equal(ol2.count, 1);
+		assert_int_equal(ol2.elements[0].class_id, 3);
+		assert_int_equal(ol2.elements[0].access_rights.attr_count, 1);
+		assert_int_equal(ol2.elements[0].access_rights.attr_items[0].attribute_id, 2);
+		assert_int_equal(ol2.elements[0].access_rights.attr_items[0].access_mode, OSP_ACCESS_READ_WRITE);
+		assert_int_equal(ol2.elements[0].access_rights.method_count, 1);
+		assert_int_equal(ol2.elements[0].access_rights.method_items[0].method_id, 1);
+		assert_int_equal(ol2.elements[0].access_rights.method_items[0].access_mode, OSP_METHOD_ACCESS);
+	}
 
 	osp_capture_object_t co = {
 	    .class_id = 1,
