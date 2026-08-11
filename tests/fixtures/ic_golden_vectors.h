@@ -123,13 +123,13 @@ static const uint8_t osp_gv_special_days[] = {
 #define OSP_GV_special_days osp_gv_special_days
 #define OSP_GV_special_days_LEN 15u
 
-/* register_activation class_id=6 len=17 */
+/* register_activation class_id=6 len=19 */
 static const uint8_t osp_gv_register_activation[] = {
-    0x02, 0x04, 0x12, 0x00, 0x06, 0x09, 0x06, 0x00, 0x00, 0x0A, 0x6A, 0x00, 
-    0xFF, 0x01, 0x00, 0x01, 0x00
+    0x02, 0x05, 0x12, 0x00, 0x06, 0x09, 0x06, 0x00, 0x00, 0x0A, 0x6A, 0x00, 
+    0xFF, 0x01, 0x00, 0x01, 0x00, 0x09, 0x00
 };
 #define OSP_GV_register_activation osp_gv_register_activation
-#define OSP_GV_register_activation_LEN 17u
+#define OSP_GV_register_activation_LEN 19u
 
 /* sap_assignment class_id=17 len=15 */
 static const uint8_t osp_gv_sap_assignment[] = {

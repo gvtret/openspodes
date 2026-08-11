@@ -112,9 +112,10 @@ typedef enum {
 #define OSP_TAG_SPECIAL_DAYS_LIST_REF 0xEF
 #define OSP_TAG_SCHEDULE_LIST_REF 0xEE
 #define OSP_TAG_SCRIPT_LIST_REF 0xED
+#define OSP_TAG_MASK_LIST_REF 0xEC
 
 static inline bool osp_tag_is_internal_ref(uint8_t tag) {
-	return tag >= OSP_TAG_SCRIPT_LIST_REF;
+	return tag >= OSP_TAG_MASK_LIST_REF;
 }
 
 /* ── Fixed size lookup (used by compact_array) ───────────────────────────── */

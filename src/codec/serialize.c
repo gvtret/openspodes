@@ -1615,6 +1615,14 @@ osp_err_t osp_value_write(osp_buf_t *buf, const osp_value_t *val) {
 			return osp_script_list_write(buf, (const osp_script_list_view_t *)val->as.ref);
 		}
 
+		case OSP_TAG_MASK_LIST_REF: {
+			if (buf->wr == 0) {
+				return OSP_ERR_INVALID;
+			}
+			buf->wr--;
+			return osp_mask_list_write(buf, (const osp_mask_list_t *)val->as.ref);
+		}
+
 		default:
 			return OSP_ERR_UNSUPPORTED;
 	}
@@ -2371,6 +2379,54 @@ osp_err_t osp_script_list_write(osp_buf_t *buf, const osp_script_list_view_t *vi
 				return r;
 			}
 			r = osp_value_write(buf, &ai->method_param);
+			if (r != OSP_OK) {
+				return r;
+			}
+		}
+	}
+	return OSP_OK;
+}
+
+osp_err_t osp_mask_list_write(osp_buf_t *buf, const osp_mask_list_t *list) {
+	if (!buf) {
+		return OSP_ERR_INVALID;
+	}
+	uint8_t n = list ? list->count : 0;
+	if (n > OSP_MAX_MASK_LIST) {
+		n = OSP_MAX_MASK_LIST;
+	}
+	osp_err_t r = osp_array_begin(buf, n);
+	if (r != OSP_OK) {
+		return r;
+	}
+	for (uint8_t i = 0; i < n; i++) {
+		const osp_activation_mask_t *m = &list->items[i];
+		uint8_t idx_n = m->register_list.count;
+		if (idx_n > OSP_MAX_MASK_REGISTERS) {
+			idx_n = OSP_MAX_MASK_REGISTERS;
+		}
+		r = osp_struct_begin(buf, 2);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_OCTETSTRING);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_octet_string(buf, (const uint8_t *)m->mask_name, m->mask_name_len);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_array_begin(buf, idx_n);
+		if (r != OSP_OK) {
+			return r;
+		}
+		for (uint8_t j = 0; j < idx_n; j++) {
+			r = osp_axdr_write_u8(buf, OSP_TAG_UNSIGNED);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_axdr_write_u8(buf, (uint8_t)m->register_list.indices[j]);
 			if (r != OSP_OK) {
 				return r;
 			}
