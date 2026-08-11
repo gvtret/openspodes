@@ -2035,6 +2035,18 @@ osp_err_t osp_day_profile_table_write(osp_buf_t *buf, const osp_day_profile_tabl
 			if (act->script_count > 0) {
 				selector = (uint16_t)act->scripts[0].script_selector;
 			}
+			{
+				bool ln_set = false;
+				for (int b = 0; b < 6; b++) {
+					if (act->script_logical_name[b] != 0) {
+						ln_set = true;
+						break;
+					}
+				}
+				if (ln_set) {
+					memcpy(script_ln, act->script_logical_name, 6);
+				}
+			}
 			r = osp_struct_begin(buf, 3);
 			if (r != OSP_OK) {
 				return r;
@@ -2082,9 +2094,6 @@ osp_err_t osp_season_profile_table_write(osp_buf_t *buf, const osp_season_profil
 	}
 	for (uint8_t i = 0; i < n; i++) {
 		const osp_season_t *s = &view->seasons[i];
-		uint8_t start[12];
-		memset(start, 0, sizeof(start));
-		memcpy(start, &s->start, sizeof(s->start) < sizeof(start) ? sizeof(s->start) : sizeof(start));
 		r = osp_struct_begin(buf, 3);
 		if (r != OSP_OK) {
 			return r;
@@ -2101,7 +2110,7 @@ osp_err_t osp_season_profile_table_write(osp_buf_t *buf, const osp_season_profil
 		if (r != OSP_OK) {
 			return r;
 		}
-		r = osp_axdr_write_octet_string(buf, start, 12);
+		r = osp_axdr_write_octet_string(buf, s->start, OSP_COSEM_DATETIME_LEN);
 		if (r != OSP_OK) {
 			return r;
 		}

@@ -43,12 +43,53 @@ static osp_err_t sched_set(void *inst, uint8_t attr_id, const osp_value_t *value
 
 	osp_ic_schedule_t *s = (osp_ic_schedule_t *)inst;
 	if (attr_id == 2) {
-		if (value->tag != OSP_TAG_ARRAY) return OSP_ERR_INVALID;
-		/* Store entry count from the array */
-		s->entry_count = value->as.array.elements.count;
-		if (s->entry_count > OSP_MAX_SCHEDULE_ENTRY) {
-			s->entry_count = OSP_MAX_SCHEDULE_ENTRY;
+		if (!value || value->tag != OSP_TAG_ARRAY) {
+			return OSP_ERR_INVALID;
 		}
+		uint8_t n = value->as.array.elements.count;
+		if (n > OSP_MAX_SCHEDULE_ENTRY) {
+			n = OSP_MAX_SCHEDULE_ENTRY;
+		}
+		for (uint8_t i = 0; i < n; i++) {
+			const osp_value_t *row = &value->as.array.elements.items[i];
+			osp_schedule_entry_t *e = &s->entries[i];
+			memset(e, 0, sizeof(*e));
+			if (row->tag != OSP_TAG_STRUCTURE || row->as.structure.elements.count < 3) {
+				return OSP_ERR_INVALID;
+			}
+			const osp_value_t *items = row->as.structure.elements.items;
+			uint8_t base = 0;
+			if (items[0].tag == OSP_TAG_BOOLEAN) {
+				e->enable = items[0].as.boolean.value != 0;
+				base = 1;
+			} else {
+				e->enable = true;
+			}
+			if (row->as.structure.elements.count < base + 3) {
+				return OSP_ERR_INVALID;
+			}
+			if (items[base].tag == OSP_TAG_OCTETSTRING && items[base].as.octetstring.len >= 4) {
+				memcpy(e->start_time, items[base].as.octetstring.data, 4);
+			}
+			if (items[base + 1].tag == OSP_TAG_OCTETSTRING && items[base + 1].as.octetstring.len >= 4) {
+				memcpy(e->end_time, items[base + 1].as.octetstring.data, 4);
+			}
+			if (items[base + 2].tag == OSP_TAG_ARRAY) {
+				uint8_t sn = items[base + 2].as.array.elements.count;
+				if (sn > OSP_MAX_SCRIPT_PER_ACTION) {
+					sn = OSP_MAX_SCRIPT_PER_ACTION;
+				}
+				e->script_count = sn;
+				for (uint8_t j = 0; j < sn; j++) {
+					const osp_value_t *se = &items[base + 2].as.array.elements.items[j];
+					if (se->tag == OSP_TAG_STRUCTURE && se->as.structure.elements.count >= 2) {
+						e->scripts[j].script_id = osp_get_u32(&se->as.structure.elements.items[0]);
+						e->scripts[j].script_selector = osp_get_i32(&se->as.structure.elements.items[1]);
+					}
+				}
+			}
+		}
+		s->entry_count = n;
 		return OSP_OK;
 	}
 	return OSP_ERR_NOT_FOUND;

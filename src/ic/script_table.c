@@ -49,9 +49,47 @@ static osp_err_t st_set(void *inst, uint8_t attr_id, const osp_value_t *value) {
 		if (r != OSP_OK && r != OSP_ERR_NOT_FOUND) return r;
 	}
 
-	(void)inst;
 	if (attr_id == 2) {
-		if (value->tag != OSP_TAG_ARRAY) return OSP_ERR_INVALID;
+		if (!value || value->tag != OSP_TAG_ARRAY) {
+			return OSP_ERR_INVALID;
+		}
+		osp_ic_script_table_t *t = (osp_ic_script_table_t *)inst;
+		uint8_t n = value->as.array.elements.count;
+		if (n > OSP_MAX_SCRIPTS) {
+			n = OSP_MAX_SCRIPTS;
+		}
+		for (uint8_t i = 0; i < n; i++) {
+			const osp_value_t *row = &value->as.array.elements.items[i];
+			if (row->tag != OSP_TAG_STRUCTURE || row->as.structure.elements.count < 2) {
+				return OSP_ERR_INVALID;
+			}
+			osp_script_t *sc = &t->scripts[i];
+			memset(sc, 0, sizeof(*sc));
+			sc->script_id = osp_get_u32(&row->as.structure.elements.items[0]);
+			const osp_value_t *acts = &row->as.structure.elements.items[1];
+			if (acts->tag != OSP_TAG_ARRAY) {
+				return OSP_ERR_INVALID;
+			}
+			uint8_t an = acts->as.array.elements.count;
+			if (an > OSP_MAX_SCRIPT_ACTIONS) {
+				an = OSP_MAX_SCRIPT_ACTIONS;
+			}
+			sc->action_count = an;
+			for (uint8_t j = 0; j < an; j++) {
+				const osp_value_t *ai = &acts->as.array.elements.items[j];
+				if (ai->tag != OSP_TAG_STRUCTURE || ai->as.structure.elements.count < 4) {
+					return OSP_ERR_INVALID;
+				}
+				const osp_value_t *f = ai->as.structure.elements.items;
+				sc->actions[j].class_id = osp_get_u16(&f[0]);
+				if (f[1].tag == OSP_TAG_OCTETSTRING && f[1].as.octetstring.len >= 6) {
+					memcpy(&sc->actions[j].logical_name, f[1].as.octetstring.data, 6);
+				}
+				sc->actions[j].method_id = osp_get_i8(&f[2]);
+				sc->actions[j].method_param = f[3];
+			}
+		}
+		t->script_count = n;
 		return OSP_OK;
 	}
 	return OSP_ERR_NOT_FOUND;

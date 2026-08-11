@@ -138,7 +138,10 @@ static void test_season_roundtrip(void **state) {
 	memset(&s, 0, sizeof(s));
 	s.name_len = 6;
 	memcpy(s.name, "Winter", 6);
-	s.start = (osp_obis_t){0, 0, 10, 0, 1, 0}; /* Simple OBIS */
+	s.start[0] = 0x07;
+	s.start[1] = 0xE8;
+	s.start[2] = 10;
+	s.start[3] = 30;
 	s.week_name_len = 4;
 	memcpy(s.week_name, "W01", 4);
 
@@ -151,8 +154,7 @@ static void test_season_roundtrip(void **state) {
 	assert_int_equal(osp_ic_read_season(&val, &decoded), OSP_OK);
 	assert_int_equal(decoded.name_len, 6);
 	assert_memory_equal(decoded.name, "Winter", 6);
-	assert_int_equal(decoded.start.a, 0);
-	assert_int_equal(decoded.start.c, 10);
+	assert_memory_equal(decoded.start, s.start, OSP_COSEM_DATETIME_LEN);
 	assert_int_equal(decoded.week_name_len, 4);
 }
 
@@ -187,20 +189,22 @@ static void test_day_profile_roundtrip(void **state) {
 	(void)state;
 	osp_day_profile_t dp;
 	memset(&dp, 0, sizeof(dp));
-	dp.name_len = 3;
-	memcpy(dp.name, "Day", 3);
-	dp.action_count = 2;
+	dp.name[0] = 5;
+	dp.name_len = 1;
+	dp.action_count = 0;
 
 	osp_value_t val = osp_ic_val_day_profile(&dp);
 	assert_int_equal(val.tag, OSP_TAG_STRUCTURE);
 	assert_int_equal(val.as.structure.elements.count, 2);
+	assert_int_equal(osp_get_u8(&val.as.structure.elements.items[0]), 5);
+	assert_int_equal(val.as.structure.elements.items[1].tag, OSP_TAG_ARRAY);
 
 	osp_day_profile_t decoded;
 	memset(&decoded, 0, sizeof(decoded));
 	assert_int_equal(osp_ic_read_day_profile(&val, &decoded), OSP_OK);
-	assert_int_equal(decoded.name_len, 3);
-	assert_memory_equal(decoded.name, "Day", 3);
-	assert_int_equal(decoded.action_count, 2);
+	assert_int_equal(decoded.name_len, 1);
+	assert_int_equal((uint8_t)decoded.name[0], 5);
+	assert_int_equal(decoded.action_count, 0);
 }
 
 /* ── Main ───────────────────────────────────────────────────────────────── */

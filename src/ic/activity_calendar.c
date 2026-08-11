@@ -58,7 +58,7 @@ static osp_value_t ac_val_week_profile_table(const osp_week_profile_t *weeks, ui
 static void copy_season(osp_season_t *dst, const osp_season_t *src) {
 	memcpy(dst->name, src->name, src->name_len);
 	dst->name_len = src->name_len;
-	dst->start = src->start;
+	memcpy(dst->start, src->start, OSP_COSEM_DATETIME_LEN);
 	memcpy(dst->week_name, src->week_name, src->week_name_len);
 	dst->week_name_len = src->week_name_len;
 }
@@ -190,41 +190,79 @@ static osp_err_t ac_set(void *inst, uint8_t attr_id, const osp_value_t *value) {
 			memcpy(a->calendar_name_active, value->as.octetstring.data, a->calendar_name_active_len);
 			return OSP_OK;
 		case 3:
-			if (value->tag != OSP_TAG_ARRAY) return OSP_ERR_INVALID;
-			a->season_count_active = value->as.array.elements.count;
-			if (a->season_count_active > OSP_MAX_SEASON_PROFILE) a->season_count_active = OSP_MAX_SEASON_PROFILE;
+		case 7: {
+			if (value->tag != OSP_TAG_ARRAY) {
+				return OSP_ERR_INVALID;
+			}
+			osp_season_t *dst = (attr_id == 3) ? a->season_profile_active : a->season_profile_passive;
+			uint8_t n = value->as.array.elements.count;
+			if (n > OSP_MAX_SEASON_PROFILE) {
+				n = OSP_MAX_SEASON_PROFILE;
+			}
+			for (uint8_t i = 0; i < n; i++) {
+				if (osp_ic_read_season(&value->as.array.elements.items[i], &dst[i]) != OSP_OK) {
+					return OSP_ERR_INVALID;
+				}
+			}
+			if (attr_id == 3) {
+				a->season_count_active = n;
+			} else {
+				a->season_count_passive = n;
+			}
 			return OSP_OK;
+		}
 		case 4:
-			if (value->tag != OSP_TAG_ARRAY) return OSP_ERR_INVALID;
-			a->week_count_active = value->as.array.elements.count;
-			if (a->week_count_active > OSP_MAX_WEEK_PROFILE) a->week_count_active = OSP_MAX_WEEK_PROFILE;
+		case 8: {
+			if (value->tag != OSP_TAG_ARRAY) {
+				return OSP_ERR_INVALID;
+			}
+			osp_week_profile_t *dst =
+			    (attr_id == 4) ? a->week_profile_table_active : a->week_profile_table_passive;
+			uint8_t n = value->as.array.elements.count;
+			if (n > OSP_MAX_WEEK_PROFILE) {
+				n = OSP_MAX_WEEK_PROFILE;
+			}
+			for (uint8_t i = 0; i < n; i++) {
+				if (osp_ic_read_week_profile(&value->as.array.elements.items[i], &dst[i]) != OSP_OK) {
+					return OSP_ERR_INVALID;
+				}
+			}
+			if (attr_id == 4) {
+				a->week_count_active = n;
+			} else {
+				a->week_count_passive = n;
+			}
 			return OSP_OK;
+		}
 		case 5:
-			if (value->tag != OSP_TAG_ARRAY) return OSP_ERR_INVALID;
-			a->day_count_active = value->as.array.elements.count;
-			if (a->day_count_active > OSP_MAX_DAY_PROFILE) a->day_count_active = OSP_MAX_DAY_PROFILE;
+		case 9: {
+			if (value->tag != OSP_TAG_ARRAY) {
+				return OSP_ERR_INVALID;
+			}
+			osp_day_profile_t *dst =
+			    (attr_id == 5) ? a->day_profile_table_active : a->day_profile_table_passive;
+			uint8_t n = value->as.array.elements.count;
+			if (n > OSP_MAX_DAY_PROFILE) {
+				n = OSP_MAX_DAY_PROFILE;
+			}
+			for (uint8_t i = 0; i < n; i++) {
+				if (osp_ic_read_day_profile(&value->as.array.elements.items[i], &dst[i]) != OSP_OK) {
+					return OSP_ERR_INVALID;
+				}
+			}
+			if (attr_id == 5) {
+				a->day_count_active = n;
+			} else {
+				a->day_count_passive = n;
+			}
 			return OSP_OK;
+		}
 		case 6:
 			if (value->tag != OSP_TAG_OCTETSTRING || value->as.octetstring.len >= OSP_MAX_NAME_LEN) {
 				return OSP_ERR_INVALID;
 			}
 			a->calendar_name_passive_len = (uint8_t)value->as.octetstring.len;
 			memcpy(a->calendar_name_passive, value->as.octetstring.data, a->calendar_name_passive_len);
-			return OSP_OK;
-		case 7:
-			if (value->tag != OSP_TAG_ARRAY) return OSP_ERR_INVALID;
-			a->season_count_passive = value->as.array.elements.count;
-			if (a->season_count_passive > OSP_MAX_SEASON_PROFILE) a->season_count_passive = OSP_MAX_SEASON_PROFILE;
-			return OSP_OK;
-		case 8:
-			if (value->tag != OSP_TAG_ARRAY) return OSP_ERR_INVALID;
-			a->week_count_passive = value->as.array.elements.count;
-			if (a->week_count_passive > OSP_MAX_WEEK_PROFILE) a->week_count_passive = OSP_MAX_WEEK_PROFILE;
-			return OSP_OK;
-		case 9:
-			if (value->tag != OSP_TAG_ARRAY) return OSP_ERR_INVALID;
-			a->day_count_passive = value->as.array.elements.count;
-			if (a->day_count_passive > OSP_MAX_DAY_PROFILE) a->day_count_passive = OSP_MAX_DAY_PROFILE;
 			return OSP_OK;
 		case 10:
 			if (value->tag != OSP_TAG_DATETIME) return OSP_ERR_INVALID;

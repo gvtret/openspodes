@@ -534,16 +534,16 @@ osp_err_t osp_ic_read_context_name(const osp_value_t *val, osp_context_name_t *c
 
 osp_value_t osp_ic_val_season(const osp_season_t *s) {
 	osp_value_t v = {0};
-	if (!s) return v;
+	if (!s) {
+		return v;
+	}
 	osp_value_t *fields = osp_ic_val_scratch;
 	fields[0].tag = OSP_TAG_OCTETSTRING;
 	fields[0].as.octetstring.len = s->name_len;
 	memcpy(fields[0].as.octetstring.data, s->name, s->name_len);
 	fields[1].tag = OSP_TAG_OCTETSTRING;
-	uint8_t dt[12];
-	memcpy(dt, &s->start, sizeof(osp_datetime_t));
-	fields[1].as.octetstring.len = 12;
-	memcpy(fields[1].as.octetstring.data, dt, 12);
+	fields[1].as.octetstring.len = OSP_COSEM_DATETIME_LEN;
+	memcpy(fields[1].as.octetstring.data, s->start, OSP_COSEM_DATETIME_LEN);
 	fields[2].tag = OSP_TAG_OCTETSTRING;
 	fields[2].as.octetstring.len = s->week_name_len;
 	memcpy(fields[2].as.octetstring.data, s->week_name, s->week_name_len);
@@ -555,20 +555,29 @@ osp_value_t osp_ic_val_season(const osp_season_t *s) {
 }
 
 osp_err_t osp_ic_read_season(const osp_value_t *val, osp_season_t *s) {
-	if (!val || !s) return OSP_ERR_INVALID;
-	if (val->tag != OSP_TAG_STRUCTURE || val->as.structure.elements.count < 3) return OSP_ERR_INVALID;
+	if (!val || !s) {
+		return OSP_ERR_INVALID;
+	}
+	if (val->tag != OSP_TAG_STRUCTURE || val->as.structure.elements.count < 3) {
+		return OSP_ERR_INVALID;
+	}
+	memset(s, 0, sizeof(*s));
 	const osp_value_t *items = val->as.structure.elements.items;
 	if (items[0].tag == OSP_TAG_OCTETSTRING) {
 		s->name_len = items[0].as.octetstring.len;
-		if (s->name_len > OSP_MAX_NAME_LEN) s->name_len = OSP_MAX_NAME_LEN;
+		if (s->name_len > OSP_MAX_NAME_LEN) {
+			s->name_len = OSP_MAX_NAME_LEN;
+		}
 		memcpy(s->name, items[0].as.octetstring.data, s->name_len);
 	}
-	if (items[1].tag == OSP_TAG_OCTETSTRING && items[1].as.octetstring.len >= sizeof(osp_datetime_t)) {
-		memcpy(&s->start, items[1].as.octetstring.data, sizeof(osp_datetime_t));
+	if (items[1].tag == OSP_TAG_OCTETSTRING && items[1].as.octetstring.len >= OSP_COSEM_DATETIME_LEN) {
+		memcpy(s->start, items[1].as.octetstring.data, OSP_COSEM_DATETIME_LEN);
 	}
 	if (items[2].tag == OSP_TAG_OCTETSTRING) {
 		s->week_name_len = items[2].as.octetstring.len;
-		if (s->week_name_len > OSP_MAX_NAME_LEN) s->week_name_len = OSP_MAX_NAME_LEN;
+		if (s->week_name_len > OSP_MAX_NAME_LEN) {
+			s->week_name_len = OSP_MAX_NAME_LEN;
+		}
 		memcpy(s->week_name, items[2].as.octetstring.data, s->week_name_len);
 	}
 	return OSP_OK;
@@ -609,13 +618,18 @@ osp_err_t osp_ic_read_week_profile(const osp_value_t *val, osp_week_profile_t *w
 
 osp_value_t osp_ic_val_day_profile(const osp_day_profile_t *dp) {
 	osp_value_t v = {0};
-	if (!dp) return v;
+	if (!dp) {
+		return v;
+	}
 	osp_value_t *fields = osp_ic_val_scratch;
-	fields[0].tag = OSP_TAG_OCTETSTRING;
-	fields[0].as.octetstring.len = dp->name_len;
-	memcpy(fields[0].as.octetstring.data, dp->name, dp->name_len);
-	fields[1].tag = OSP_TAG_UNSIGNED;
-	fields[1].as.uint8.value = dp->action_count;
+	uint8_t day_id = (dp->name_len > 0) ? (uint8_t)dp->name[0] : 1;
+	fields[0] = osp_val_u8(day_id);
+	fields[1].tag = OSP_TAG_ARRAY;
+	fields[1].as.array.elements.items = NULL;
+	fields[1].as.array.elements.count = 0;
+	fields[1].as.array.elements.capacity = 0;
+	/* Nested day_schedule is streamed via DAY_PROFILE_TABLE_REF on GET;
+	 * this helper only round-trips day_id for unit tests. */
 	v.tag = OSP_TAG_STRUCTURE;
 	v.as.structure.elements.items = fields;
 	v.as.structure.elements.count = 2;
@@ -624,15 +638,39 @@ osp_value_t osp_ic_val_day_profile(const osp_day_profile_t *dp) {
 }
 
 osp_err_t osp_ic_read_day_profile(const osp_value_t *val, osp_day_profile_t *dp) {
-	if (!val || !dp) return OSP_ERR_INVALID;
-	if (val->tag != OSP_TAG_STRUCTURE || val->as.structure.elements.count < 2) return OSP_ERR_INVALID;
-	const osp_value_t *items = val->as.structure.elements.items;
-	if (items[0].tag == OSP_TAG_OCTETSTRING) {
-		dp->name_len = items[0].as.octetstring.len;
-		if (dp->name_len > OSP_MAX_NAME_LEN) dp->name_len = OSP_MAX_NAME_LEN;
-		memcpy(dp->name, items[0].as.octetstring.data, dp->name_len);
+	if (!val || !dp) {
+		return OSP_ERR_INVALID;
 	}
-	dp->action_count = osp_get_u8(&items[1]);
-	if (dp->action_count > OSP_MAX_DAY_ACTION) dp->action_count = OSP_MAX_DAY_ACTION;
+	if (val->tag != OSP_TAG_STRUCTURE || val->as.structure.elements.count < 2) {
+		return OSP_ERR_INVALID;
+	}
+	memset(dp, 0, sizeof(*dp));
+	const osp_value_t *items = val->as.structure.elements.items;
+	dp->name[0] = (char)osp_get_u8(&items[0]);
+	dp->name_len = 1;
+	if (items[1].tag != OSP_TAG_ARRAY) {
+		return OSP_ERR_INVALID;
+	}
+	uint8_t n = items[1].as.array.elements.count;
+	if (n > OSP_MAX_DAY_ACTION) {
+		n = OSP_MAX_DAY_ACTION;
+	}
+	dp->action_count = n;
+	for (uint8_t i = 0; i < n; i++) {
+		const osp_value_t *actv = &items[1].as.array.elements.items[i];
+		if (actv->tag != OSP_TAG_STRUCTURE || actv->as.structure.elements.count < 3) {
+			return OSP_ERR_INVALID;
+		}
+		const osp_value_t *af = actv->as.structure.elements.items;
+		osp_day_profile_action_t *act = &dp->actions[i];
+		if (af[0].tag == OSP_TAG_OCTETSTRING && af[0].as.octetstring.len >= 4) {
+			memcpy(act->time, af[0].as.octetstring.data, 4);
+		}
+		if (af[1].tag == OSP_TAG_OCTETSTRING && af[1].as.octetstring.len >= 6) {
+			memcpy(act->script_logical_name, af[1].as.octetstring.data, 6);
+		}
+		act->scripts[0].script_selector = (int32_t)osp_get_u16(&af[2]);
+		act->script_count = 1;
+	}
 	return OSP_OK;
 }

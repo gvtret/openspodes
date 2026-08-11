@@ -558,14 +558,16 @@ typedef struct {
 	int32_t script_selector;
 } osp_day_profile_action_script_t;
 
-/* day_profile_action ::= structure { time, scripts } */
+/* day_profile_action ::= structure { start_time, script_logical_name, script_selector }
+ * (Blue Book). scripts[] keeps selector for legacy callers; LN is first-class. */
 typedef struct {
 	osp_day_profile_action_script_t scripts[OSP_MAX_SCRIPT_PER_ACTION];
 	uint8_t script_count;
 	uint8_t time[4];
+	uint8_t script_logical_name[6];
 } osp_day_profile_action_t;
 
-/* day_profile ::= structure { name, day_profile_table } */
+/* day_profile ::= structure { day_id: unsigned, day_schedule: array } — day_id in name[0] */
 typedef struct {
 	char name[OSP_MAX_NAME_LEN];
 	uint8_t name_len;
@@ -587,11 +589,11 @@ typedef struct {
 	uint8_t day_name_lens[7];
 } osp_week_profile_t;
 
-/* season ::= structure { name, start, week_name } */
+/* season ::= structure { name, start: octet-string(12), week_name } */
 typedef struct {
 	char name[OSP_MAX_NAME_LEN];
 	uint8_t name_len;
-	osp_obis_t start;
+	uint8_t start[OSP_COSEM_DATETIME_LEN];
 	char week_name[OSP_MAX_NAME_LEN];
 	uint8_t week_name_len;
 } osp_season_t;
