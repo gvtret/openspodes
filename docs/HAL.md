@@ -327,20 +327,19 @@ The library uses static buffers sized by these constants:
 | `OSP_CLIENT_MAX_PDU` | 1024 | Client TX/RX buffer size |
 | `OSP_SERVER_MAX_PDU` | 1024 | Server TX/RX buffer size |
 | `OSP_SERVER_PENDING_MAX` | 32768 | Block transfer reassembly buffer (×32; override with `#ifndef` before include) |
-| `OSP_MAX_OBJECT_LIST` | 32 (255 w/ Category A) | Association LN object_list + encode scratch |
+| `OSP_MAX_OBJECT_LIST` | 32 (255 w/ Category A) | Association LN object_list storage (streamed encode) |
 | `OSP_HDLC_MAX_FRAME_SIZE` | 1024 | Maximum HDLC frame (configurable via #ifndef) |
 | `OSP_GLO_MAX_PLAIN` | 1024 | Max plaintext for glo-ciphering |
 
 **Recommendations:**
-- For MCU / small meters: `cmake -DOPENSPODES_CATEGORY_A=OFF` (object_list=32, ~1 MiB encode scratch) and shrink PDU/pending macros
-- For Category A / Yellow Book / concentrators: keep `OPENSPODES_CATEGORY_A=ON` (255) — expect multi‑MiB BSS for object-list encode
-- For constrained MCUs (< 256 KB RAM): Category A OFF is required; full streaming encode is still future work for <<1 MiB targets
+- For MCU / small meters: `cmake -DOPENSPODES_CATEGORY_A=OFF` (object_list=32) and shrink PDU/pending macros
+- For Category A / Yellow Book / concentrators: keep `OPENSPODES_CATEGORY_A=ON` (255) — object_list storage scales with N; encode streams via `osp_object_list_write` (no multi‑MiB scratch)
+- For constrained MCUs (< 256 KB RAM): Category A OFF is required; further cuts come from PDU/pending macros and object_list N
 
 **Session structs** (order-of-magnitude, depends on PDU macros):
 - `osp_client_t`: ~8 KB
 - `osp_server_t`: ~200 KB with default pending×32 (four pending buffers)
 - `osp_value_read_pool`: shared codec pool (mutex-protected when `osp_hal_mutex` is set)
-- Association LN object-list encode scratch: ~1 MiB at N=32, ~7.9 MiB at N=255
 
 ---
 

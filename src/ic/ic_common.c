@@ -294,103 +294,15 @@ osp_err_t osp_ic_read_threshold_list(const osp_value_t *val, osp_threshold_list_
 	return OSP_OK;
 }
 
-static osp_value_t ic_val_access_right(const osp_access_right_t *ar, osp_value_t outer[2], osp_value_t attr_rows[OSP_MAX_ACCESS_ITEMS],
-                                       osp_value_t method_rows[OSP_MAX_ACCESS_ITEMS], osp_value_t attr_fields[OSP_MAX_ACCESS_ITEMS][3],
-                                       osp_value_t method_fields[OSP_MAX_ACCESS_ITEMS][2]) {
-	osp_value_t v = {0};
-	uint8_t ac = ar ? ar->attr_count : 0;
-	uint8_t mc = ar ? ar->method_count : 0;
-	if (ac > OSP_MAX_ACCESS_ITEMS) {
-		ac = OSP_MAX_ACCESS_ITEMS;
-	}
-	if (mc > OSP_MAX_ACCESS_ITEMS) {
-		mc = OSP_MAX_ACCESS_ITEMS;
-	}
-	for (uint8_t i = 0; i < ac; i++) {
-		attr_fields[i][0] = osp_val_i8(ar->attr_items[i].attribute_id);
-		attr_fields[i][1] = osp_val_enum((uint8_t)ar->attr_items[i].access_mode);
-		attr_fields[i][2] = osp_val_null();
-		attr_rows[i].tag = OSP_TAG_STRUCTURE;
-		attr_rows[i].as.structure.elements.items = attr_fields[i];
-		attr_rows[i].as.structure.elements.count = 3;
-		attr_rows[i].as.structure.elements.capacity = 3;
-	}
-	for (uint8_t i = 0; i < mc; i++) {
-		method_fields[i][0] = osp_val_i8(ar->method_items[i].method_id);
-		method_fields[i][1] = osp_val_enum((uint8_t)ar->method_items[i].access_mode);
-		method_rows[i].tag = OSP_TAG_STRUCTURE;
-		method_rows[i].as.structure.elements.items = method_fields[i];
-		method_rows[i].as.structure.elements.count = 2;
-		method_rows[i].as.structure.elements.capacity = 2;
-	}
-	outer[0].tag = OSP_TAG_ARRAY;
-	outer[0].as.array.elements.items = attr_rows;
-	outer[0].as.array.elements.count = ac;
-	outer[0].as.array.elements.capacity = OSP_MAX_ACCESS_ITEMS;
-	outer[1].tag = OSP_TAG_ARRAY;
-	outer[1].as.array.elements.items = method_rows;
-	outer[1].as.array.elements.count = mc;
-	outer[1].as.array.elements.capacity = OSP_MAX_ACCESS_ITEMS;
-	v.tag = OSP_TAG_STRUCTURE;
-	v.as.structure.elements.items = outer;
-	v.as.structure.elements.count = 2;
-	v.as.structure.elements.capacity = 2;
-	return v;
-}
-
 /*
- * Scratch for object_list → osp_value_t encode.
- * Must NOT be _Thread_local: multi-MB TLS is carved from each pthread's stack
- * on glibc and leaves ~0 usable stack (SEGV on first non-trivial call).
- * Process-wide BSS; not re-entrant. Caller must osp_value_write the result
- * before the next osp_ic_val_object_list (any thread). Full MT object_list
- * encode needs a caller-provided scratch (future).
+ * Stream object_list via OSP_TAG_OBJECT_LIST_REF: osp_value_write calls
+ * osp_object_list_write without a multi-MiB value-tree scratch. The pointed-to
+ * osp_object_list_t must remain valid until encode finishes.
  */
-typedef struct {
-	osp_value_t rows[OSP_MAX_OBJECT_LIST];
-	osp_value_t fields[OSP_MAX_OBJECT_LIST][4];
-	osp_value_t ar_outer[OSP_MAX_OBJECT_LIST][2];
-	osp_value_t ar_attr_rows[OSP_MAX_OBJECT_LIST][OSP_MAX_ACCESS_ITEMS];
-	osp_value_t ar_method_rows[OSP_MAX_OBJECT_LIST][OSP_MAX_ACCESS_ITEMS];
-	osp_value_t ar_attr_fields[OSP_MAX_OBJECT_LIST][OSP_MAX_ACCESS_ITEMS][3];
-	osp_value_t ar_method_fields[OSP_MAX_OBJECT_LIST][OSP_MAX_ACCESS_ITEMS][2];
-} osp_ol_encode_scratch_t;
-
-static osp_ol_encode_scratch_t g_ol_encode_scratch;
-
 osp_value_t osp_ic_val_object_list(const osp_object_list_t *ol) {
-	/* Per-element buffers: access-right trees must stay alive until encode finishes. */
-	osp_ol_encode_scratch_t *s = &g_ol_encode_scratch;
-	osp_value_t *rows = s->rows;
-	osp_value_t(*fields)[4] = s->fields;
-	osp_value_t(*ar_outer)[2] = s->ar_outer;
-	osp_value_t(*ar_attr_rows)[OSP_MAX_ACCESS_ITEMS] = s->ar_attr_rows;
-	osp_value_t(*ar_method_rows)[OSP_MAX_ACCESS_ITEMS] = s->ar_method_rows;
-	osp_value_t(*ar_attr_fields)[OSP_MAX_ACCESS_ITEMS][3] = s->ar_attr_fields;
-	osp_value_t(*ar_method_fields)[OSP_MAX_ACCESS_ITEMS][2] = s->ar_method_fields;
 	osp_value_t v = {0};
-	uint16_t n = ol ? ol->count : 0;
-	if (n > OSP_MAX_OBJECT_LIST) {
-		n = OSP_MAX_OBJECT_LIST;
-	}
-	for (uint16_t i = 0; i < n; i++) {
-		const osp_object_list_element_t *e = &ol->elements[i];
-		fields[i][0] = osp_val_u16(e->class_id);
-		fields[i][1] = osp_val_u8(e->version);
-		fields[i][2].tag = OSP_TAG_OCTETSTRING;
-		fields[i][2].as.octetstring.len = 6;
-		memcpy(fields[i][2].as.octetstring.data, &e->logical_name, 6);
-		fields[i][3] = ic_val_access_right(&e->access_rights, ar_outer[i], ar_attr_rows[i], ar_method_rows[i], ar_attr_fields[i],
-		                                   ar_method_fields[i]);
-		rows[i].tag = OSP_TAG_STRUCTURE;
-		rows[i].as.structure.elements.items = fields[i];
-		rows[i].as.structure.elements.count = 4;
-		rows[i].as.structure.elements.capacity = 4;
-	}
-	v.tag = OSP_TAG_ARRAY;
-	v.as.array.elements.items = rows;
-	v.as.array.elements.count = (uint8_t)n;
-	v.as.array.elements.capacity = (uint8_t)OSP_MAX_OBJECT_LIST;
+	v.tag = OSP_TAG_OBJECT_LIST_REF;
+	v.as.ref = ol;
 	return v;
 }
 

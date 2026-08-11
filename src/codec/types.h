@@ -85,6 +85,12 @@ typedef enum {
 	OSP_TAG_DELTA_DLONG_UNS = 33,
 } osp_axdr_tag_t;
 
+/*
+ * Internal encoder hint (never appears on the wire). osp_value_write rewrites
+ * this as a normal ARRAY of object_list elements without a multi-MiB scratch.
+ */
+#define OSP_TAG_OBJECT_LIST_REF 0xF0
+
 /* ── Fixed size lookup (used by compact_array) ───────────────────────────── */
 
 static inline uint8_t osp_axdr_type_size(uint8_t tag) {
@@ -326,6 +332,7 @@ struct osp_value {
 		osp_delta_uint32_t delta_uint32;
 		osp_array_t array;
 		osp_structure_t structure;
+		const void *ref; /* OSP_TAG_OBJECT_LIST_REF → const osp_object_list_t * */
 	} as;
 };
 

@@ -347,7 +347,7 @@ Client:                              Server:
 | `OSP_HDLC_MAX_ADDR_LEN` | 4 | Maximum HDLC address length |
 | `OSP_SPODUS_MAX_METERS` | 16 | Maximum meters in concentrator |
 | `OSP_MAX_OBJECTS` | 320 | Maximum IC objects in dispatcher |
-| `OSP_MAX_OBJECT_LIST` | 32 (255 with Category A) | Association LN object_list + encode scratch; CMake `OPENSPODES_CATEGORY_A` |
+| `OSP_MAX_OBJECT_LIST` | 32 (255 with Category A) | Association LN object_list (streamed encode); CMake `OPENSPODES_CATEGORY_A` |
 | `OSP_MAX_BUFFER_ROWS` | 32 | Maximum rows in ProfileGeneric buffer |
 | `OSP_MAX_CAPTURE_OBJECTS` | 32 | Maximum capture objects |
 

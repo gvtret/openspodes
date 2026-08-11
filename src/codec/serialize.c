@@ -1462,6 +1462,15 @@ osp_err_t osp_value_write(osp_buf_t *buf, const osp_value_t *val) {
 			return OSP_OK;
 		}
 
+		case OSP_TAG_OBJECT_LIST_REF: {
+			/* Undo the placeholder tag byte written above; emit a real ARRAY. */
+			if (buf->wr == 0) {
+				return OSP_ERR_INVALID;
+			}
+			buf->wr--;
+			return osp_object_list_write(buf, (const osp_object_list_t *)val->as.ref);
+		}
+
 		default:
 			return OSP_ERR_UNSUPPORTED;
 	}
@@ -1633,6 +1642,34 @@ osp_err_t osp_object_list_element_write(osp_buf_t *buf, const osp_object_list_el
 		return r;
 	if ((r = osp_access_right_write(buf, &elem->access_rights)) != OSP_OK)
 		return r;
+	return OSP_OK;
+}
+
+osp_err_t osp_object_list_write(osp_buf_t *buf, const osp_object_list_t *ol) {
+	if (!buf) {
+		return OSP_ERR_INVALID;
+	}
+	uint16_t n = ol ? ol->count : 0;
+	if (n > OSP_MAX_OBJECT_LIST) {
+		n = OSP_MAX_OBJECT_LIST;
+	}
+	if (n > 255) {
+		n = 255;
+	}
+	osp_err_t r = osp_axdr_write_u8(buf, OSP_TAG_ARRAY);
+	if (r != OSP_OK) {
+		return r;
+	}
+	r = osp_ber_write_length(buf, (uint8_t)n);
+	if (r != OSP_OK) {
+		return r;
+	}
+	for (uint16_t i = 0; i < n; i++) {
+		r = osp_object_list_element_write(buf, &ol->elements[i]);
+		if (r != OSP_OK) {
+			return r;
+		}
+	}
 	return OSP_OK;
 }
 

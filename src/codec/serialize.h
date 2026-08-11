@@ -136,6 +136,8 @@ osp_err_t osp_access_right_write(osp_buf_t *buf, const osp_access_right_t *ar);
 osp_err_t osp_object_list_element_read(osp_buf_t *buf, osp_object_list_element_t *elem);
 /** @brief Write an object list element to the buffer. */
 osp_err_t osp_object_list_element_write(osp_buf_t *buf, const osp_object_list_element_t *elem);
+/** @brief Write a full object_list as an A-XDR ARRAY (tag + elements). */
+osp_err_t osp_object_list_write(osp_buf_t *buf, const osp_object_list_t *ol);
 
 /** @brief Read a capture object structure from the buffer. */
 osp_err_t osp_capture_object_read(osp_buf_t *buf, osp_capture_object_t *co);
