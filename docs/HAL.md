@@ -328,7 +328,7 @@ The library uses static buffers sized by these constants:
 |----------|---------|---------|
 | `OSP_CLIENT_MAX_PDU` | 1024 | Client TX/RX buffer size |
 | `OSP_SERVER_MAX_PDU` | 1024 | Server TX/RX buffer size |
-| `OSP_SERVER_PENDING_MAX` | 32768 | Block transfer reassembly buffer (×32; override with `#ifndef` before include) |
+| `OSP_SERVER_PENDING_MAX` | 32768 (8192 w/ MCU) | Block transfer reassembly buffer (×32; override with `#ifndef` before include) |
 | `OSP_MAX_OBJECT_LIST` | 32 (255 w/ Category A) | Association LN object_list storage (streamed encode) |
 | `OSP_MAX_ACCESS_ITEMS` | 16 | Attr ACL slots per object_list element |
 | `OSP_MAX_METHOD_ITEMS` | 16 (8 w/ MCU) | Method ACL slots per object_list element |
@@ -337,14 +337,14 @@ The library uses static buffers sized by these constants:
 | `OSP_GLO_MAX_PLAIN` | 1024 | Max plaintext for glo-ciphering |
 
 **Recommendations:**
-- For MCU / small meters: `cmake -DOPENSPODES_CATEGORY_A=OFF` (object_list=32, decode pool=128, method ACL=8) and shrink PDU/pending macros
+- For MCU / small meters: `cmake -DOPENSPODES_CATEGORY_A=OFF` (object_list=32, decode pool=128, method ACL=8, pending=8192) and shrink PDU further if needed
 - For Category A / Yellow Book / concentrators: keep `OPENSPODES_CATEGORY_A=ON` (255) — object_list storage scales with N; encode streams via `osp_object_list_write` (no multi‑MiB scratch)
 - For constrained MCUs (< 256 KB RAM): Category A OFF is required; further cuts come from PDU/pending macros, `OSP_VALUE_READ_POOL_LEN`, and object_list N
 - ACL rows store `{attr_id, access_mode}` only (wire `access_selectors` is always NULL on encode / skipped on decode) — keeps each object_list element ~276 B at defaults, ~212 B with MCU method=8
 
 **Session structs** (order-of-magnitude, depends on PDU macros):
 - `osp_client_t`: ~8 KB
-- `osp_server_t`: ~200 KB with default pending×32 (four pending buffers)
+- `osp_server_t`: ~205 KB with default pending×32 (four pending buffers); ~61 KB with MCU pending=8192
 - `osp_value_read_pool`: shared codec pool (mutex-protected when `osp_hal_mutex` is set); ~136 KiB default (32×16), ~34 KiB with MCU profile (128)
 - Association LN with object_list=255: ~70 KiB (was ~230 KiB when ACL embedded unused selector blobs)
 - Large IC attributes (object_list, profile buffer, capture objects, day profiles) stream via internal `*_REF` tags — no multi‑MiB encode scratch

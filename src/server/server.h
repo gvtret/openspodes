@@ -6,7 +6,8 @@
  *
  * Memory configuration (override with #define before including this header):
  * - OSP_SERVER_MAX_PDU (default 1024): rx/tx buffer size
- * - OSP_SERVER_PENDING_MAX (default MAX_PDU*32): block transfer reassembly
+ * - OSP_SERVER_PENDING_MAX (default MAX_PDU*32; MCU CMake profile uses 8192):
+ *   block transfer reassembly per pending buffer (four buffers in osp_server_t)
  * - OSP_MAX_OBJECTS (default 320): registered IC objects
  *
  * For constrained MCUs (< 32KB RAM), define before including:
