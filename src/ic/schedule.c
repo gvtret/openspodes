@@ -7,6 +7,23 @@
 
 static const uint8_t sched_attrs[] = {1, 2};
 
+static osp_value_t sched_entries_val(const osp_ic_schedule_t *s) {
+	OSP_TLS osp_schedule_list_view_t view;
+	osp_value_t v = {0};
+	uint8_t n = s->entry_count;
+	if (n > OSP_MAX_SCHEDULE_ENTRY) {
+		n = OSP_MAX_SCHEDULE_ENTRY;
+	}
+	if (n == 0) {
+		return osp_ic_val_empty_array();
+	}
+	view.entries = s->entries;
+	view.count = n;
+	v.tag = OSP_TAG_SCHEDULE_LIST_REF;
+	v.as.ref = &view;
+	return v;
+}
+
 /* ── get_attr ───────────────────────────────────────────────────────────── */
 
 static osp_err_t sched_get(const void *inst, uint8_t attr_id, osp_value_t *result) {
@@ -22,10 +39,7 @@ static osp_err_t sched_get(const void *inst, uint8_t attr_id, osp_value_t *resul
 		case 1:
 			return osp_ic_get_logical_name(result, &s->logical_name);
 		case 2:
-			/* Return schedule entries as array */
-			result->tag = OSP_TAG_ARRAY;
-			result->as.array.elements.count = s->entry_count;
-			result->as.array.elements.capacity = OSP_MAX_SCHEDULE_ENTRY;
+			*result = sched_entries_val(s);
 			return OSP_OK;
 		default:
 			return OSP_ERR_NOT_FOUND;

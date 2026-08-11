@@ -148,6 +148,12 @@ osp_err_t osp_day_profile_table_write(osp_buf_t *buf, const osp_day_profile_tabl
 osp_err_t osp_season_profile_table_write(osp_buf_t *buf, const osp_season_profile_table_view_t *view);
 /** @brief Write a week-profile table as an A-XDR ARRAY. */
 osp_err_t osp_week_profile_table_write(osp_buf_t *buf, const osp_week_profile_table_view_t *view);
+/** @brief Write a Special Days table as an A-XDR ARRAY. */
+osp_err_t osp_special_days_list_write(osp_buf_t *buf, const osp_special_days_list_view_t *view);
+/** @brief Write a Schedule entries list as an A-XDR ARRAY. */
+osp_err_t osp_schedule_list_write(osp_buf_t *buf, const osp_schedule_list_view_t *view);
+/** @brief Write a Script Table scripts list as an A-XDR ARRAY. */
+osp_err_t osp_script_list_write(osp_buf_t *buf, const osp_script_list_view_t *view);
 /** @brief Write a Push Setup object list as an A-XDR ARRAY. */
 osp_err_t osp_push_object_list_write(osp_buf_t *buf, const osp_push_object_list_view_t *view);
 /** @brief Write Push communication windows as an A-XDR ARRAY. */

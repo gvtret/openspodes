@@ -426,6 +426,21 @@ typedef struct {
 	uint8_t date[5]; /* date format: year_h, year_l, month, day, dow */
 } osp_special_day_t;
 
+typedef struct {
+	const osp_special_day_t *entries;
+	uint8_t count;
+} osp_special_days_list_view_t;
+
+typedef struct {
+	const osp_schedule_entry_t *entries;
+	uint8_t count;
+} osp_schedule_list_view_t;
+
+typedef struct {
+	const osp_script_t *scripts;
+	uint8_t count;
+} osp_script_list_view_t;
+
 /* ═══════════════════════════════════════════════════════════════════════════
  *  CLASS 15: Association LN
  * ═══════════════════════════════════════════════════════════════════════════ */

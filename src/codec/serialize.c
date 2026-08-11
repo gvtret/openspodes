@@ -1591,6 +1591,30 @@ osp_err_t osp_value_write(osp_buf_t *buf, const osp_value_t *val) {
 			return osp_u32_array_write(buf, (const osp_u32_array_view_t *)val->as.ref);
 		}
 
+		case OSP_TAG_SPECIAL_DAYS_LIST_REF: {
+			if (buf->wr == 0) {
+				return OSP_ERR_INVALID;
+			}
+			buf->wr--;
+			return osp_special_days_list_write(buf, (const osp_special_days_list_view_t *)val->as.ref);
+		}
+
+		case OSP_TAG_SCHEDULE_LIST_REF: {
+			if (buf->wr == 0) {
+				return OSP_ERR_INVALID;
+			}
+			buf->wr--;
+			return osp_schedule_list_write(buf, (const osp_schedule_list_view_t *)val->as.ref);
+		}
+
+		case OSP_TAG_SCRIPT_LIST_REF: {
+			if (buf->wr == 0) {
+				return OSP_ERR_INVALID;
+			}
+			buf->wr--;
+			return osp_script_list_write(buf, (const osp_script_list_view_t *)val->as.ref);
+		}
+
 		default:
 			return OSP_ERR_UNSUPPORTED;
 	}
@@ -2158,6 +2182,195 @@ osp_err_t osp_week_profile_table_write(osp_buf_t *buf, const osp_week_profile_ta
 				return r;
 			}
 			r = osp_axdr_write_u8(buf, wp->day_names[d][0]);
+			if (r != OSP_OK) {
+				return r;
+			}
+		}
+	}
+	return OSP_OK;
+}
+
+osp_err_t osp_special_days_list_write(osp_buf_t *buf, const osp_special_days_list_view_t *view) {
+	if (!buf) {
+		return OSP_ERR_INVALID;
+	}
+	uint8_t n = (view && view->entries) ? view->count : 0;
+	if (n > 32) {
+		n = 32;
+	}
+	osp_err_t r = osp_array_begin(buf, n);
+	if (r != OSP_OK) {
+		return r;
+	}
+	for (uint8_t i = 0; i < n; i++) {
+		const osp_special_day_t *e = &view->entries[i];
+		r = osp_struct_begin(buf, 2);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_DOUBLE_LONG_UNS);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u32(buf, e->day_id);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_OCTETSTRING);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_octet_string(buf, e->date, 5);
+		if (r != OSP_OK) {
+			return r;
+		}
+	}
+	return OSP_OK;
+}
+
+osp_err_t osp_schedule_list_write(osp_buf_t *buf, const osp_schedule_list_view_t *view) {
+	if (!buf) {
+		return OSP_ERR_INVALID;
+	}
+	uint8_t n = (view && view->entries) ? view->count : 0;
+	if (n > OSP_MAX_SCHEDULE_ENTRY) {
+		n = OSP_MAX_SCHEDULE_ENTRY;
+	}
+	osp_err_t r = osp_array_begin(buf, n);
+	if (r != OSP_OK) {
+		return r;
+	}
+	for (uint8_t i = 0; i < n; i++) {
+		const osp_schedule_entry_t *e = &view->entries[i];
+		uint8_t sn = e->script_count;
+		if (sn > OSP_MAX_SCRIPT_PER_ACTION) {
+			sn = OSP_MAX_SCRIPT_PER_ACTION;
+		}
+		r = osp_struct_begin(buf, 4);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_BOOLEAN);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, e->enable ? 1 : 0);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_OCTETSTRING);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_octet_string(buf, e->start_time, 4);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_OCTETSTRING);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_octet_string(buf, e->end_time, 4);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_array_begin(buf, sn);
+		if (r != OSP_OK) {
+			return r;
+		}
+		for (uint8_t j = 0; j < sn; j++) {
+			r = osp_struct_begin(buf, 2);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_axdr_write_u8(buf, OSP_TAG_DOUBLE_LONG_UNS);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_axdr_write_u32(buf, e->scripts[j].script_id);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_axdr_write_u8(buf, OSP_TAG_DOUBLE_LONG);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_axdr_write_i32(buf, e->scripts[j].script_selector);
+			if (r != OSP_OK) {
+				return r;
+			}
+		}
+	}
+	return OSP_OK;
+}
+
+osp_err_t osp_script_list_write(osp_buf_t *buf, const osp_script_list_view_t *view) {
+	if (!buf) {
+		return OSP_ERR_INVALID;
+	}
+	uint8_t n = (view && view->scripts) ? view->count : 0;
+	if (n > OSP_MAX_SCRIPTS) {
+		n = OSP_MAX_SCRIPTS;
+	}
+	osp_err_t r = osp_array_begin(buf, n);
+	if (r != OSP_OK) {
+		return r;
+	}
+	for (uint8_t i = 0; i < n; i++) {
+		const osp_script_t *sc = &view->scripts[i];
+		uint8_t an = sc->action_count;
+		if (an > OSP_MAX_SCRIPT_ACTIONS) {
+			an = OSP_MAX_SCRIPT_ACTIONS;
+		}
+		r = osp_struct_begin(buf, 2);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_DOUBLE_LONG_UNS);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u32(buf, sc->script_id);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_array_begin(buf, an);
+		if (r != OSP_OK) {
+			return r;
+		}
+		for (uint8_t j = 0; j < an; j++) {
+			const osp_script_action_item_t *ai = &sc->actions[j];
+			uint8_t ln[6] = {ai->logical_name.a, ai->logical_name.b, ai->logical_name.c,
+			                 ai->logical_name.d, ai->logical_name.e, ai->logical_name.f};
+			r = osp_struct_begin(buf, 4);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_axdr_write_u8(buf, OSP_TAG_LONG_UNSIGNED);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_axdr_write_u16(buf, ai->class_id);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_axdr_write_u8(buf, OSP_TAG_OCTETSTRING);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_axdr_write_octet_string(buf, ln, 6);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_axdr_write_u8(buf, OSP_TAG_INTEGER);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_axdr_write_i8(buf, ai->method_id);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_value_write(buf, &ai->method_param);
 			if (r != OSP_OK) {
 				return r;
 			}

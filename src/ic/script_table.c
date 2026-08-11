@@ -18,6 +18,23 @@ static osp_script_t *find_script(osp_ic_script_table_t *t, uint32_t script_id) {
 	return NULL;
 }
 
+static osp_value_t st_scripts_val(const osp_ic_script_table_t *t) {
+	OSP_TLS osp_script_list_view_t view;
+	osp_value_t v = {0};
+	uint8_t n = t->script_count;
+	if (n > OSP_MAX_SCRIPTS) {
+		n = OSP_MAX_SCRIPTS;
+	}
+	if (n == 0) {
+		return osp_ic_val_empty_array();
+	}
+	view.scripts = t->scripts;
+	view.count = n;
+	v.tag = OSP_TAG_SCRIPT_LIST_REF;
+	v.as.ref = &view;
+	return v;
+}
+
 /* ── get_attr ───────────────────────────────────────────────────────────── */
 
 static osp_err_t st_get(const void *inst, uint8_t attr_id, osp_value_t *result) {
@@ -33,7 +50,7 @@ static osp_err_t st_get(const void *inst, uint8_t attr_id, osp_value_t *result) 
 		case 1:
 			return osp_ic_get_logical_name(result, &t->logical_name);
 		case 2:
-			*result = osp_ic_val_empty_array();
+			*result = st_scripts_val(t);
 			return OSP_OK;
 		default:
 			return OSP_ERR_NOT_FOUND;

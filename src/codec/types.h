@@ -108,9 +108,13 @@ typedef enum {
 #define OSP_TAG_USER_LIST_REF 0xFD
 #define OSP_TAG_U16_ARRAY_REF 0xFE
 #define OSP_TAG_U32_ARRAY_REF 0xFF
+/* Extra list REFs just below the F0 block (AXDR tags stop ~0x21). */
+#define OSP_TAG_SPECIAL_DAYS_LIST_REF 0xEF
+#define OSP_TAG_SCHEDULE_LIST_REF 0xEE
+#define OSP_TAG_SCRIPT_LIST_REF 0xED
 
 static inline bool osp_tag_is_internal_ref(uint8_t tag) {
-	return tag >= OSP_TAG_OBJECT_LIST_REF;
+	return tag >= OSP_TAG_SCRIPT_LIST_REF;
 }
 
 /* ── Fixed size lookup (used by compact_array) ───────────────────────────── */
