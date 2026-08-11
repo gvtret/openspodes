@@ -19,27 +19,6 @@
 #include "../codec/structures.h"
 
 /**
- * @brief SAP assignment item structure
- *
- * Maps a SAP (Service Access Point) identifier to a logical device name.
- */
-typedef struct {
-	uint16_t sap;                          /**< Service Access Point identifier */
-	uint8_t logical_device_name[64];       /**< Logical device name string */
-	uint8_t logical_device_name_len;       /**< Length of logical device name */
-} osp_sap_assignment_item_t;
-
-/**
- * @brief SAP assignment list structure
- *
- * Contains a list of SAP assignment items.
- */
-typedef struct {
-	osp_sap_assignment_item_t items[16];   /**< Array of SAP assignment items */
-	uint8_t count;                         /**< Number of items in the list */
-} osp_sap_assignment_list_t;
-
-/**
  * @brief SAP Assignment object structure
  *
  * Maps communication ports (SAPs) to logical device names for

@@ -6,24 +6,12 @@
 static const uint8_t sap_attrs[] = {1, 2};
 
 static osp_value_t sap_list_value(const osp_ic_sap_assignment_t *s) {
-	OSP_TLS osp_value_t row_fields[16][2];
-	OSP_TLS osp_value_t rows[16];
 	osp_value_t v = {0};
-	for (uint8_t i = 0; i < s->sap_list.count && i < 16; i++) {
-		row_fields[i][0] = osp_val_u16(s->sap_list.items[i].sap);
-		row_fields[i][1].tag = OSP_TAG_OCTETSTRING;
-		row_fields[i][1].as.octetstring.len = s->sap_list.items[i].logical_device_name_len;
-		memcpy(row_fields[i][1].as.octetstring.data, s->sap_list.items[i].logical_device_name,
-		       s->sap_list.items[i].logical_device_name_len);
-		rows[i].tag = OSP_TAG_STRUCTURE;
-		rows[i].as.structure.elements.items = row_fields[i];
-		rows[i].as.structure.elements.count = 2;
-		rows[i].as.structure.elements.capacity = 2;
+	if (!s || s->sap_list.count == 0) {
+		return osp_ic_val_empty_array();
 	}
-	v.tag = OSP_TAG_ARRAY;
-	v.as.array.elements.items = rows;
-	v.as.array.elements.count = s->sap_list.count;
-	v.as.array.elements.capacity = 16;
+	v.tag = OSP_TAG_SAP_ASSIGNMENT_LIST_REF;
+	v.as.ref = &s->sap_list;
 	return v;
 }
 

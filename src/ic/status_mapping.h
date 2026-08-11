@@ -1,6 +1,7 @@
 #ifndef OSP_IC_STATUS_MAPPING_H
 #define OSP_IC_STATUS_MAPPING_H
 #include "../openspodes.h"
+#include "../codec/structures.h"
 
 /**
  * @file status_mapping.h
@@ -15,13 +16,6 @@
  * @par Methods
  * None.
  */
-
-#define OSP_MAX_STATUS_MAPPINGS 16
-
-typedef struct {
-	uint8_t status_flag_id;
-	uint8_t status_reference[6];
-} osp_status_mapping_entry_t;
 
 typedef struct {
 	osp_obis_t logical_name;

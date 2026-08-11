@@ -148,6 +148,16 @@ osp_err_t osp_day_profile_table_write(osp_buf_t *buf, const osp_day_profile_tabl
 osp_err_t osp_season_profile_table_write(osp_buf_t *buf, const osp_season_profile_table_view_t *view);
 /** @brief Write a week-profile table as an A-XDR ARRAY. */
 osp_err_t osp_week_profile_table_write(osp_buf_t *buf, const osp_week_profile_table_view_t *view);
+/** @brief Write a Push Setup object list as an A-XDR ARRAY. */
+osp_err_t osp_push_object_list_write(osp_buf_t *buf, const osp_push_object_list_view_t *view);
+/** @brief Write Push communication windows as an A-XDR ARRAY. */
+osp_err_t osp_comm_window_list_write(osp_buf_t *buf, const osp_comm_window_list_view_t *view);
+/** @brief Write a register-monitor threshold list as an A-XDR ARRAY. */
+osp_err_t osp_threshold_list_write(osp_buf_t *buf, const osp_threshold_list_t *tl);
+/** @brief Write a SAP assignment list as an A-XDR ARRAY. */
+osp_err_t osp_sap_assignment_list_write(osp_buf_t *buf, const osp_sap_assignment_list_t *list);
+/** @brief Write a status-mapping table as an A-XDR ARRAY. */
+osp_err_t osp_status_mapping_table_write(osp_buf_t *buf, const osp_status_mapping_table_view_t *view);
 
 /** @brief Read a capture object structure from the buffer. */
 osp_err_t osp_capture_object_read(osp_buf_t *buf, osp_capture_object_t *co);

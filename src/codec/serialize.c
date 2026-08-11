@@ -1511,6 +1511,46 @@ osp_err_t osp_value_write(osp_buf_t *buf, const osp_value_t *val) {
 			return osp_week_profile_table_write(buf, (const osp_week_profile_table_view_t *)val->as.ref);
 		}
 
+		case OSP_TAG_PUSH_OBJECT_LIST_REF: {
+			if (buf->wr == 0) {
+				return OSP_ERR_INVALID;
+			}
+			buf->wr--;
+			return osp_push_object_list_write(buf, (const osp_push_object_list_view_t *)val->as.ref);
+		}
+
+		case OSP_TAG_COMM_WINDOW_LIST_REF: {
+			if (buf->wr == 0) {
+				return OSP_ERR_INVALID;
+			}
+			buf->wr--;
+			return osp_comm_window_list_write(buf, (const osp_comm_window_list_view_t *)val->as.ref);
+		}
+
+		case OSP_TAG_THRESHOLD_LIST_REF: {
+			if (buf->wr == 0) {
+				return OSP_ERR_INVALID;
+			}
+			buf->wr--;
+			return osp_threshold_list_write(buf, (const osp_threshold_list_t *)val->as.ref);
+		}
+
+		case OSP_TAG_SAP_ASSIGNMENT_LIST_REF: {
+			if (buf->wr == 0) {
+				return OSP_ERR_INVALID;
+			}
+			buf->wr--;
+			return osp_sap_assignment_list_write(buf, (const osp_sap_assignment_list_t *)val->as.ref);
+		}
+
+		case OSP_TAG_STATUS_MAPPING_TABLE_REF: {
+			if (buf->wr == 0) {
+				return OSP_ERR_INVALID;
+			}
+			buf->wr--;
+			return osp_status_mapping_table_write(buf, (const osp_status_mapping_table_view_t *)val->as.ref);
+		}
+
 		default:
 			return OSP_ERR_UNSUPPORTED;
 	}
@@ -2078,6 +2118,211 @@ osp_err_t osp_week_profile_table_write(osp_buf_t *buf, const osp_week_profile_ta
 			if (r != OSP_OK) {
 				return r;
 			}
+		}
+	}
+	return OSP_OK;
+}
+
+osp_err_t osp_push_object_list_write(osp_buf_t *buf, const osp_push_object_list_view_t *view) {
+	if (!buf) {
+		return OSP_ERR_INVALID;
+	}
+	uint8_t n = (view && view->items) ? view->count : 0;
+	if (n > OSP_MAX_PUSH_OBJECTS) {
+		n = OSP_MAX_PUSH_OBJECTS;
+	}
+	osp_err_t r = osp_array_begin(buf, n);
+	if (r != OSP_OK) {
+		return r;
+	}
+	for (uint8_t i = 0; i < n; i++) {
+		const osp_push_object_t *po = &view->items[i];
+		r = osp_struct_begin(buf, 4);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_LONG_UNSIGNED);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u16(buf, po->class_id);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_OCTETSTRING);
+		if (r != OSP_OK) {
+			return r;
+		}
+		{
+			uint8_t ln[6] = {po->logical_name.a, po->logical_name.b, po->logical_name.c,
+			                 po->logical_name.d, po->logical_name.e, po->logical_name.f};
+			r = osp_axdr_write_octet_string(buf, ln, 6);
+			if (r != OSP_OK) {
+				return r;
+			}
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_INTEGER);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_i8(buf, po->attribute_index);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_LONG_UNSIGNED);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u16(buf, po->data_index);
+		if (r != OSP_OK) {
+			return r;
+		}
+	}
+	return OSP_OK;
+}
+
+osp_err_t osp_comm_window_list_write(osp_buf_t *buf, const osp_comm_window_list_view_t *view) {
+	if (!buf) {
+		return OSP_ERR_INVALID;
+	}
+	uint8_t n = (view && view->windows) ? view->count : 0;
+	if (n > OSP_MAX_COMM_WINDOW) {
+		n = OSP_MAX_COMM_WINDOW;
+	}
+	osp_err_t r = osp_array_begin(buf, n);
+	if (r != OSP_OK) {
+		return r;
+	}
+	for (uint8_t i = 0; i < n; i++) {
+		const osp_comm_window_t *w = &view->windows[i];
+		r = osp_struct_begin(buf, 2);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_OCTETSTRING);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_octet_string(buf, w->start, OSP_COSEM_DATETIME_LEN);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_OCTETSTRING);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_octet_string(buf, w->end, OSP_COSEM_DATETIME_LEN);
+		if (r != OSP_OK) {
+			return r;
+		}
+	}
+	return OSP_OK;
+}
+
+osp_err_t osp_threshold_list_write(osp_buf_t *buf, const osp_threshold_list_t *tl) {
+	if (!buf) {
+		return OSP_ERR_INVALID;
+	}
+	uint8_t n = tl ? tl->count : 0;
+	if (n > 16) {
+		n = 16;
+	}
+	osp_err_t r = osp_array_begin(buf, n);
+	if (r != OSP_OK) {
+		return r;
+	}
+	for (uint8_t i = 0; i < n; i++) {
+		r = osp_struct_begin(buf, 2);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_value_write(buf, &tl->thresholds[i].value);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_ENUM);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, (uint8_t)tl->thresholds[i].severity);
+		if (r != OSP_OK) {
+			return r;
+		}
+	}
+	return OSP_OK;
+}
+
+osp_err_t osp_sap_assignment_list_write(osp_buf_t *buf, const osp_sap_assignment_list_t *list) {
+	if (!buf) {
+		return OSP_ERR_INVALID;
+	}
+	uint8_t n = list ? list->count : 0;
+	if (n > OSP_MAX_SAP_ASSIGNMENTS) {
+		n = OSP_MAX_SAP_ASSIGNMENTS;
+	}
+	osp_err_t r = osp_array_begin(buf, n);
+	if (r != OSP_OK) {
+		return r;
+	}
+	for (uint8_t i = 0; i < n; i++) {
+		const osp_sap_assignment_item_t *item = &list->items[i];
+		r = osp_struct_begin(buf, 2);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_LONG_UNSIGNED);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u16(buf, item->sap);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_OCTETSTRING);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_octet_string(buf, item->logical_device_name, item->logical_device_name_len);
+		if (r != OSP_OK) {
+			return r;
+		}
+	}
+	return OSP_OK;
+}
+
+osp_err_t osp_status_mapping_table_write(osp_buf_t *buf, const osp_status_mapping_table_view_t *view) {
+	if (!buf) {
+		return OSP_ERR_INVALID;
+	}
+	uint8_t n = (view && view->entries) ? view->count : 0;
+	if (n > OSP_MAX_STATUS_MAPPINGS) {
+		n = OSP_MAX_STATUS_MAPPINGS;
+	}
+	osp_err_t r = osp_array_begin(buf, n);
+	if (r != OSP_OK) {
+		return r;
+	}
+	for (uint8_t i = 0; i < n; i++) {
+		const osp_status_mapping_entry_t *e = &view->entries[i];
+		r = osp_struct_begin(buf, 2);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_UNSIGNED);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, e->status_flag_id);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_OCTETSTRING);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_octet_string(buf, e->status_reference, 6);
+		if (r != OSP_OK) {
+			return r;
 		}
 	}
 	return OSP_OK;

@@ -10,30 +10,19 @@
 static const uint8_t push_attrs[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13};
 
 static osp_value_t push_object_list_val(const osp_ic_push_setup_t *p) {
-	OSP_TLS osp_value_t items[OSP_MAX_PUSH_OBJECTS];
-	OSP_TLS osp_value_t fields[OSP_MAX_PUSH_OBJECTS][4];
+	OSP_TLS osp_push_object_list_view_t view;
 	osp_value_t v = {0};
 	uint8_t n = p->push_object_count;
 	if (n > OSP_MAX_PUSH_OBJECTS) {
 		n = OSP_MAX_PUSH_OBJECTS;
 	}
-	for (uint8_t i = 0; i < n; i++) {
-		const osp_push_object_t *po = &p->push_object_list[i];
-		fields[i][0] = osp_val_u16(po->class_id);
-		fields[i][1].tag = OSP_TAG_OCTETSTRING;
-		fields[i][1].as.octetstring.len = 6;
-		memcpy(fields[i][1].as.octetstring.data, &po->logical_name, 6);
-		fields[i][2] = osp_val_i8(po->attribute_index);
-		fields[i][3] = osp_val_u16(po->data_index);
-		items[i].tag = OSP_TAG_STRUCTURE;
-		items[i].as.structure.elements.items = fields[i];
-		items[i].as.structure.elements.count = 4;
-		items[i].as.structure.elements.capacity = 4;
+	if (n == 0) {
+		return osp_ic_val_empty_array();
 	}
-	v.tag = OSP_TAG_ARRAY;
-	v.as.array.elements.items = items;
-	v.as.array.elements.count = n;
-	v.as.array.elements.capacity = OSP_MAX_PUSH_OBJECTS;
+	view.items = p->push_object_list;
+	view.count = n;
+	v.tag = OSP_TAG_PUSH_OBJECT_LIST_REF;
+	v.as.ref = &view;
 	return v;
 }
 
@@ -60,29 +49,19 @@ static osp_value_t push_destination_val(const osp_send_destination_t *d) {
 }
 
 static osp_value_t push_comm_window_val(const osp_ic_push_setup_t *p) {
-	OSP_TLS osp_value_t items[OSP_MAX_COMM_WINDOW];
-	OSP_TLS osp_value_t fields[OSP_MAX_COMM_WINDOW][2];
+	OSP_TLS osp_comm_window_list_view_t view;
 	osp_value_t v = {0};
 	uint8_t n = p->comm_window_count;
 	if (n > OSP_MAX_COMM_WINDOW) {
 		n = OSP_MAX_COMM_WINDOW;
 	}
-	for (uint8_t i = 0; i < n; i++) {
-		fields[i][0].tag = OSP_TAG_OCTETSTRING;
-		fields[i][0].as.octetstring.len = OSP_COSEM_DATETIME_LEN;
-		memcpy(fields[i][0].as.octetstring.data, p->communication_window[i].start, OSP_COSEM_DATETIME_LEN);
-		fields[i][1].tag = OSP_TAG_OCTETSTRING;
-		fields[i][1].as.octetstring.len = OSP_COSEM_DATETIME_LEN;
-		memcpy(fields[i][1].as.octetstring.data, p->communication_window[i].end, OSP_COSEM_DATETIME_LEN);
-		items[i].tag = OSP_TAG_STRUCTURE;
-		items[i].as.structure.elements.items = fields[i];
-		items[i].as.structure.elements.count = 2;
-		items[i].as.structure.elements.capacity = 2;
+	if (n == 0) {
+		return osp_ic_val_empty_array();
 	}
-	v.tag = OSP_TAG_ARRAY;
-	v.as.array.elements.items = items;
-	v.as.array.elements.count = n;
-	v.as.array.elements.capacity = OSP_MAX_COMM_WINDOW;
+	view.windows = p->communication_window;
+	view.count = n;
+	v.tag = OSP_TAG_COMM_WINDOW_LIST_REF;
+	v.as.ref = &view;
 	return v;
 }
 

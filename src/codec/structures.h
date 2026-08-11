@@ -716,6 +716,11 @@ typedef struct {
 	uint16_t data_index;
 } osp_push_object_t;
 
+typedef struct {
+	const osp_push_object_t *items;
+	uint8_t count;
+} osp_push_object_list_view_t;
+
 typedef enum {
 	OSP_PUSH_TRANSPORT_TCP = 0,
 	OSP_PUSH_TRANSPORT_UDP = 1,
@@ -743,6 +748,40 @@ typedef struct {
 	uint8_t start[OSP_COSEM_DATETIME_LEN];
 	uint8_t end[OSP_COSEM_DATETIME_LEN];
 } osp_comm_window_t;
+
+typedef struct {
+	const osp_comm_window_t *windows;
+	uint8_t count;
+} osp_comm_window_list_view_t;
+
+#ifndef OSP_MAX_SAP_ASSIGNMENTS
+#define OSP_MAX_SAP_ASSIGNMENTS 16
+#endif
+
+typedef struct {
+	uint16_t sap;
+	uint8_t logical_device_name[64];
+	uint8_t logical_device_name_len;
+} osp_sap_assignment_item_t;
+
+typedef struct {
+	osp_sap_assignment_item_t items[OSP_MAX_SAP_ASSIGNMENTS];
+	uint8_t count;
+} osp_sap_assignment_list_t;
+
+#ifndef OSP_MAX_STATUS_MAPPINGS
+#define OSP_MAX_STATUS_MAPPINGS 16
+#endif
+
+typedef struct {
+	uint8_t status_flag_id;
+	uint8_t status_reference[6];
+} osp_status_mapping_entry_t;
+
+typedef struct {
+	const osp_status_mapping_entry_t *entries;
+	uint8_t count;
+} osp_status_mapping_table_view_t;
 
 /* Push Setup v2 repetition_delay */
 typedef struct {

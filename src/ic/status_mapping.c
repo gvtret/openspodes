@@ -18,26 +18,19 @@ static osp_err_t sm_get(const void *inst, uint8_t attr_id, osp_value_t *result) 
 		case 1:
 			return osp_ic_get_logical_name(result, &i->logical_name);
 		case 2: {
-			OSP_TLS osp_value_t rows[OSP_MAX_STATUS_MAPPINGS];
-			OSP_TLS osp_value_t fields[OSP_MAX_STATUS_MAPPINGS][2];
+			OSP_TLS osp_status_mapping_table_view_t view;
 			uint8_t n = i->entry_count;
 			if (n > OSP_MAX_STATUS_MAPPINGS) {
 				n = OSP_MAX_STATUS_MAPPINGS;
 			}
-			for (uint8_t idx = 0; idx < n; idx++) {
-				fields[idx][0] = osp_val_u8(i->entries[idx].status_flag_id);
-				fields[idx][1].tag = OSP_TAG_OCTETSTRING;
-				fields[idx][1].as.octetstring.len = 6;
-				memcpy(fields[idx][1].as.octetstring.data, i->entries[idx].status_reference, 6);
-				rows[idx].tag = OSP_TAG_STRUCTURE;
-				rows[idx].as.structure.elements.items = fields[idx];
-				rows[idx].as.structure.elements.count = 2;
-				rows[idx].as.structure.elements.capacity = 2;
+			if (n == 0) {
+				*result = osp_ic_val_empty_array();
+				return OSP_OK;
 			}
-			result->tag = OSP_TAG_ARRAY;
-			result->as.array.elements.items = rows;
-			result->as.array.elements.count = n;
-			result->as.array.elements.capacity = OSP_MAX_STATUS_MAPPINGS;
+			view.entries = i->entries;
+			view.count = n;
+			result->tag = OSP_TAG_STATUS_MAPPING_TABLE_REF;
+			result->as.ref = &view;
 			return OSP_OK;
 		}
 		default:

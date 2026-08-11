@@ -98,6 +98,11 @@ typedef enum {
 #define OSP_TAG_DAY_PROFILE_TABLE_REF 0xF3
 #define OSP_TAG_SEASON_PROFILE_TABLE_REF 0xF4
 #define OSP_TAG_WEEK_PROFILE_TABLE_REF 0xF5
+#define OSP_TAG_PUSH_OBJECT_LIST_REF 0xF6
+#define OSP_TAG_COMM_WINDOW_LIST_REF 0xF7
+#define OSP_TAG_THRESHOLD_LIST_REF 0xF8
+#define OSP_TAG_SAP_ASSIGNMENT_LIST_REF 0xF9
+#define OSP_TAG_STATUS_MAPPING_TABLE_REF 0xFA
 
 /* ── Fixed size lookup (used by compact_array) ───────────────────────────── */
 

@@ -8,17 +8,12 @@
 static const uint8_t cd_attrs[] = {1};
 
 static osp_value_t cd_val_capture_objects(const osp_capture_object_list_t *list) {
-	OSP_TLS osp_value_t items[OSP_MAX_CAPTURE_OBJECTS];
-	uint8_t n = list ? list->count : 0;
-	for (uint8_t i = 0; i < n; i++) {
-		items[i] = osp_ic_val_capture_object(&list->items[i]);
+	osp_value_t v = {0};
+	if (!list || list->count == 0) {
+		return osp_ic_val_empty_array();
 	}
-	osp_value_t v = osp_ic_val_empty_array();
-	if (n > 0) {
-		v.as.array.elements.items = items;
-		v.as.array.elements.count = n;
-		v.as.array.elements.capacity = n;
-	}
+	v.tag = OSP_TAG_CAPTURE_OBJECT_LIST_REF;
+	v.as.ref = list;
 	return v;
 }
 

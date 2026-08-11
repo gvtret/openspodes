@@ -255,25 +255,12 @@ osp_err_t osp_ic_read_capture_object(const osp_value_t *val, osp_capture_object_
 }
 
 osp_value_t osp_ic_val_threshold_list(const osp_threshold_list_t *tl) {
-	OSP_TLS osp_value_t items[16];
-	OSP_TLS osp_value_t fields[16][2];
 	osp_value_t v = {0};
-	uint8_t n = tl ? tl->count : 0;
-	if (n > 16) {
-		n = 16;
+	if (!tl || tl->count == 0) {
+		return osp_ic_val_empty_array();
 	}
-	for (uint8_t i = 0; i < n; i++) {
-		fields[i][0] = tl->thresholds[i].value;
-		fields[i][1] = osp_val_enum((uint8_t)tl->thresholds[i].severity);
-		items[i].tag = OSP_TAG_STRUCTURE;
-		items[i].as.structure.elements.items = fields[i];
-		items[i].as.structure.elements.count = 2;
-		items[i].as.structure.elements.capacity = 2;
-	}
-	v.tag = OSP_TAG_ARRAY;
-	v.as.array.elements.items = items;
-	v.as.array.elements.count = n;
-	v.as.array.elements.capacity = 16;
+	v.tag = OSP_TAG_THRESHOLD_LIST_REF;
+	v.as.ref = tl;
 	return v;
 }
 
