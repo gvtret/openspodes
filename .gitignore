@@ -1,9 +1,4 @@
-build/
-build-coverage/
-build-cov/
-build-linux/
-build-orig/
-build-san/
+build*/
 logs/
 .cache/
 .claude/
@@ -17,6 +12,5 @@ docs/api/
 *.gcda
 *.gcov
 files.zip
-build-bench/
 scripts/__pycache__/
 *.log
