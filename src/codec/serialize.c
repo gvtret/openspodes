@@ -1551,6 +1551,46 @@ osp_err_t osp_value_write(osp_buf_t *buf, const osp_value_t *val) {
 			return osp_status_mapping_table_write(buf, (const osp_status_mapping_table_view_t *)val->as.ref);
 		}
 
+		case OSP_TAG_EXECUTION_TIME_LIST_REF: {
+			if (buf->wr == 0) {
+				return OSP_ERR_INVALID;
+			}
+			buf->wr--;
+			return osp_execution_time_list_write(buf, (const osp_execution_time_list_view_t *)val->as.ref);
+		}
+
+		case OSP_TAG_DATA_PROTECTION_LIST_REF: {
+			if (buf->wr == 0) {
+				return OSP_ERR_INVALID;
+			}
+			buf->wr--;
+			return osp_data_protection_list_write(buf, (const osp_data_protection_list_t *)val->as.ref);
+		}
+
+		case OSP_TAG_USER_LIST_REF: {
+			if (buf->wr == 0) {
+				return OSP_ERR_INVALID;
+			}
+			buf->wr--;
+			return osp_user_list_write(buf, (const osp_user_list_view_t *)val->as.ref);
+		}
+
+		case OSP_TAG_U16_ARRAY_REF: {
+			if (buf->wr == 0) {
+				return OSP_ERR_INVALID;
+			}
+			buf->wr--;
+			return osp_u16_array_write(buf, (const osp_u16_array_view_t *)val->as.ref);
+		}
+
+		case OSP_TAG_U32_ARRAY_REF: {
+			if (buf->wr == 0) {
+				return OSP_ERR_INVALID;
+			}
+			buf->wr--;
+			return osp_u32_array_write(buf, (const osp_u32_array_view_t *)val->as.ref);
+		}
+
 		default:
 			return OSP_ERR_UNSUPPORTED;
 	}
@@ -2321,6 +2361,167 @@ osp_err_t osp_status_mapping_table_write(osp_buf_t *buf, const osp_status_mappin
 			return r;
 		}
 		r = osp_axdr_write_octet_string(buf, e->status_reference, 6);
+		if (r != OSP_OK) {
+			return r;
+		}
+	}
+	return OSP_OK;
+}
+
+osp_err_t osp_execution_time_list_write(osp_buf_t *buf, const osp_execution_time_list_view_t *view) {
+	if (!buf) {
+		return OSP_ERR_INVALID;
+	}
+	uint8_t n = (view && view->items) ? view->count : 0;
+	if (n > OSP_MAX_EXECUTION_TIMES) {
+		n = OSP_MAX_EXECUTION_TIMES;
+	}
+	osp_err_t r = osp_array_begin(buf, n);
+	if (r != OSP_OK) {
+		return r;
+	}
+	for (uint8_t i = 0; i < n; i++) {
+		const osp_execution_time_date_t *et = &view->items[i];
+		r = osp_struct_begin(buf, 2);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_OCTETSTRING);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_octet_string(buf, et->time, 4);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_OCTETSTRING);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_octet_string(buf, et->date, 5);
+		if (r != OSP_OK) {
+			return r;
+		}
+	}
+	return OSP_OK;
+}
+
+osp_err_t osp_data_protection_list_write(osp_buf_t *buf, const osp_data_protection_list_t *list) {
+	if (!buf) {
+		return OSP_ERR_INVALID;
+	}
+	uint8_t n = list ? list->count : 0;
+	if (n > 8) {
+		n = 8;
+	}
+	osp_err_t r = osp_array_begin(buf, n);
+	if (r != OSP_OK) {
+		return r;
+	}
+	for (uint8_t i = 0; i < n; i++) {
+		const osp_data_protection_entry_t *e = &list->entries[i];
+		r = osp_struct_begin(buf, 2);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_ENUM);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, (uint8_t)e->method);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_UNSIGNED);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, e->global_key_list_id);
+		if (r != OSP_OK) {
+			return r;
+		}
+	}
+	return OSP_OK;
+}
+
+osp_err_t osp_user_list_write(osp_buf_t *buf, const osp_user_list_view_t *view) {
+	if (!buf) {
+		return OSP_ERR_INVALID;
+	}
+	uint8_t n = (view && view->items) ? view->count : 0;
+	if (n > 16) {
+		n = 16;
+	}
+	osp_err_t r = osp_array_begin(buf, n);
+	if (r != OSP_OK) {
+		return r;
+	}
+	for (uint8_t i = 0; i < n; i++) {
+		const osp_user_list_item_t *item = &view->items[i];
+		r = osp_struct_begin(buf, 2);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_INTEGER);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_i8(buf, item->id);
+		if (r != OSP_OK) {
+			return r;
+		}
+		/* osp_axdr_write_visible_string includes the VISIBLESTRING tag. */
+		r = osp_axdr_write_visible_string(buf, item->name, item->name_len);
+		if (r != OSP_OK) {
+			return r;
+		}
+	}
+	return OSP_OK;
+}
+
+osp_err_t osp_u16_array_write(osp_buf_t *buf, const osp_u16_array_view_t *view) {
+	if (!buf) {
+		return OSP_ERR_INVALID;
+	}
+	uint8_t n = (view && view->items) ? view->count : 0;
+	if (view && view->max_count && n > view->max_count) {
+		n = view->max_count;
+	}
+	osp_err_t r = osp_array_begin(buf, n);
+	if (r != OSP_OK) {
+		return r;
+	}
+	for (uint8_t i = 0; i < n; i++) {
+		r = osp_axdr_write_u8(buf, OSP_TAG_LONG_UNSIGNED);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u16(buf, view->items[i]);
+		if (r != OSP_OK) {
+			return r;
+		}
+	}
+	return OSP_OK;
+}
+
+osp_err_t osp_u32_array_write(osp_buf_t *buf, const osp_u32_array_view_t *view) {
+	if (!buf) {
+		return OSP_ERR_INVALID;
+	}
+	uint8_t n = (view && view->items) ? view->count : 0;
+	if (view && view->max_count && n > view->max_count) {
+		n = view->max_count;
+	}
+	osp_err_t r = osp_array_begin(buf, n);
+	if (r != OSP_OK) {
+		return r;
+	}
+	for (uint8_t i = 0; i < n; i++) {
+		r = osp_axdr_write_u8(buf, OSP_TAG_DOUBLE_LONG_UNS);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u32(buf, view->items[i]);
 		if (r != OSP_OK) {
 			return r;
 		}

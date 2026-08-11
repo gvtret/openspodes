@@ -783,6 +783,38 @@ typedef struct {
 	uint8_t count;
 } osp_status_mapping_table_view_t;
 
+#ifndef OSP_MAX_EXECUTION_TIMES
+#define OSP_MAX_EXECUTION_TIMES 8
+#endif
+
+/* execution_time_date ::= structure { time: octet-string(4), date: octet-string(5) } */
+typedef struct {
+	uint8_t time[4];
+	uint8_t date[5];
+} osp_execution_time_date_t;
+
+typedef struct {
+	const osp_execution_time_date_t *items;
+	uint8_t count;
+} osp_execution_time_list_view_t;
+
+typedef struct {
+	const osp_user_list_item_t *items;
+	uint8_t count;
+} osp_user_list_view_t;
+
+typedef struct {
+	const uint16_t *items;
+	uint8_t count;
+	uint8_t max_count;
+} osp_u16_array_view_t;
+
+typedef struct {
+	const uint32_t *items;
+	uint8_t count;
+	uint8_t max_count;
+} osp_u32_array_view_t;
+
 /* Push Setup v2 repetition_delay */
 typedef struct {
 	uint16_t repetition_delay_min;

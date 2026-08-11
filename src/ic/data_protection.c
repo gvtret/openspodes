@@ -6,21 +6,12 @@
 static const uint8_t dp_attrs[] = {1, 2};
 
 static osp_value_t dp_list_value(const osp_ic_data_protection_t *d) {
-	OSP_TLS osp_value_t rows[8];
-	OSP_TLS osp_value_t fields[8][2];
 	osp_value_t v = {0};
-	for (uint8_t i = 0; i < d->protection_methods.count && i < 8; i++) {
-		fields[i][0] = osp_val_enum((uint8_t)d->protection_methods.entries[i].method);
-		fields[i][1] = osp_val_u8(d->protection_methods.entries[i].global_key_list_id);
-		rows[i].tag = OSP_TAG_STRUCTURE;
-		rows[i].as.structure.elements.items = fields[i];
-		rows[i].as.structure.elements.count = 2;
-		rows[i].as.structure.elements.capacity = 2;
+	if (!d || d->protection_methods.count == 0) {
+		return osp_ic_val_empty_array();
 	}
-	v.tag = OSP_TAG_ARRAY;
-	v.as.array.elements.items = rows;
-	v.as.array.elements.count = d->protection_methods.count;
-	v.as.array.elements.capacity = 8;
+	v.tag = OSP_TAG_DATA_PROTECTION_LIST_REF;
+	v.as.ref = &d->protection_methods;
 	return v;
 }
 

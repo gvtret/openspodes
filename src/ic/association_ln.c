@@ -176,15 +176,19 @@ static osp_err_t aln_read_context_name(const osp_value_t *value, osp_context_nam
 }
 
 static osp_value_t aln_user_list_value(const osp_ic_association_ln_t *a) {
-	OSP_TLS osp_value_t items[16];
+	OSP_TLS osp_user_list_view_t view;
 	osp_value_t v = {0};
-	for (uint8_t i = 0; i < a->user_count && i < 16; i++) {
-		items[i] = osp_ic_val_user_list_item(&a->user_list[i]);
+	uint8_t n = a->user_count;
+	if (n > 16) {
+		n = 16;
 	}
-	v.tag = OSP_TAG_ARRAY;
-	v.as.array.elements.items = items;
-	v.as.array.elements.count = a->user_count;
-	v.as.array.elements.capacity = 16;
+	if (n == 0) {
+		return osp_ic_val_empty_array();
+	}
+	view.items = a->user_list;
+	view.count = n;
+	v.tag = OSP_TAG_USER_LIST_REF;
+	v.as.ref = &view;
 	return v;
 }
 

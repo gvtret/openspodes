@@ -158,6 +158,16 @@ osp_err_t osp_threshold_list_write(osp_buf_t *buf, const osp_threshold_list_t *t
 osp_err_t osp_sap_assignment_list_write(osp_buf_t *buf, const osp_sap_assignment_list_t *list);
 /** @brief Write a status-mapping table as an A-XDR ARRAY. */
 osp_err_t osp_status_mapping_table_write(osp_buf_t *buf, const osp_status_mapping_table_view_t *view);
+/** @brief Write Single Action Schedule execution times as an A-XDR ARRAY. */
+osp_err_t osp_execution_time_list_write(osp_buf_t *buf, const osp_execution_time_list_view_t *view);
+/** @brief Write a Data Protection methods list as an A-XDR ARRAY. */
+osp_err_t osp_data_protection_list_write(osp_buf_t *buf, const osp_data_protection_list_t *list);
+/** @brief Write an Association user list as an A-XDR ARRAY. */
+osp_err_t osp_user_list_write(osp_buf_t *buf, const osp_user_list_view_t *view);
+/** @brief Write a long-unsigned array (e.g. emergency group IDs). */
+osp_err_t osp_u16_array_write(osp_buf_t *buf, const osp_u16_array_view_t *view);
+/** @brief Write a double-long-unsigned array (e.g. IPv4 multicast). */
+osp_err_t osp_u32_array_write(osp_buf_t *buf, const osp_u32_array_view_t *view);
 
 /** @brief Read a capture object structure from the buffer. */
 osp_err_t osp_capture_object_read(osp_buf_t *buf, osp_capture_object_t *co);

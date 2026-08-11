@@ -103,6 +103,11 @@ typedef enum {
 #define OSP_TAG_THRESHOLD_LIST_REF 0xF8
 #define OSP_TAG_SAP_ASSIGNMENT_LIST_REF 0xF9
 #define OSP_TAG_STATUS_MAPPING_TABLE_REF 0xFA
+#define OSP_TAG_EXECUTION_TIME_LIST_REF 0xFB
+#define OSP_TAG_DATA_PROTECTION_LIST_REF 0xFC
+#define OSP_TAG_USER_LIST_REF 0xFD
+#define OSP_TAG_U16_ARRAY_REF 0xFE
+#define OSP_TAG_U32_ARRAY_REF 0xFF
 
 /* ── Fixed size lookup (used by compact_array) ───────────────────────────── */
 

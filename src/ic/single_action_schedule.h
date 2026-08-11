@@ -1,16 +1,7 @@
 #ifndef OSP_IC_SINGLE_ACTION_SCHEDULE_H
 #define OSP_IC_SINGLE_ACTION_SCHEDULE_H
 #include "../openspodes.h"
-
-#ifndef OSP_MAX_EXECUTION_TIMES
-#define OSP_MAX_EXECUTION_TIMES 8
-#endif
-
-/* execution_time_date ::= structure { time: octet-string(4), date: octet-string(5) } */
-typedef struct {
-	uint8_t time[4];
-	uint8_t date[5];
-} osp_execution_time_date_t;
+#include "../codec/structures.h"
 
 typedef struct {
 	osp_obis_t logical_name;

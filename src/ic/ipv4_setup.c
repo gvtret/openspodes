@@ -27,20 +27,20 @@ static osp_err_t ipv4_get(const void *inst, uint8_t attr_id, osp_value_t *result
 			*result = osp_val_u32(s->ip_address);
 			return OSP_OK;
 		case 4: {
-			OSP_TLS osp_value_t items[OSP_MAX_IP_MULTICAST];
-			osp_value_t v = {0};
+			OSP_TLS osp_u32_array_view_t view;
 			uint8_t n = s->multicast_count;
 			if (n > OSP_MAX_IP_MULTICAST) {
 				n = OSP_MAX_IP_MULTICAST;
 			}
-			for (uint8_t i = 0; i < n; i++) {
-				items[i] = osp_val_u32(s->multicast_ip[i]);
+			if (n == 0) {
+				*result = osp_ic_val_empty_array();
+				return OSP_OK;
 			}
-			v.tag = OSP_TAG_ARRAY;
-			v.as.array.elements.items = items;
-			v.as.array.elements.count = n;
-			v.as.array.elements.capacity = OSP_MAX_IP_MULTICAST;
-			*result = v;
+			view.items = s->multicast_ip;
+			view.count = n;
+			view.max_count = OSP_MAX_IP_MULTICAST;
+			result->tag = OSP_TAG_U32_ARRAY_REF;
+			result->as.ref = &view;
 			return OSP_OK;
 		}
 		case 5:

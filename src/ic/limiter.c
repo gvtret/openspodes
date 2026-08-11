@@ -37,19 +37,20 @@ static osp_value_t lim_actions(const osp_limiter_action_t *act) {
 }
 
 static osp_value_t lim_group_id_list(const osp_ic_limiter_t *l) {
-	OSP_TLS osp_value_t items[OSP_MAX_EMERGENCY_GROUP_IDS];
+	OSP_TLS osp_u16_array_view_t view;
 	osp_value_t v = {0};
 	uint8_t n = l->emergency_profile_group_id_count;
 	if (n > OSP_MAX_EMERGENCY_GROUP_IDS) {
 		n = OSP_MAX_EMERGENCY_GROUP_IDS;
 	}
-	for (uint8_t i = 0; i < n; i++) {
-		items[i] = osp_val_u16(l->emergency_profile_group_id_list[i]);
+	if (n == 0) {
+		return osp_ic_val_empty_array();
 	}
-	v.tag = OSP_TAG_ARRAY;
-	v.as.array.elements.items = items;
-	v.as.array.elements.count = n;
-	v.as.array.elements.capacity = OSP_MAX_EMERGENCY_GROUP_IDS;
+	view.items = l->emergency_profile_group_id_list;
+	view.count = n;
+	view.max_count = OSP_MAX_EMERGENCY_GROUP_IDS;
+	v.tag = OSP_TAG_U16_ARRAY_REF;
+	v.as.ref = &view;
 	return v;
 }
 

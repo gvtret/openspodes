@@ -20,29 +20,19 @@ static osp_value_t sas_executed_script(const osp_ic_single_action_schedule_t *s)
 }
 
 static osp_value_t sas_execution_time(const osp_ic_single_action_schedule_t *s) {
-	OSP_TLS osp_value_t items[OSP_MAX_EXECUTION_TIMES];
-	OSP_TLS osp_value_t fields[OSP_MAX_EXECUTION_TIMES][2];
+	OSP_TLS osp_execution_time_list_view_t view;
 	osp_value_t v = {0};
 	uint8_t n = s->execution_time_count;
 	if (n > OSP_MAX_EXECUTION_TIMES) {
 		n = OSP_MAX_EXECUTION_TIMES;
 	}
-	for (uint8_t i = 0; i < n; i++) {
-		fields[i][0].tag = OSP_TAG_OCTETSTRING;
-		fields[i][0].as.octetstring.len = 4;
-		memcpy(fields[i][0].as.octetstring.data, s->execution_time[i].time, 4);
-		fields[i][1].tag = OSP_TAG_OCTETSTRING;
-		fields[i][1].as.octetstring.len = 5;
-		memcpy(fields[i][1].as.octetstring.data, s->execution_time[i].date, 5);
-		items[i].tag = OSP_TAG_STRUCTURE;
-		items[i].as.structure.elements.items = fields[i];
-		items[i].as.structure.elements.count = 2;
-		items[i].as.structure.elements.capacity = 2;
+	if (n == 0) {
+		return osp_ic_val_empty_array();
 	}
-	v.tag = OSP_TAG_ARRAY;
-	v.as.array.elements.items = items;
-	v.as.array.elements.count = n;
-	v.as.array.elements.capacity = OSP_MAX_EXECUTION_TIMES;
+	view.items = s->execution_time;
+	view.count = n;
+	v.tag = OSP_TAG_EXECUTION_TIME_LIST_REF;
+	v.as.ref = &view;
 	return v;
 }
 
