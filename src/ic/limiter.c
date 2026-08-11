@@ -6,9 +6,12 @@
 static const uint8_t lim_attrs[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
 
 static osp_value_t lim_actions(const osp_limiter_action_t *act) {
-	OSP_TLS osp_value_t fields[2];
-	OSP_TLS osp_value_t over_fields[2];
-	OSP_TLS osp_value_t under_fields[2];
+	/* Pack nested structures into the shared scratch:
+	 * [0..1] over script, [2..3] under script, [4..5] outer fields. */
+	osp_value_t *scratch = osp_ic_val_scratch_buf();
+	osp_value_t *over_fields = &scratch[0];
+	osp_value_t *under_fields = &scratch[2];
+	osp_value_t *fields = &scratch[4];
 	osp_value_t v = {0};
 
 	over_fields[0].tag = OSP_TAG_OCTETSTRING;

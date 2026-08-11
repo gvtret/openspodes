@@ -6,7 +6,7 @@
 static const uint8_t gprs_attrs[] = {1, 2, 3, 4};
 
 static osp_value_t gprs_qos_value(void) {
-	OSP_TLS osp_value_t fields[2];
+	osp_value_t *fields = osp_ic_val_scratch_buf();
 	osp_value_t v = {0};
 	fields[0] = osp_val_null();
 	fields[1] = osp_val_null();

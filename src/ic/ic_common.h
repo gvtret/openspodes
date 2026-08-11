@@ -15,6 +15,12 @@ extern "C" {
 osp_err_t osp_ic_get_logical_name(osp_value_t *result, const osp_obis_t *ln);
 osp_err_t osp_ic_set_logical_name(osp_obis_t *ln, const osp_value_t *value);
 
+#ifndef OSP_IC_VAL_SCRATCH_LEN
+#define OSP_IC_VAL_SCRATCH_LEN 16
+#endif
+/** Thread-local structure scratch (length OSP_IC_VAL_SCRATCH_LEN). */
+osp_value_t *osp_ic_val_scratch_buf(void);
+
 osp_value_t osp_ic_val_scaler_unit(const osp_scaler_unit_t *su);
 osp_err_t osp_ic_read_scaler_unit(const osp_value_t *val, osp_scaler_unit_t *su);
 

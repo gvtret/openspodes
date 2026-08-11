@@ -6,7 +6,7 @@
 static const uint8_t sas_attrs[] = {1, 2, 3, 4};
 
 static osp_value_t sas_executed_script(const osp_ic_single_action_schedule_t *s) {
-	OSP_TLS osp_value_t fields[2];
+	osp_value_t *fields = osp_ic_val_scratch_buf();
 	osp_value_t v = {0};
 	fields[0].tag = OSP_TAG_OCTETSTRING;
 	fields[0].as.octetstring.len = 6;

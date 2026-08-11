@@ -27,7 +27,7 @@ static osp_value_t push_object_list_val(const osp_ic_push_setup_t *p) {
 }
 
 static osp_value_t push_destination_val(const osp_send_destination_t *d) {
-	OSP_TLS osp_value_t fields[3];
+	osp_value_t *fields = osp_ic_val_scratch_buf();
 	osp_value_t v = {0};
 	fields[0] = osp_val_enum((uint8_t)(d ? d->transport_service : 0));
 	fields[1].tag = OSP_TAG_OCTETSTRING;
@@ -66,7 +66,7 @@ static osp_value_t push_comm_window_val(const osp_ic_push_setup_t *p) {
 }
 
 static osp_value_t push_repetition_delay_val(const osp_repetition_delay_t *rd) {
-	OSP_TLS osp_value_t fields[3];
+	osp_value_t *fields = osp_ic_val_scratch_buf();
 	osp_value_t v = {0};
 	fields[0] = osp_val_u16(rd ? rd->repetition_delay_min : 0);
 	fields[1] = osp_val_u16(rd ? rd->repetition_delay_exponent : 0);
@@ -160,7 +160,7 @@ static osp_err_t push_read_repetition_delay(const osp_value_t *val, osp_repetiti
 }
 
 static osp_value_t push_confirmation_params_val(const osp_confirmation_parameters_t *cp) {
-	OSP_TLS osp_value_t fields[2];
+	osp_value_t *fields = osp_ic_val_scratch_buf();
 	osp_value_t v = {0};
 	if (cp) {
 		fields[0].tag = OSP_TAG_DATETIME;
@@ -329,7 +329,9 @@ static osp_err_t push_build_notification_body(osp_dispatcher_t *disp, const osp_
 		return osp_dispatcher_get(disp, po0->class_id, &po0->logical_name, 2, out);
 	}
 
-	OSP_TLS osp_value_t items[OSP_MAX_PUSH_OBJECTS];
+	/* Reuse shared IC scratch (sized ≥ OSP_MAX_PUSH_OBJECTS). */
+	_Static_assert(OSP_IC_VAL_SCRATCH_LEN >= OSP_MAX_PUSH_OBJECTS, "push notify needs scratch ≥ push objects");
+	osp_value_t *items = osp_ic_val_scratch_buf();
 	uint8_t n = p->push_object_count;
 	if (n > OSP_MAX_PUSH_OBJECTS) {
 		n = OSP_MAX_PUSH_OBJECTS;

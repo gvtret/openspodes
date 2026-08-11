@@ -7,13 +7,18 @@
 #include <string.h>
 
 /*
- * Shared TLS scratch for by-value structure helpers (max: week_profile = 8).
- * Caller must osp_value_write / consume before the next helper on this thread.
+ * Shared TLS scratch for by-value structure helpers and push notify assembly.
+ * Sized for OSP_MAX_PUSH_OBJECTS (16). Caller must osp_value_write / consume
+ * before the next helper that reuses this buffer on the same thread.
  */
 #ifndef OSP_IC_VAL_SCRATCH_LEN
-#define OSP_IC_VAL_SCRATCH_LEN 8
+#define OSP_IC_VAL_SCRATCH_LEN 16
 #endif
 OSP_TLS osp_value_t osp_ic_val_scratch[OSP_IC_VAL_SCRATCH_LEN];
+
+osp_value_t *osp_ic_val_scratch_buf(void) {
+	return osp_ic_val_scratch;
+}
 
 
 osp_err_t osp_ic_get_logical_name(osp_value_t *result, const osp_obis_t *ln) {

@@ -122,57 +122,11 @@ bool osp_ic_association_ln_can_invoke(const osp_ic_association_ln_t *a, uint16_t
 static const uint8_t aln_attrs[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
 
 static osp_value_t aln_context_name_value(const osp_context_name_t *cn) {
-	OSP_TLS osp_value_t fields[7];
-	osp_value_t v = {0};
-	if (cn && cn->is_structure) {
-		const osp_context_name_structure_t *s = &cn->as.structure;
-		fields[0] = osp_val_u8(s->joint_iso_ctt);
-		fields[1] = osp_val_u8(s->country);
-		fields[2] = osp_val_u16(s->country_name);
-		fields[3] = osp_val_u8(s->identified_organization);
-		fields[4] = osp_val_u8(s->dlms_ua);
-		fields[5] = osp_val_u8(s->application_context);
-		fields[6] = osp_val_u8(s->context_id);
-		v.tag = OSP_TAG_STRUCTURE;
-		v.as.structure.elements.items = fields;
-		v.as.structure.elements.count = 7;
-		v.as.structure.elements.capacity = 7;
-		return v;
-	}
-	v.tag = OSP_TAG_OCTETSTRING;
-	if (cn) {
-		v.as.octetstring.len = cn->as.oid.len;
-		memcpy(v.as.octetstring.data, cn->as.oid.data, cn->as.oid.len);
-	}
-	return v;
+	return osp_ic_val_context_name(cn);
 }
 
 static osp_err_t aln_read_context_name(const osp_value_t *value, osp_context_name_t *cn) {
-	if (!value || !cn) {
-		return OSP_ERR_INVALID;
-	}
-	if (value->tag == OSP_TAG_STRUCTURE && value->as.structure.elements.count >= 7) {
-		cn->is_structure = true;
-		osp_context_name_structure_t *s = &cn->as.structure;
-		s->joint_iso_ctt = osp_get_u8(&value->as.structure.elements.items[0]);
-		s->country = osp_get_u8(&value->as.structure.elements.items[1]);
-		s->country_name = osp_get_u16(&value->as.structure.elements.items[2]);
-		s->identified_organization = osp_get_u8(&value->as.structure.elements.items[3]);
-		s->dlms_ua = osp_get_u8(&value->as.structure.elements.items[4]);
-		s->application_context = osp_get_u8(&value->as.structure.elements.items[5]);
-		s->context_id = osp_get_u8(&value->as.structure.elements.items[6]);
-		return OSP_OK;
-	}
-	if (value->tag == OSP_TAG_OCTETSTRING) {
-		cn->is_structure = false;
-		cn->as.oid.len = (uint8_t)value->as.octetstring.len;
-		if (cn->as.oid.len > sizeof(cn->as.oid.data)) {
-			cn->as.oid.len = sizeof(cn->as.oid.data);
-		}
-		memcpy(cn->as.oid.data, value->as.octetstring.data, cn->as.oid.len);
-		return OSP_OK;
-	}
-	return OSP_ERR_INVALID;
+	return osp_ic_read_context_name(value, cn);
 }
 
 static osp_value_t aln_user_list_value(const osp_ic_association_ln_t *a) {
