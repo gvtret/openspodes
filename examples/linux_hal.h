@@ -3,17 +3,18 @@
  *
  * Provides all HAL interfaces needed for production use:
  *   - TCP transport with wrapper/HDLC/no-framing modes
- *   - AES-GCM crypto via OpenSSL
+ *   - AES-GCM crypto via OpenSSL (sets global osp_hal_* pointers)
  *   - MD5/SHA1/SHA256 hashes via OpenSSL
  *   - Timer (clock_gettime)
  *   - Random (/dev/urandom)
  *   - System title + key store
  *
  * Usage:
- *   osp_hal_t hal;
+ *   linux_hal_t hal;
  *   linux_hal_init(&hal);
  *   linux_hal_set_tcp(&hal, "192.168.1.100", 4059);
- *   // Use hal.transport, hal.crypto, etc.
+ *   // Pass &hal.transport to osp_client_init / osp_server_init.
+ *   // Crypto is wired via linux_hal_init_crypto() → osp_hal_gcm_crypt, etc.
  */
 
 #ifndef OSP_LINUX_HAL_H
@@ -52,11 +53,9 @@ typedef struct {
 	uint8_t key_count;
 } linux_hal_system_ctx_t;
 
-/* Complete Linux HAL */
+/* Complete Linux HAL (owns transport ctx + key store). */
 typedef struct {
 	osp_transport_t transport;
-	osp_crypto_t crypto;
-	osp_random_t random;
 	osp_timer_t timer;
 	osp_system_t system;
 
@@ -64,24 +63,27 @@ typedef struct {
 	linux_hal_system_ctx_t sys_ctx;
 } linux_hal_t;
 
-/* Initialize all HAL interfaces */
-void linux_hal_init(osp_hal_t *hal);
+/** @brief Initialize transport/timer/system and install OpenSSL crypto globals. */
+void linux_hal_init(linux_hal_t *hal);
 
-/* Configure TCP transport (wrapper mode by default) */
-void linux_hal_set_tcp(osp_hal_t *hal, const char *host, uint16_t port);
+/** @brief Configure TCP transport (wrapper mode by default). */
+void linux_hal_set_tcp(linux_hal_t *hal, const char *host, uint16_t port);
 
-/* Configure TCP transport with HDLC framing */
-void linux_hal_set_tcp_hdlc(osp_hal_t *hal, const char *host, uint16_t port,
+/** @brief Configure TCP transport with HDLC framing. */
+void linux_hal_set_tcp_hdlc(linux_hal_t *hal, const char *host, uint16_t port,
                              uint32_t client_addr, uint32_t server_addr);
 
-/* Configure system title */
-void linux_hal_set_system_title(osp_hal_t *hal, const uint8_t title[8]);
+/** @brief Configure system title. */
+void linux_hal_set_system_title(linux_hal_t *hal, const uint8_t title[8]);
 
-/* Add a key to the key store */
-void linux_hal_add_key(osp_hal_t *hal, uint8_t sap, uint8_t key_id,
+/** @brief Add a key to the key store. */
+void linux_hal_add_key(linux_hal_t *hal, uint8_t sap, uint8_t key_id,
                         const uint8_t *key, uint8_t key_len);
 
-/* Initialize OpenSSL crypto (call once at startup) */
+/**
+ * @brief Install osp_hal_gcm_crypt / hash / random globals (OpenSSL).
+ * Called from linux_hal_init(); also usable alone in tests/tools.
+ */
 void linux_hal_init_crypto(void);
 
 #ifdef __cplusplus

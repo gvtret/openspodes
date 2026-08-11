@@ -28,9 +28,9 @@ OpenSPODES implements the full DLMS/COSEM stack for communicating with electrici
 │  transport/               HDLC session + wrapper         │
 │  hdlc_session.c           transport.c                    │
 ├─────────────────────────────────────────────────────────┤
-│  HAL                      Transport, crypto, timer       │
-│  osp_transport_t          osp_crypto_t                   │
-│  osp_random_t             osp_timer_t                    │
+│  HAL                      Transport + crypto globals     │
+│  osp_transport_t          osp_hal_gcm_crypt / hashes     │
+│  osp_hal_random_fill      osp_timer_t / osp_system_t     │
 │  osp_hal_data_t           Data access (read/write/exec)  │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -279,9 +279,9 @@ Hardware Abstraction Layer — interfaces for MCU porting:
 
 | Interface | Purpose |
 |-----------|---------|
-| `osp_transport_t` | open/send/recv/close/is_connected + ctx |
-| `osp_crypto_t` | AES-GCM: init/update/finish/free |
-| `osp_random_t` | fill(buf, len) |
+| `osp_transport_t` | open/send/recv/close/is_connected + ctx (passed into client/server) |
+| `osp_hal_gcm_crypt` (+ hashes / RNG) | Security globals in `security.h` — real crypto entry points |
+| `osp_crypto_t` / `osp_random_t` | Bundle fields on `osp_hal_t` only; **unused by core** |
 | `osp_timer_t` | now_ms() + delay_ms(ms) |
 | `osp_system_t` | system_title[8] + get_key(sap, key_id) |
 | `osp_hal_data_t` | Data access: read/write/execute by (obis, attr_id) |

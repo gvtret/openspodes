@@ -8,8 +8,9 @@
  * - Glo/ded ciphering (APDU-level encryption + authentication)
  * - General ciphering APDUs (0xDB/0xDC/0xDD tags)
  *
- * HAL crypto functions must be set before use:
- *   osp_hal_gcm_init, osp_hal_gcm_update, osp_hal_gcm_finish
+ * HAL crypto functions must be set before use (global pointers — not osp_hal_t.crypto):
+ *   osp_hal_gcm_crypt (preferred one-shot AES-GCM)
+ *   osp_hal_gcm_init/update/finish (legacy streaming fallback for GMAC)
  *   osp_hal_md5, osp_hal_sha1, osp_hal_sha256
  *   osp_hal_random_fill (for random challenge generation)
  */

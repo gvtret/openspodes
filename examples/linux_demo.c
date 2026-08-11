@@ -64,7 +64,7 @@ int main(int argc, char **argv) {
 	}
 
 	/* Initialize Linux HAL */
-	osp_hal_t hal;
+	linux_hal_t hal;
 	linux_hal_init(&hal);
 	linux_hal_set_tcp(&hal, host, port);
 

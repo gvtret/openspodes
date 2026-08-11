@@ -163,6 +163,13 @@ typedef struct {
 	uint16_t wrapper_dest;
 } osp_transport_t;
 
+/*
+ * Bundle-style crypto/random structs (historical). The security layer does NOT
+ * call these — it uses the global function pointers in security.h:
+ *   osp_hal_gcm_crypt (preferred), osp_hal_gcm_init/update/finish (legacy),
+ *   osp_hal_md5/sha1/sha256, osp_hal_random_fill, etc.
+ * Keep these types for application-side grouping; install crypto via the globals.
+ */
 typedef struct {
 	osp_err_t (*gcm_init)(void *ctx, const uint8_t *key, uint32_t key_len, const uint8_t *iv, uint32_t iv_len, const uint8_t *aad, uint32_t aad_len);
 	osp_err_t (*gcm_update)(void *ctx, const uint8_t *in, uint32_t len, uint8_t *out);
@@ -225,8 +232,7 @@ typedef struct {
  *
  * When non-NULL, the library acquires this mutex around shared static
  * state (value_read_pool). Each thread must use its own osp_client_t /
- * osp_server_t. Association object_list encode scratch remains process-wide
- * and non-reentrant until a caller-provided scratch API exists.
+ * osp_server_t.
  */
 extern osp_mutex_t *osp_hal_mutex;
 
@@ -235,10 +241,15 @@ void osp_hal_mutex_lock(void);
 /** @brief Unlock shared library state (no-op if osp_hal_mutex is NULL). */
 void osp_hal_mutex_unlock(void);
 
+/*
+ * Convenience bundle of HAL interfaces. Client/server take osp_transport_t*
+ * directly. Crypto/random fields are unused by the core — set security.h
+ * globals instead (see osp_crypto_t comment above).
+ */
 typedef struct {
 	osp_transport_t transport;
-	osp_crypto_t crypto;
-	osp_random_t random;
+	osp_crypto_t crypto; /* unused by core — see security.h osp_hal_* */
+	osp_random_t random; /* unused by core — use osp_hal_random_fill */
 	osp_timer_t timer;
 	osp_system_t system;
 } osp_hal_t;

@@ -346,9 +346,8 @@ static uint8_t *linux_get_key(void *ctx, uint8_t sap, uint8_t key_id) {
  *  Public API
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-void linux_hal_init(osp_hal_t *hal) {
+void linux_hal_init(linux_hal_t *hal) {
 	memset(hal, 0, sizeof(*hal));
-	linux_hal_t *lh = (linux_hal_t *)hal;
 
 	/* Transport */
 	hal->transport.open = tcp_open;
@@ -356,33 +355,27 @@ void linux_hal_init(osp_hal_t *hal) {
 	hal->transport.recv = tcp_recv;
 	hal->transport.close = tcp_close;
 	hal->transport.is_connected = tcp_is_connected;
-	hal->transport.ctx = &lh->tcp_ctx;
-	lh->tcp_ctx.fd = -1;
+	hal->transport.ctx = &hal->tcp_ctx;
+	hal->tcp_ctx.fd = -1;
 
 	/* Timer */
 	hal->timer.now_ms = linux_now_ms;
 	hal->timer.delay_ms = linux_delay_ms;
 	hal->timer.ctx = NULL;
 
-	/* Random */
-	hal->random.fill = linux_random_fill;
-	hal->random.ctx = NULL;
-
 	/* System */
-	memcpy(lh->sys_ctx.system_title, (uint8_t[]){
+	memcpy(hal->sys_ctx.system_title, (uint8_t[]){
 		0x4C, 0x4F, 0x43, 0x41, 0x4C, 0x00, 0x00, 0x01}, 8);
-	memcpy(hal->system.system_title, lh->sys_ctx.system_title, 8);
+	memcpy(hal->system.system_title, hal->sys_ctx.system_title, 8);
 	hal->system.get_key = linux_get_key;
-	hal->system.ctx = &lh->sys_ctx;
+	hal->system.ctx = &hal->sys_ctx;
 
-	/* Crypto */
-	hal->crypto.ctx = NULL;
+	/* Crypto: library uses global osp_hal_* pointers, not osp_hal_t.crypto */
 	linux_hal_init_crypto();
 }
 
-void linux_hal_set_tcp(osp_hal_t *hal, const char *host, uint16_t port) {
-	linux_hal_t *lh = (linux_hal_t *)hal;
-	linux_hal_tcp_ctx_t *ctx = &lh->tcp_ctx;
+void linux_hal_set_tcp(linux_hal_t *hal, const char *host, uint16_t port) {
+	linux_hal_tcp_ctx_t *ctx = &hal->tcp_ctx;
 	if (ctx->fd >= 0)
 		close(ctx->fd);
 	ctx->fd = connect_tcp(host, port);
@@ -393,10 +386,9 @@ void linux_hal_set_tcp(osp_hal_t *hal, const char *host, uint16_t port) {
 	ctx->wrapper_dest = 4059;
 }
 
-void linux_hal_set_tcp_hdlc(osp_hal_t *hal, const char *host, uint16_t port,
+void linux_hal_set_tcp_hdlc(linux_hal_t *hal, const char *host, uint16_t port,
                              uint32_t client_addr, uint32_t server_addr) {
-	linux_hal_t *lh = (linux_hal_t *)hal;
-	linux_hal_tcp_ctx_t *ctx = &lh->tcp_ctx;
+	linux_hal_tcp_ctx_t *ctx = &hal->tcp_ctx;
 	if (ctx->fd >= 0)
 		close(ctx->fd);
 	ctx->fd = connect_tcp(host, port);
@@ -405,16 +397,14 @@ void linux_hal_set_tcp_hdlc(osp_hal_t *hal, const char *host, uint16_t port,
 	(void)server_addr;
 }
 
-void linux_hal_set_system_title(osp_hal_t *hal, const uint8_t title[8]) {
-	linux_hal_t *lh = (linux_hal_t *)hal;
-	memcpy(lh->sys_ctx.system_title, title, 8);
+void linux_hal_set_system_title(linux_hal_t *hal, const uint8_t title[8]) {
+	memcpy(hal->sys_ctx.system_title, title, 8);
 	memcpy(hal->system.system_title, title, 8);
 }
 
-void linux_hal_add_key(osp_hal_t *hal, uint8_t sap, uint8_t key_id,
+void linux_hal_add_key(linux_hal_t *hal, uint8_t sap, uint8_t key_id,
                         const uint8_t *key, uint8_t key_len) {
-	linux_hal_t *lh = (linux_hal_t *)hal;
-	linux_hal_system_ctx_t *sys = &lh->sys_ctx;
+	linux_hal_system_ctx_t *sys = &hal->sys_ctx;
 	if (sys->key_count >= OSP_LINUX_HAL_MAX_KEYS || key_len > OSP_LINUX_HAL_MAX_KEY_LEN)
 		return;
 

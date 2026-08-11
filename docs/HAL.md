@@ -97,6 +97,8 @@ static osp_err_t freertos_recv(void *ctx, uint8_t *buf, uint32_t size, uint32_t 
 
 Required for HLS authentication and glo-ciphering. Set global function pointers before calling `osp_client_connect` or `osp_server_accept`.
 
+> **Note:** `osp_hal_t.crypto` / `osp_crypto_t` are convenience types only. The library never calls them. Install crypto through the globals below (as `linux_hal_init_crypto()` does).
+
 ```c
 // One-shot AES-GCM (preferred, simpler):
 extern int (*osp_hal_gcm_crypt)(osp_gcm_dir_t dir, const uint8_t *key, uint32_t key_len,
