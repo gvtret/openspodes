@@ -68,6 +68,14 @@ static osp_err_t gprs_set(void *inst, uint8_t attr_id, const osp_value_t *value)
 			g->pin_code = osp_get_u16(value);
 			return OSP_OK;
 		case 4:
+			/* QoS structures not persisted — accept the null stub shape only. */
+			if (value->tag != OSP_TAG_STRUCTURE || value->as.structure.elements.count < 2) {
+				return OSP_ERR_INVALID;
+			}
+			if (value->as.structure.elements.items[0].tag != OSP_TAG_NULL ||
+			    value->as.structure.elements.items[1].tag != OSP_TAG_NULL) {
+				return OSP_ERR_UNSUPPORTED;
+			}
 			return OSP_OK;
 		default:
 			return OSP_ERR_NOT_FOUND;

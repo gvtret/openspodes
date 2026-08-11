@@ -43,9 +43,25 @@ static osp_err_t ipv4_get(const void *inst, uint8_t attr_id, osp_value_t *result
 			result->as.ref = &view;
 			return OSP_OK;
 		}
-		case 5:
-			*result = osp_ic_val_empty_array();
+		case 5: {
+			OSP_TLS osp_value_t elems[OSP_MAX_IP_OPTIONS];
+			uint8_t n = s->ip_options_count;
+			if (n > OSP_MAX_IP_OPTIONS) {
+				n = OSP_MAX_IP_OPTIONS;
+			}
+			if (n == 0) {
+				*result = osp_ic_val_empty_array();
+				return OSP_OK;
+			}
+			for (uint8_t i = 0; i < n; i++) {
+				elems[i] = osp_val_u8(s->ip_options[i]);
+			}
+			result->tag = OSP_TAG_ARRAY;
+			result->as.array.elements.items = elems;
+			result->as.array.elements.count = n;
+			result->as.array.elements.capacity = n;
 			return OSP_OK;
+		}
 		case 6:
 			*result = osp_val_u32(s->subnet_mask);
 			return OSP_OK;
@@ -101,8 +117,20 @@ static osp_err_t ipv4_set(void *inst, uint8_t attr_id, const osp_value_t *value)
 			s->multicast_count = n;
 			return OSP_OK;
 		}
-		case 5:
+		case 5: {
+			if (value->tag != OSP_TAG_ARRAY) {
+				return OSP_ERR_INVALID;
+			}
+			uint8_t n = value->as.array.elements.count;
+			if (n > OSP_MAX_IP_OPTIONS) {
+				n = OSP_MAX_IP_OPTIONS;
+			}
+			for (uint8_t i = 0; i < n; i++) {
+				s->ip_options[i] = osp_get_u8(&value->as.array.elements.items[i]);
+			}
+			s->ip_options_count = n;
 			return OSP_OK;
+		}
 		case 6:
 			s->subnet_mask = osp_get_u32(value);
 			return OSP_OK;

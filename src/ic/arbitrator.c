@@ -160,7 +160,7 @@ static osp_err_t arb_invoke(void *inst, uint8_t method_id, const osp_value_t *pa
 		a->last_outcome = 0;
 		return OSP_OK;
 	}
-	return (method_id == 1) ? OSP_OK : OSP_ERR_UNSUPPORTED;
+	return OSP_ERR_UNSUPPORTED;
 }
 
 static osp_err_t arb_serialize(const void *inst, osp_buf_t *buf) {

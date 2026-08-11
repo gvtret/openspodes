@@ -301,7 +301,11 @@ static osp_err_t push_set(void *inst, uint8_t attr_id, const osp_value_t *value)
 			p->push_client_SAP = osp_get_i8(value);
 			return OSP_OK;
 		case 10:
-			return OSP_OK; /* empty / ignore writes for now */
+			if (value->tag != OSP_TAG_ARRAY) {
+				return OSP_ERR_INVALID;
+			}
+			/* Protection parameters list not stored yet — only empty writes. */
+			return (value->as.array.elements.count == 0) ? OSP_OK : OSP_ERR_UNSUPPORTED;
 		case 11:
 			p->push_operation_method = osp_get_enum(value);
 			return OSP_OK;

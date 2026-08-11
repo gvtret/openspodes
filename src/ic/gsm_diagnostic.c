@@ -77,8 +77,14 @@ static osp_err_t gsm_set(void *inst, uint8_t attr_id, const osp_value_t *value) 
 			g->ps_status = osp_get_enum(value);
 			return OSP_OK;
 		case 6:
+			/* cell_info not stored — accept null (matches GET stub). */
+			return (value->tag == OSP_TAG_NULL) ? OSP_OK : OSP_ERR_UNSUPPORTED;
 		case 7:
-			return OSP_OK;
+			if (value->tag != OSP_TAG_ARRAY) {
+				return OSP_ERR_INVALID;
+			}
+			/* adjacent_cells not stored — only empty writes. */
+			return (value->as.array.elements.count == 0) ? OSP_OK : OSP_ERR_UNSUPPORTED;
 		case 8:
 			if (value->tag != OSP_TAG_DATETIME) {
 				return OSP_ERR_INVALID;

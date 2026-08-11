@@ -9,6 +9,8 @@ typedef struct {
 	uint32_t ip_address;
 	uint32_t multicast_ip[OSP_MAX_IP_MULTICAST];
 	uint8_t multicast_count;
+	uint8_t ip_options[OSP_MAX_IP_OPTIONS];
+	uint8_t ip_options_count;
 	uint32_t subnet_mask;
 	uint32_t gateway_ip;
 	bool use_dhcp;

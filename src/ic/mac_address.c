@@ -18,9 +18,13 @@ static osp_err_t mac_get(const void *inst, uint8_t attr_id, osp_value_t *result)
 		return osp_ic_get_logical_name(result, &m->logical_name);
 	}
 	if (attr_id == 2) {
+		uint8_t n = m->mac_address_len;
+		if (n > sizeof(m->mac_address)) {
+			n = (uint8_t)sizeof(m->mac_address);
+		}
 		result->tag = OSP_TAG_OCTETSTRING;
-		result->as.octetstring.len = m->mac_address_len;
-		memcpy(result->as.octetstring.data, m->mac_address, m->mac_address_len);
+		result->as.octetstring.len = n;
+		memcpy(result->as.octetstring.data, m->mac_address, n);
 		return OSP_OK;
 	}
 	return OSP_ERR_NOT_FOUND;
@@ -35,11 +39,12 @@ static osp_err_t mac_set(void *inst, uint8_t attr_id, const osp_value_t *value) 
 
 	osp_ic_mac_address_t *m = (osp_ic_mac_address_t *)inst;
 	if (attr_id == 2 && value && value->tag == OSP_TAG_OCTETSTRING) {
-		m->mac_address_len = (uint8_t)value->as.octetstring.len;
-		if (m->mac_address_len > sizeof(m->mac_address)) {
+		uint32_t len = value->as.octetstring.len;
+		if (len > sizeof(m->mac_address)) {
 			return OSP_ERR_NOMEM;
 		}
-		memcpy(m->mac_address, value->as.octetstring.data, m->mac_address_len);
+		m->mac_address_len = (uint8_t)len;
+		memcpy(m->mac_address, value->as.octetstring.data, len);
 		return OSP_OK;
 	}
 	return OSP_ERR_NOT_FOUND;
