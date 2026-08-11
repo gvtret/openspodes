@@ -12,6 +12,7 @@
 #include "../ic/push_setup.h"
 #include "../ic/association_ln.h"
 #include "../transport/hdlc_session.h"
+#include <stdint.h>
 #include <string.h>
 
 static osp_err_t server_flush_pending_push(osp_server_t *s);
@@ -832,23 +833,32 @@ static osp_err_t handle_get(osp_server_t *s, const osp_get_request_t *req) {
 
 	/* Apply selective access filter for ProfileGeneric buffer (attr 2) */
 	if (item.is_data && req->as.normal.access_selection.type != OSP_SEL_ACCESS_NONE &&
-	    req->as.normal.attr.attribute_id == 2 && item.data.tag == OSP_TAG_ARRAY) {
-		osp_value_list_t *arr = &item.data.as.array.elements;
-		if (req->as.normal.access_selection.type == OSP_SEL_ACCESS_BY_ENTRY ||
-		    req->as.normal.access_selection.type == OSP_SEL_ACCESS_BY_RANGE) {
-			uint32_t from = req->as.normal.access_selection.param.entry.from;
-			uint32_t to = req->as.normal.access_selection.param.entry.to;
-			uint8_t filtered = 0;
-			for (uint8_t i = 0; i < arr->count; i++) {
-				uint32_t entry = i + 1;
-				if (entry >= from && (to == 0 || entry <= to)) {
-					if (filtered != i) {
-						arr->items[filtered] = arr->items[i];
+	    req->as.normal.attr.attribute_id == 2) {
+		if (item.data.tag == OSP_TAG_ARRAY) {
+			osp_value_list_t *arr = &item.data.as.array.elements;
+			if (req->as.normal.access_selection.type == OSP_SEL_ACCESS_BY_ENTRY ||
+			    req->as.normal.access_selection.type == OSP_SEL_ACCESS_BY_RANGE) {
+				uint32_t from = req->as.normal.access_selection.param.entry.from;
+				uint32_t to = req->as.normal.access_selection.param.entry.to;
+				uint8_t filtered = 0;
+				for (uint8_t i = 0; i < arr->count; i++) {
+					uint32_t entry = i + 1;
+					if (entry >= from && (to == 0 || entry <= to)) {
+						if (filtered != i) {
+							arr->items[filtered] = arr->items[i];
+						}
+						filtered++;
 					}
-					filtered++;
 				}
+				arr->count = filtered;
 			}
-			arr->count = filtered;
+		} else if (item.data.tag == OSP_TAG_PROFILE_BUFFER_REF && item.data.as.ref) {
+			osp_profile_buffer_view_t *view = (osp_profile_buffer_view_t *)(uintptr_t)item.data.as.ref;
+			if (req->as.normal.access_selection.type == OSP_SEL_ACCESS_BY_ENTRY ||
+			    req->as.normal.access_selection.type == OSP_SEL_ACCESS_BY_RANGE) {
+				view->from_entry = req->as.normal.access_selection.param.entry.from;
+				view->to_entry = req->as.normal.access_selection.param.entry.to;
+			}
 		}
 	}
 

@@ -86,10 +86,13 @@ typedef enum {
 } osp_axdr_tag_t;
 
 /*
- * Internal encoder hint (never appears on the wire). osp_value_write rewrites
- * this as a normal ARRAY of object_list elements without a multi-MiB scratch.
+ * Internal encoder hints (never appear on the wire). osp_value_write rewrites
+ * these as normal A-XDR without multi-KiB value-tree scratch buffers.
  */
 #define OSP_TAG_OBJECT_LIST_REF 0xF0
+#define OSP_TAG_PROFILE_BUFFER_REF 0xF1
+#define OSP_TAG_CAPTURE_OBJECT_LIST_REF 0xF2
+#define OSP_TAG_DAY_PROFILE_TABLE_REF 0xF3
 
 /* ── Fixed size lookup (used by compact_array) ───────────────────────────── */
 
@@ -332,7 +335,7 @@ struct osp_value {
 		osp_delta_uint32_t delta_uint32;
 		osp_array_t array;
 		osp_structure_t structure;
-		const void *ref; /* OSP_TAG_OBJECT_LIST_REF → const osp_object_list_t * */
+		const void *ref; /* internal *_REF tags → typed const pointer */
 	} as;
 };
 

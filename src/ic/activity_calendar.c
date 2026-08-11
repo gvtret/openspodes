@@ -5,6 +5,22 @@
 
 static const uint8_t ac_attrs[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 
+static osp_value_t ac_val_day_profile_table(const osp_day_profile_t *profiles, uint8_t count) {
+	OSP_TLS osp_day_profile_table_view_t view;
+	osp_value_t v = {0};
+	if (!profiles || count == 0) {
+		return osp_ic_val_empty_array();
+	}
+	if (count > OSP_MAX_DAY_PROFILE) {
+		count = OSP_MAX_DAY_PROFILE;
+	}
+	view.profiles = profiles;
+	view.count = count;
+	v.tag = OSP_TAG_DAY_PROFILE_TABLE_REF;
+	v.as.ref = &view;
+	return v;
+}
+
 /* ── Helper: copy season profile ────────────────────────────────────────── */
 
 static void copy_season(osp_season_t *dst, const osp_season_t *src) {
@@ -122,62 +138,11 @@ static osp_err_t ac_get(const void *inst, uint8_t attr_id, osp_value_t *result) 
 		case 5: {
 			/* Blue Book: day_profile ::= structure { day_id: unsigned,
 			 *   day_schedule: array of { start_time, script_LN, script_selector } } */
-			OSP_TLS osp_value_t items[OSP_MAX_DAY_PROFILE];
-			OSP_TLS osp_value_t day_fields[OSP_MAX_DAY_PROFILE][2];
-			OSP_TLS osp_value_t act_arr[OSP_MAX_DAY_PROFILE][OSP_MAX_DAY_ACTION];
-			OSP_TLS osp_value_t act_fields[OSP_MAX_DAY_PROFILE][OSP_MAX_DAY_ACTION][3];
 			uint8_t n = a->day_count_active;
 			if (n > OSP_MAX_DAY_PROFILE) {
 				n = OSP_MAX_DAY_PROFILE;
 			}
-			*result = osp_ic_val_empty_array();
-			if (n == 0) {
-				return OSP_OK;
-			}
-			for (uint8_t i = 0; i < n; i++) {
-				const osp_day_profile_t *dp = &a->day_profile_table_active[i];
-				uint8_t day_id = 1;
-				if (dp->name_len > 0) {
-					day_id = (uint8_t)dp->name[0];
-				}
-				uint8_t na = dp->action_count;
-				if (na > OSP_MAX_DAY_ACTION) {
-					na = OSP_MAX_DAY_ACTION;
-				}
-				for (uint8_t j = 0; j < na; j++) {
-					const osp_day_profile_action_t *act = &dp->actions[j];
-					act_fields[i][j][0].tag = OSP_TAG_OCTETSTRING;
-					act_fields[i][j][0].as.octetstring.len = 4;
-					memcpy(act_fields[i][j][0].as.octetstring.data, act->time, 4);
-					act_fields[i][j][1].tag = OSP_TAG_OCTETSTRING;
-					act_fields[i][j][1].as.octetstring.len = 6;
-					memset(act_fields[i][j][1].as.octetstring.data, 0, 6);
-					/* Default script LN 0.0.10.0.100.255 when unset */
-					act_fields[i][j][1].as.octetstring.data[2] = 10;
-					act_fields[i][j][1].as.octetstring.data[4] = 100;
-					act_fields[i][j][1].as.octetstring.data[5] = 255;
-					act_fields[i][j][2] = osp_val_u16(1);
-					if (act->script_count > 0) {
-						act_fields[i][j][2] = osp_val_u16((uint16_t)act->scripts[0].script_selector);
-					}
-					act_arr[i][j].tag = OSP_TAG_STRUCTURE;
-					act_arr[i][j].as.structure.elements.items = act_fields[i][j];
-					act_arr[i][j].as.structure.elements.count = 3;
-					act_arr[i][j].as.structure.elements.capacity = 3;
-				}
-				day_fields[i][0] = osp_val_u8(day_id);
-				day_fields[i][1].tag = OSP_TAG_ARRAY;
-				day_fields[i][1].as.array.elements.items = act_arr[i];
-				day_fields[i][1].as.array.elements.count = na;
-				day_fields[i][1].as.array.elements.capacity = na;
-				items[i].tag = OSP_TAG_STRUCTURE;
-				items[i].as.structure.elements.items = day_fields[i];
-				items[i].as.structure.elements.count = 2;
-				items[i].as.structure.elements.capacity = 2;
-			}
-			result->as.array.elements.items = items;
-			result->as.array.elements.count = n;
-			result->as.array.elements.capacity = n;
+			*result = ac_val_day_profile_table(a->day_profile_table_active, n);
 			return OSP_OK;
 		}
 		case 6:
@@ -249,61 +214,11 @@ static osp_err_t ac_get(const void *inst, uint8_t attr_id, osp_value_t *result) 
 			return OSP_OK;
 		}
 		case 9: {
-			OSP_TLS osp_value_t items[OSP_MAX_DAY_PROFILE];
-			OSP_TLS osp_value_t day_fields[OSP_MAX_DAY_PROFILE][2];
-			OSP_TLS osp_value_t act_arr[OSP_MAX_DAY_PROFILE][OSP_MAX_DAY_ACTION];
-			OSP_TLS osp_value_t act_fields[OSP_MAX_DAY_PROFILE][OSP_MAX_DAY_ACTION][3];
 			uint8_t n = a->day_count_passive;
 			if (n > OSP_MAX_DAY_PROFILE) {
 				n = OSP_MAX_DAY_PROFILE;
 			}
-			*result = osp_ic_val_empty_array();
-			if (n == 0) {
-				return OSP_OK;
-			}
-			for (uint8_t i = 0; i < n; i++) {
-				const osp_day_profile_t *dp = &a->day_profile_table_passive[i];
-				uint8_t day_id = 1;
-				if (dp->name_len > 0) {
-					day_id = (uint8_t)dp->name[0];
-				}
-				uint8_t na = dp->action_count;
-				if (na > OSP_MAX_DAY_ACTION) {
-					na = OSP_MAX_DAY_ACTION;
-				}
-				for (uint8_t j = 0; j < na; j++) {
-					const osp_day_profile_action_t *act = &dp->actions[j];
-					act_fields[i][j][0].tag = OSP_TAG_OCTETSTRING;
-					act_fields[i][j][0].as.octetstring.len = 4;
-					memcpy(act_fields[i][j][0].as.octetstring.data, act->time, 4);
-					act_fields[i][j][1].tag = OSP_TAG_OCTETSTRING;
-					act_fields[i][j][1].as.octetstring.len = 6;
-					memset(act_fields[i][j][1].as.octetstring.data, 0, 6);
-					act_fields[i][j][1].as.octetstring.data[2] = 10;
-					act_fields[i][j][1].as.octetstring.data[4] = 100;
-					act_fields[i][j][1].as.octetstring.data[5] = 255;
-					act_fields[i][j][2] = osp_val_u16(1);
-					if (act->script_count > 0) {
-						act_fields[i][j][2] = osp_val_u16((uint16_t)act->scripts[0].script_selector);
-					}
-					act_arr[i][j].tag = OSP_TAG_STRUCTURE;
-					act_arr[i][j].as.structure.elements.items = act_fields[i][j];
-					act_arr[i][j].as.structure.elements.count = 3;
-					act_arr[i][j].as.structure.elements.capacity = 3;
-				}
-				day_fields[i][0] = osp_val_u8(day_id);
-				day_fields[i][1].tag = OSP_TAG_ARRAY;
-				day_fields[i][1].as.array.elements.items = act_arr[i];
-				day_fields[i][1].as.array.elements.count = na;
-				day_fields[i][1].as.array.elements.capacity = na;
-				items[i].tag = OSP_TAG_STRUCTURE;
-				items[i].as.structure.elements.items = day_fields[i];
-				items[i].as.structure.elements.count = 2;
-				items[i].as.structure.elements.capacity = 2;
-			}
-			result->as.array.elements.items = items;
-			result->as.array.elements.count = n;
-			result->as.array.elements.capacity = n;
+			*result = ac_val_day_profile_table(a->day_profile_table_passive, n);
 			return OSP_OK;
 		}
 		case 10:

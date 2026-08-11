@@ -1471,6 +1471,30 @@ osp_err_t osp_value_write(osp_buf_t *buf, const osp_value_t *val) {
 			return osp_object_list_write(buf, (const osp_object_list_t *)val->as.ref);
 		}
 
+		case OSP_TAG_PROFILE_BUFFER_REF: {
+			if (buf->wr == 0) {
+				return OSP_ERR_INVALID;
+			}
+			buf->wr--;
+			return osp_profile_buffer_write(buf, (const osp_profile_buffer_view_t *)val->as.ref);
+		}
+
+		case OSP_TAG_CAPTURE_OBJECT_LIST_REF: {
+			if (buf->wr == 0) {
+				return OSP_ERR_INVALID;
+			}
+			buf->wr--;
+			return osp_capture_object_list_write(buf, (const osp_capture_object_list_t *)val->as.ref);
+		}
+
+		case OSP_TAG_DAY_PROFILE_TABLE_REF: {
+			if (buf->wr == 0) {
+				return OSP_ERR_INVALID;
+			}
+			buf->wr--;
+			return osp_day_profile_table_write(buf, (const osp_day_profile_table_view_t *)val->as.ref);
+		}
+
 		default:
 			return OSP_ERR_UNSUPPORTED;
 	}
@@ -1656,18 +1680,299 @@ osp_err_t osp_object_list_write(osp_buf_t *buf, const osp_object_list_t *ol) {
 	if (n > 255) {
 		n = 255;
 	}
-	osp_err_t r = osp_axdr_write_u8(buf, OSP_TAG_ARRAY);
-	if (r != OSP_OK) {
-		return r;
-	}
-	r = osp_ber_write_length(buf, (uint8_t)n);
+	osp_err_t r = osp_array_begin(buf, (uint8_t)n);
 	if (r != OSP_OK) {
 		return r;
 	}
 	for (uint16_t i = 0; i < n; i++) {
-		r = osp_object_list_element_write(buf, &ol->elements[i]);
+		const osp_object_list_element_t *e = &ol->elements[i];
+		const osp_access_right_t *ar = &e->access_rights;
+		uint8_t ac = ar->attr_count;
+		uint8_t mc = ar->method_count;
+		if (ac > OSP_MAX_ACCESS_ITEMS) {
+			ac = OSP_MAX_ACCESS_ITEMS;
+		}
+		if (mc > OSP_MAX_ACCESS_ITEMS) {
+			mc = OSP_MAX_ACCESS_ITEMS;
+		}
+		r = osp_struct_begin(buf, 4);
 		if (r != OSP_OK) {
 			return r;
+		}
+		/* class_id: long-unsigned */
+		r = osp_axdr_write_u8(buf, OSP_TAG_LONG_UNSIGNED);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u16(buf, e->class_id);
+		if (r != OSP_OK) {
+			return r;
+		}
+		/* version: unsigned */
+		r = osp_axdr_write_u8(buf, OSP_TAG_UNSIGNED);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, e->version);
+		if (r != OSP_OK) {
+			return r;
+		}
+		/* logical_name: octet-string(6) */
+		r = osp_axdr_write_u8(buf, OSP_TAG_OCTETSTRING);
+		if (r != OSP_OK) {
+			return r;
+		}
+		{
+			uint8_t ln[6] = {e->logical_name.a, e->logical_name.b, e->logical_name.c,
+			                 e->logical_name.d, e->logical_name.e, e->logical_name.f};
+			r = osp_axdr_write_octet_string(buf, ln, 6);
+			if (r != OSP_OK) {
+				return r;
+			}
+		}
+		/* access_rights: structure { attr_array, method_array } */
+		r = osp_struct_begin(buf, 2);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_array_begin(buf, ac);
+		if (r != OSP_OK) {
+			return r;
+		}
+		for (uint8_t a = 0; a < ac; a++) {
+			r = osp_struct_begin(buf, 3);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_axdr_write_u8(buf, OSP_TAG_INTEGER);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_axdr_write_i8(buf, ar->attr_items[a].attribute_id);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_axdr_write_u8(buf, OSP_TAG_ENUM);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_axdr_write_u8(buf, (uint8_t)ar->attr_items[a].access_mode);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_axdr_write_u8(buf, OSP_TAG_NULL);
+			if (r != OSP_OK) {
+				return r;
+			}
+		}
+		r = osp_array_begin(buf, mc);
+		if (r != OSP_OK) {
+			return r;
+		}
+		for (uint8_t m = 0; m < mc; m++) {
+			r = osp_struct_begin(buf, 2);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_axdr_write_u8(buf, OSP_TAG_INTEGER);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_axdr_write_i8(buf, ar->method_items[m].method_id);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_axdr_write_u8(buf, OSP_TAG_ENUM);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_axdr_write_u8(buf, (uint8_t)ar->method_items[m].access_mode);
+			if (r != OSP_OK) {
+				return r;
+			}
+		}
+	}
+	return OSP_OK;
+}
+
+osp_err_t osp_profile_buffer_write(osp_buf_t *buf, const osp_profile_buffer_view_t *view) {
+	if (!buf) {
+		return OSP_ERR_INVALID;
+	}
+	const osp_profile_buffer_t *pb = view ? view->buf : NULL;
+	uint8_t n = pb ? pb->row_count : 0;
+	if (n > OSP_MAX_BUFFER_ROWS) {
+		n = OSP_MAX_BUFFER_ROWS;
+	}
+	uint32_t from = view ? view->from_entry : 0;
+	uint32_t to = view ? view->to_entry : 0;
+	uint8_t out_n = 0;
+	uint8_t idx[OSP_MAX_BUFFER_ROWS];
+	for (uint8_t i = 0; i < n; i++) {
+		uint32_t entry = (uint32_t)i + 1;
+		if (from != 0 && entry < from) {
+			continue;
+		}
+		if (to != 0 && entry > to) {
+			continue;
+		}
+		idx[out_n++] = i;
+	}
+	osp_err_t r = osp_array_begin(buf, out_n);
+	if (r != OSP_OK) {
+		return r;
+	}
+	for (uint8_t k = 0; k < out_n; k++) {
+		const osp_profile_row_t *row = &pb->rows[idx[k]];
+		uint8_t nc = row->cell_count;
+		if (nc > OSP_MAX_CAPTURE_OBJECTS) {
+			nc = OSP_MAX_CAPTURE_OBJECTS;
+		}
+		r = osp_struct_begin(buf, nc);
+		if (r != OSP_OK) {
+			return r;
+		}
+		for (uint8_t j = 0; j < nc; j++) {
+			r = osp_value_write(buf, &row->cells[j]);
+			if (r != OSP_OK) {
+				return r;
+			}
+		}
+	}
+	return OSP_OK;
+}
+
+osp_err_t osp_capture_object_list_write(osp_buf_t *buf, const osp_capture_object_list_t *list) {
+	if (!buf) {
+		return OSP_ERR_INVALID;
+	}
+	uint8_t n = list ? list->count : 0;
+	if (n > OSP_MAX_CAPTURE_OBJECTS) {
+		n = OSP_MAX_CAPTURE_OBJECTS;
+	}
+	osp_err_t r = osp_array_begin(buf, n);
+	if (r != OSP_OK) {
+		return r;
+	}
+	for (uint8_t i = 0; i < n; i++) {
+		const osp_capture_object_t *co = &list->items[i];
+		r = osp_struct_begin(buf, 4);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_LONG_UNSIGNED);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u16(buf, co->class_id);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_OCTETSTRING);
+		if (r != OSP_OK) {
+			return r;
+		}
+		{
+			uint8_t ln[6] = {co->logical_name.a, co->logical_name.b, co->logical_name.c,
+			                 co->logical_name.d, co->logical_name.e, co->logical_name.f};
+			r = osp_axdr_write_octet_string(buf, ln, 6);
+			if (r != OSP_OK) {
+				return r;
+			}
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_INTEGER);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_i8(buf, co->attribute_index);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_LONG_UNSIGNED);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u16(buf, (uint16_t)co->data_index);
+		if (r != OSP_OK) {
+			return r;
+		}
+	}
+	return OSP_OK;
+}
+
+osp_err_t osp_day_profile_table_write(osp_buf_t *buf, const osp_day_profile_table_view_t *view) {
+	if (!buf) {
+		return OSP_ERR_INVALID;
+	}
+	uint8_t n = (view && view->profiles) ? view->count : 0;
+	if (n > OSP_MAX_DAY_PROFILE) {
+		n = OSP_MAX_DAY_PROFILE;
+	}
+	osp_err_t r = osp_array_begin(buf, n);
+	if (r != OSP_OK) {
+		return r;
+	}
+	for (uint8_t i = 0; i < n; i++) {
+		const osp_day_profile_t *dp = &view->profiles[i];
+		uint8_t day_id = 1;
+		if (dp->name_len > 0) {
+			day_id = (uint8_t)dp->name[0];
+		}
+		uint8_t na = dp->action_count;
+		if (na > OSP_MAX_DAY_ACTION) {
+			na = OSP_MAX_DAY_ACTION;
+		}
+		r = osp_struct_begin(buf, 2);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_UNSIGNED);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, day_id);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_array_begin(buf, na);
+		if (r != OSP_OK) {
+			return r;
+		}
+		for (uint8_t j = 0; j < na; j++) {
+			const osp_day_profile_action_t *act = &dp->actions[j];
+			uint8_t script_ln[6] = {0, 0, 10, 0, 100, 255};
+			uint16_t selector = 1;
+			if (act->script_count > 0) {
+				selector = (uint16_t)act->scripts[0].script_selector;
+			}
+			r = osp_struct_begin(buf, 3);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_axdr_write_u8(buf, OSP_TAG_OCTETSTRING);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_axdr_write_octet_string(buf, act->time, 4);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_axdr_write_u8(buf, OSP_TAG_OCTETSTRING);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_axdr_write_octet_string(buf, script_ln, 6);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_axdr_write_u8(buf, OSP_TAG_LONG_UNSIGNED);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_axdr_write_u16(buf, selector);
+			if (r != OSP_OK) {
+				return r;
+			}
 		}
 	}
 	return OSP_OK;

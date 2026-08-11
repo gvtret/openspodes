@@ -339,7 +339,8 @@ The library uses static buffers sized by these constants:
 **Session structs** (order-of-magnitude, depends on PDU macros):
 - `osp_client_t`: ~8 KB
 - `osp_server_t`: ~200 KB with default pending×32 (four pending buffers)
-- `osp_value_read_pool`: shared codec pool (mutex-protected when `osp_hal_mutex` is set)
+- `osp_value_read_pool`: shared codec pool (mutex-protected when `osp_hal_mutex` is set); ~136 KiB at default 32×16
+- Large IC attributes (object_list, profile buffer, capture objects, day profiles) stream via internal `*_REF` tags — no multi‑MiB encode scratch
 
 ---
 

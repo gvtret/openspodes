@@ -7,57 +7,26 @@
 static const uint8_t pg_attrs[] = {1, 2, 3, 4, 5, 6, 7, 8};
 
 static osp_value_t pg_val_buffer(const osp_profile_buffer_t *buf) {
-	OSP_TLS osp_value_t rows[OSP_MAX_BUFFER_ROWS];
-	OSP_TLS osp_value_t cells[OSP_MAX_BUFFER_ROWS][OSP_MAX_CAPTURE_OBJECTS];
+	OSP_TLS osp_profile_buffer_view_t view;
 	osp_value_t v = {0};
 	if (!buf || buf->row_count == 0) {
 		return osp_ic_val_empty_array();
 	}
-	for (uint8_t i = 0; i < buf->row_count && i < OSP_MAX_BUFFER_ROWS; i++) {
-		const osp_profile_row_t *row = &buf->rows[i];
-		rows[i].tag = OSP_TAG_STRUCTURE;
-		rows[i].as.structure.elements.items = cells[i];
-		rows[i].as.structure.elements.count = row->cell_count;
-		rows[i].as.structure.elements.capacity = row->cell_count;
-		for (uint8_t j = 0; j < row->cell_count && j < OSP_MAX_CAPTURE_OBJECTS; j++) {
-			cells[i][j] = row->cells[j];
-		}
-	}
-	v.tag = OSP_TAG_ARRAY;
-	v.as.array.elements.items = rows;
-	v.as.array.elements.count = buf->row_count;
-	v.as.array.elements.capacity = buf->row_count;
+	view.buf = buf;
+	view.from_entry = 0;
+	view.to_entry = 0;
+	v.tag = OSP_TAG_PROFILE_BUFFER_REF;
+	v.as.ref = &view;
 	return v;
 }
 
 static osp_value_t pg_val_capture_objects(const osp_capture_object_list_t *list) {
-	/* Per-item field storage: osp_ic_val_capture_object uses TLS and cannot be
-	 * called repeatedly into the same array without overwriting prior elements. */
-	OSP_TLS osp_value_t items[OSP_MAX_CAPTURE_OBJECTS];
-	OSP_TLS osp_value_t fields[OSP_MAX_CAPTURE_OBJECTS][4];
-	uint8_t n = list ? list->count : 0;
-	if (n > OSP_MAX_CAPTURE_OBJECTS) {
-		n = OSP_MAX_CAPTURE_OBJECTS;
+	osp_value_t v = {0};
+	if (!list || list->count == 0) {
+		return osp_ic_val_empty_array();
 	}
-	for (uint8_t i = 0; i < n; i++) {
-		const osp_capture_object_t *co = &list->items[i];
-		fields[i][0] = osp_val_u16(co->class_id);
-		fields[i][1].tag = OSP_TAG_OCTETSTRING;
-		fields[i][1].as.octetstring.len = 6;
-		memcpy(fields[i][1].as.octetstring.data, &co->logical_name, 6);
-		fields[i][2] = osp_val_i8(co->attribute_index);
-		fields[i][3] = osp_val_u16((uint16_t)co->data_index);
-		items[i].tag = OSP_TAG_STRUCTURE;
-		items[i].as.structure.elements.items = fields[i];
-		items[i].as.structure.elements.count = 4;
-		items[i].as.structure.elements.capacity = 4;
-	}
-	osp_value_t v = osp_ic_val_empty_array();
-	if (n > 0) {
-		v.as.array.elements.items = items;
-		v.as.array.elements.count = n;
-		v.as.array.elements.capacity = n;
-	}
+	v.tag = OSP_TAG_CAPTURE_OBJECT_LIST_REF;
+	v.as.ref = list;
 	return v;
 }
 

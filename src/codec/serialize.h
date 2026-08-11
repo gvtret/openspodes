@@ -138,6 +138,12 @@ osp_err_t osp_object_list_element_read(osp_buf_t *buf, osp_object_list_element_t
 osp_err_t osp_object_list_element_write(osp_buf_t *buf, const osp_object_list_element_t *elem);
 /** @brief Write a full object_list as an A-XDR ARRAY (tag + elements). */
 osp_err_t osp_object_list_write(osp_buf_t *buf, const osp_object_list_t *ol);
+/** @brief Write a ProfileGeneric buffer as an A-XDR ARRAY of row structures. */
+osp_err_t osp_profile_buffer_write(osp_buf_t *buf, const osp_profile_buffer_view_t *view);
+/** @brief Write a capture-object list as an A-XDR ARRAY. */
+osp_err_t osp_capture_object_list_write(osp_buf_t *buf, const osp_capture_object_list_t *list);
+/** @brief Write a day-profile table as an A-XDR ARRAY (Blue Book layout). */
+osp_err_t osp_day_profile_table_write(osp_buf_t *buf, const osp_day_profile_table_view_t *view);
 
 /** @brief Read a capture object structure from the buffer. */
 osp_err_t osp_capture_object_read(osp_buf_t *buf, osp_capture_object_t *co);

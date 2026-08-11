@@ -361,6 +361,13 @@ typedef struct {
 	uint32_t entries_in_use;
 } osp_profile_buffer_t;
 
+/* Encoder view for OSP_TAG_PROFILE_BUFFER_REF (optional 1-based entry filter). */
+typedef struct {
+	const osp_profile_buffer_t *buf;
+	uint32_t from_entry; /* 0 = no lower bound */
+	uint32_t to_entry;   /* 0 = no upper bound */
+} osp_profile_buffer_view_t;
+
 /* ═══════════════════════════════════════════════════════════════════════════
  *  CLASS 8: Clock — uses octet-string for date/time (covered by osp_*_t)
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -560,6 +567,12 @@ typedef struct {
 	osp_day_profile_action_t actions[OSP_MAX_DAY_ACTION];
 	uint8_t action_count;
 } osp_day_profile_t;
+
+/* Encoder view for OSP_TAG_DAY_PROFILE_TABLE_REF (table + live count). */
+typedef struct {
+	const osp_day_profile_t *profiles;
+	uint8_t count;
+} osp_day_profile_table_view_t;
 
 /* week_profile ::= structure { name, monday..sunday } */
 typedef struct {
