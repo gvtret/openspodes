@@ -1635,7 +1635,7 @@ osp_err_t osp_obis_write(osp_buf_t *buf, const osp_obis_t *obis) {
 	return OSP_OK;
 }
 
-/* Access right: structure { attribute_access, method_access } */
+/* Access right: structure { attribute_access, method_access } — tagged A-XDR */
 osp_err_t osp_access_right_read(osp_buf_t *buf, osp_access_right_t *ar) {
 	if (!buf || !ar) {
 		return OSP_ERR_INVALID;
@@ -1649,51 +1649,68 @@ osp_err_t osp_access_right_read(osp_buf_t *buf, osp_access_right_t *ar) {
 		return OSP_ERR_INVALID;
 	}
 
-	/* attribute_access_descriptor: array of attribute_access_item */
 	uint8_t acount;
 	r = osp_array_begin_read(buf, &acount);
 	if (r != OSP_OK) {
 		return r;
 	}
-	if (acount > OSP_MAX_ACCESS_ITEMS) {
-		acount = OSP_MAX_ACCESS_ITEMS;
+	uint8_t keep_a = acount;
+	if (keep_a > OSP_MAX_ACCESS_ITEMS) {
+		keep_a = OSP_MAX_ACCESS_ITEMS;
 	}
-	ar->attr_count = acount;
+	ar->attr_count = keep_a;
 	for (uint8_t i = 0; i < acount; i++) {
-		/* attribute_access_item: { attribute_id, access_mode, access_selectors } */
 		uint8_t nf2;
 		r = osp_struct_begin_read(buf, &nf2);
 		if (r != OSP_OK) {
 			return r;
 		}
-		osp_axdr_read_i8(buf, &ar->attr_items[i].attribute_id);
-		uint8_t am;
-		osp_axdr_read_u8(buf, &am);
-		ar->attr_items[i].access_mode = (osp_attr_access_t)am;
-		/* access_selectors: CHOICE — skip for now */
-		osp_value_skip(buf);
+		osp_value_t idv = {0};
+		osp_value_t amv = {0};
+		if ((r = osp_value_read(buf, &idv)) != OSP_OK) {
+			return r;
+		}
+		if ((r = osp_value_read(buf, &amv)) != OSP_OK) {
+			return r;
+		}
+		/* access_selectors CHOICE */
+		if ((r = osp_value_skip(buf)) != OSP_OK) {
+			return r;
+		}
+		if (i < keep_a) {
+			ar->attr_items[i].attribute_id = osp_get_i8(&idv);
+			ar->attr_items[i].access_mode = (osp_attr_access_t)osp_get_enum(&amv);
+		}
 	}
 
-	/* method_access_descriptor: array of method_access_item */
 	uint8_t mcount;
 	r = osp_array_begin_read(buf, &mcount);
 	if (r != OSP_OK) {
 		return r;
 	}
-	if (mcount > OSP_MAX_METHOD_ITEMS) {
-		mcount = OSP_MAX_METHOD_ITEMS;
+	uint8_t keep_m = mcount;
+	if (keep_m > OSP_MAX_METHOD_ITEMS) {
+		keep_m = OSP_MAX_METHOD_ITEMS;
 	}
-	ar->method_count = mcount;
+	ar->method_count = keep_m;
 	for (uint8_t i = 0; i < mcount; i++) {
 		uint8_t nf2;
 		r = osp_struct_begin_read(buf, &nf2);
 		if (r != OSP_OK) {
 			return r;
 		}
-		if ((r = osp_axdr_read_i8(buf, &ar->method_items[i].method_id)) != OSP_OK) return r;
-		uint8_t mm;
-		if ((r = osp_axdr_read_u8(buf, &mm)) != OSP_OK) return r;
-		ar->method_items[i].access_mode = (osp_method_access_t)mm;
+		osp_value_t idv = {0};
+		osp_value_t mmv = {0};
+		if ((r = osp_value_read(buf, &idv)) != OSP_OK) {
+			return r;
+		}
+		if ((r = osp_value_read(buf, &mmv)) != OSP_OK) {
+			return r;
+		}
+		if (i < keep_m) {
+			ar->method_items[i].method_id = osp_get_i8(&idv);
+			ar->method_items[i].access_mode = (osp_method_access_t)osp_get_enum(&mmv);
+		}
 	}
 	return OSP_OK;
 }
@@ -1702,32 +1719,75 @@ osp_err_t osp_access_right_write(osp_buf_t *buf, const osp_access_right_t *ar) {
 	if (!buf || !ar) {
 		return OSP_ERR_INVALID;
 	}
-	osp_err_t r;
-	if ((r = osp_struct_begin(buf, 2)) != OSP_OK)
-		return r;
-
-	if ((r = osp_array_begin(buf, ar->attr_count)) != OSP_OK)
-		return r;
-	for (uint8_t i = 0; i < ar->attr_count; i++) {
-		if ((r = osp_struct_begin(buf, 3)) != OSP_OK)
-			return r;
-		if ((r = osp_axdr_write_i8(buf, ar->attr_items[i].attribute_id)) != OSP_OK)
-			return r;
-		if ((r = osp_axdr_write_u8(buf, (uint8_t)ar->attr_items[i].access_mode)) != OSP_OK)
-			return r;
-		if ((r = osp_axdr_write_u8(buf, OSP_AXDR_NULL)) != OSP_OK)
-			return r;
+	uint8_t ac = ar->attr_count;
+	uint8_t mc = ar->method_count;
+	if (ac > OSP_MAX_ACCESS_ITEMS) {
+		ac = OSP_MAX_ACCESS_ITEMS;
+	}
+	if (mc > OSP_MAX_METHOD_ITEMS) {
+		mc = OSP_MAX_METHOD_ITEMS;
 	}
 
-	if ((r = osp_array_begin(buf, ar->method_count)) != OSP_OK)
+	osp_err_t r = osp_struct_begin(buf, 2);
+	if (r != OSP_OK) {
 		return r;
-	for (uint8_t i = 0; i < ar->method_count; i++) {
-		if ((r = osp_struct_begin(buf, 2)) != OSP_OK)
+	}
+	r = osp_array_begin(buf, ac);
+	if (r != OSP_OK) {
+		return r;
+	}
+	for (uint8_t i = 0; i < ac; i++) {
+		r = osp_struct_begin(buf, 3);
+		if (r != OSP_OK) {
 			return r;
-		if ((r = osp_axdr_write_i8(buf, ar->method_items[i].method_id)) != OSP_OK)
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_INTEGER);
+		if (r != OSP_OK) {
 			return r;
-		if ((r = osp_axdr_write_u8(buf, (uint8_t)ar->method_items[i].access_mode)) != OSP_OK)
+		}
+		r = osp_axdr_write_i8(buf, ar->attr_items[i].attribute_id);
+		if (r != OSP_OK) {
 			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_ENUM);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, (uint8_t)ar->attr_items[i].access_mode);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_NULL);
+		if (r != OSP_OK) {
+			return r;
+		}
+	}
+
+	r = osp_array_begin(buf, mc);
+	if (r != OSP_OK) {
+		return r;
+	}
+	for (uint8_t i = 0; i < mc; i++) {
+		r = osp_struct_begin(buf, 2);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_INTEGER);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_i8(buf, ar->method_items[i].method_id);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_ENUM);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, (uint8_t)ar->method_items[i].access_mode);
+		if (r != OSP_OK) {
+			return r;
+		}
 	}
 	return OSP_OK;
 }
@@ -1782,15 +1842,6 @@ osp_err_t osp_object_list_write(osp_buf_t *buf, const osp_object_list_t *ol) {
 	}
 	for (uint16_t i = 0; i < n; i++) {
 		const osp_object_list_element_t *e = &ol->elements[i];
-		const osp_access_right_t *ar = &e->access_rights;
-		uint8_t ac = ar->attr_count;
-		uint8_t mc = ar->method_count;
-		if (ac > OSP_MAX_ACCESS_ITEMS) {
-			ac = OSP_MAX_ACCESS_ITEMS;
-		}
-		if (mc > OSP_MAX_METHOD_ITEMS) {
-			mc = OSP_MAX_METHOD_ITEMS;
-		}
 		r = osp_struct_begin(buf, 4);
 		if (r != OSP_OK) {
 			return r;
@@ -1826,66 +1877,9 @@ osp_err_t osp_object_list_write(osp_buf_t *buf, const osp_object_list_t *ol) {
 				return r;
 			}
 		}
-		/* access_rights: structure { attr_array, method_array } */
-		r = osp_struct_begin(buf, 2);
+		r = osp_access_right_write(buf, &e->access_rights);
 		if (r != OSP_OK) {
 			return r;
-		}
-		r = osp_array_begin(buf, ac);
-		if (r != OSP_OK) {
-			return r;
-		}
-		for (uint8_t a = 0; a < ac; a++) {
-			r = osp_struct_begin(buf, 3);
-			if (r != OSP_OK) {
-				return r;
-			}
-			r = osp_axdr_write_u8(buf, OSP_TAG_INTEGER);
-			if (r != OSP_OK) {
-				return r;
-			}
-			r = osp_axdr_write_i8(buf, ar->attr_items[a].attribute_id);
-			if (r != OSP_OK) {
-				return r;
-			}
-			r = osp_axdr_write_u8(buf, OSP_TAG_ENUM);
-			if (r != OSP_OK) {
-				return r;
-			}
-			r = osp_axdr_write_u8(buf, (uint8_t)ar->attr_items[a].access_mode);
-			if (r != OSP_OK) {
-				return r;
-			}
-			r = osp_axdr_write_u8(buf, OSP_TAG_NULL);
-			if (r != OSP_OK) {
-				return r;
-			}
-		}
-		r = osp_array_begin(buf, mc);
-		if (r != OSP_OK) {
-			return r;
-		}
-		for (uint8_t m = 0; m < mc; m++) {
-			r = osp_struct_begin(buf, 2);
-			if (r != OSP_OK) {
-				return r;
-			}
-			r = osp_axdr_write_u8(buf, OSP_TAG_INTEGER);
-			if (r != OSP_OK) {
-				return r;
-			}
-			r = osp_axdr_write_i8(buf, ar->method_items[m].method_id);
-			if (r != OSP_OK) {
-				return r;
-			}
-			r = osp_axdr_write_u8(buf, OSP_TAG_ENUM);
-			if (r != OSP_OK) {
-				return r;
-			}
-			r = osp_axdr_write_u8(buf, (uint8_t)ar->method_items[m].access_mode);
-			if (r != OSP_OK) {
-				return r;
-			}
 		}
 	}
 	return OSP_OK;

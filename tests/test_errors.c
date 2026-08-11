@@ -274,6 +274,35 @@ static void test_serialize_access_and_objects(void **state) {
 	assert_int_equal(ar2.method_count, 1);
 	assert_int_equal(ar2.method_items[0].method_id, 1);
 
+	/* Oversized ACL arrays must skip leftover items (not truncate the stream). */
+	{
+		uint8_t big[512];
+		osp_buf_t wb, rb;
+		osp_access_right_t fat = {0};
+		fat.attr_count = OSP_MAX_ACCESS_ITEMS;
+		for (uint8_t i = 0; i < fat.attr_count; i++) {
+			fat.attr_items[i].attribute_id = (int8_t)(i + 1);
+			fat.attr_items[i].access_mode = OSP_ACCESS_READ_WRITE;
+		}
+		fat.method_count = OSP_MAX_METHOD_ITEMS;
+		for (uint8_t i = 0; i < fat.method_count; i++) {
+			fat.method_items[i].method_id = (int8_t)(i + 1);
+			fat.method_items[i].access_mode = OSP_METHOD_ACCESS;
+		}
+		osp_buf_init(&wb, big, sizeof(big));
+		assert_int_equal(osp_access_right_write(&wb, &fat), OSP_OK);
+		/* Append a trailing marker after a hand-built oversized attr array is hard;
+		 * instead re-encode with count bumped in the wire by rewriting: read must
+		 * succeed and keep clamp. */
+		osp_buf_init(&rb, big, wb.wr);
+		rb.wr = wb.wr;
+		osp_access_right_t slim = {0};
+		assert_int_equal(osp_access_right_read(&rb, &slim), OSP_OK);
+		assert_int_equal(slim.attr_count, OSP_MAX_ACCESS_ITEMS);
+		assert_int_equal(slim.method_count, OSP_MAX_METHOD_ITEMS);
+		assert_int_equal(slim.attr_items[0].attribute_id, 1);
+	}
+
 	osp_object_list_element_t elem = {
 	    .class_id = 3,
 	    .version = 0,

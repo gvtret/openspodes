@@ -259,6 +259,9 @@ typedef struct {
 /** @brief Encode a GET response APDU into the output buffer. */
 int osp_get_response_encode(osp_buf_t *buf, const osp_get_response_t *resp);
 
+/** @brief Encode one Get-Data-Result item (data or DAR). */
+int osp_get_result_item_encode(osp_buf_t *buf, const osp_get_result_item_t *item);
+
 /** @brief Decode a GET response APDU from the input buffer. */
 int osp_get_response_decode(osp_buf_t *buf, osp_get_response_t *resp);
 

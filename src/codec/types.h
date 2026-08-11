@@ -109,6 +109,10 @@ typedef enum {
 #define OSP_TAG_U16_ARRAY_REF 0xFE
 #define OSP_TAG_U32_ARRAY_REF 0xFF
 
+static inline bool osp_tag_is_internal_ref(uint8_t tag) {
+	return tag >= OSP_TAG_OBJECT_LIST_REF;
+}
+
 /* ── Fixed size lookup (used by compact_array) ───────────────────────────── */
 
 static inline uint8_t osp_axdr_type_size(uint8_t tag) {

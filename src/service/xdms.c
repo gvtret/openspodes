@@ -122,14 +122,23 @@ int osp_data_block_sa_decode(osp_buf_t *buf, osp_data_block_t *block) {
 	return 0;
 }
 
-static int encode_get_result(osp_buf_t *buf, const osp_get_result_item_t *item) {
+int osp_get_result_item_encode(osp_buf_t *buf, const osp_get_result_item_t *item) {
+	if (!buf || !item) {
+		return -1;
+	}
 	if (!item->is_data) {
-		osp_axdr_write_u8(buf, 1);
-		osp_axdr_write_u8(buf, (uint8_t)item->access_result);
+		if (osp_axdr_write_u8(buf, 1) != OSP_OK) {
+			return -1;
+		}
+		if (osp_axdr_write_u8(buf, (uint8_t)item->access_result) != OSP_OK) {
+			return -1;
+		}
 		return 0;
 	}
-	osp_axdr_write_u8(buf, 0);
-	return osp_value_write(buf, &item->data);
+	if (osp_axdr_write_u8(buf, 0) != OSP_OK) {
+		return -1;
+	}
+	return osp_value_write(buf, &item->data) == OSP_OK ? 0 : -1;
 }
 
 static int decode_get_result(osp_buf_t *buf, osp_get_result_item_t *item) {
@@ -265,7 +274,9 @@ int osp_get_response_encode(osp_buf_t *buf, const osp_get_response_t *resp) {
 			osp_axdr_write_u8(buf, resp->invoke_id_priority);
 			osp_axdr_push_length(buf, resp->with_list.count);
 			for (uint8_t i = 0; i < resp->with_list.count; i++) {
-				encode_get_result(buf, &resp->with_list.items[i]);
+				if (osp_get_result_item_encode(buf, &resp->with_list.items[i]) != 0) {
+					return -1;
+				}
 			}
 			break;
 		default:

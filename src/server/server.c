@@ -822,14 +822,23 @@ static osp_err_t handle_get(osp_server_t *s, const osp_get_request_t *req) {
 		return handle_get_next(s, req->invoke_id_priority, req->as.next.block_number);
 	}
 	if (req->type == OSP_GET_WITH_LIST) {
-		osp_get_response_t resp = {0};
-		resp.invoke_id_priority = req->invoke_id_priority;
-		resp.type = OSP_GET_RESP_WITH_LIST;
-		resp.with_list.count = req->as.with_list.count;
-		for (uint8_t i = 0; i < req->as.with_list.count; i++) {
-			dispatch_get_attr(s, &req->as.with_list.items[i].attr, &resp.with_list.items[i]);
+		/* Encode each result immediately: IC helpers may return TLS REF views /
+		 * shared scratch that the next GET would overwrite. */
+		osp_buf_t buf;
+		osp_buf_init(&buf, s->tx_buf, sizeof(s->tx_buf));
+		if (osp_axdr_write_u8(&buf, OSP_TAG_GET_RESPONSE) != OSP_OK || osp_axdr_write_u8(&buf, 3) != OSP_OK ||
+		    osp_axdr_write_u8(&buf, req->invoke_id_priority) != OSP_OK ||
+		    osp_axdr_push_length(&buf, req->as.with_list.count) != 0) {
+			return OSP_ERR_INVALID;
 		}
-		return send_get_response(s, &resp);
+		for (uint8_t i = 0; i < req->as.with_list.count; i++) {
+			osp_get_result_item_t item;
+			dispatch_get_attr(s, &req->as.with_list.items[i].attr, &item);
+			if (osp_get_result_item_encode(&buf, &item) != 0) {
+				return OSP_ERR_INVALID;
+			}
+		}
+		return server_send_service(s, buf.buf, buf.wr);
 	}
 
 	osp_get_response_t resp = {0};
@@ -1150,25 +1159,51 @@ static osp_err_t handle_action(osp_server_t *s, const osp_action_request_t *req)
 		return accumulate_action_param_block(s, req->invoke_id_priority, &req->as.with_param_block.param_block);
 	}
 
-	osp_action_response_t resp;
-	memset(&resp, 0, sizeof(resp));
-	resp.invoke_id_priority = req->invoke_id_priority;
-
 	if (req->type == OSP_ACTION_WITH_LIST) {
-		resp.type = OSP_ACTION_RESP_WITH_LIST;
-		resp.as.with_list.count = req->as.with_list.count;
+		/* Encode each result immediately — return_data may alias TLS views. */
+		osp_buf_t buf;
+		osp_buf_init(&buf, s->tx_buf, sizeof(s->tx_buf));
+		if (osp_axdr_write_u8(&buf, OSP_TAG_ACTION_RESPONSE) != OSP_OK || osp_axdr_write_u8(&buf, 3) != OSP_OK ||
+		    osp_axdr_write_u8(&buf, req->invoke_id_priority) != OSP_OK ||
+		    osp_axdr_push_length(&buf, req->as.with_list.count) != 0) {
+			return OSP_ERR_INVALID;
+		}
 		for (uint8_t i = 0; i < req->as.with_list.count; i++) {
-			osp_value_t result;
+			osp_value_t result = {0};
 			osp_err_t r = osp_dispatcher_action(&s->dispatcher, req->as.with_list.items[i].method.class_id,
 			                                    &req->as.with_list.items[i].method.instance_id,
 			                                    req->as.with_list.items[i].method.method_id,
 			                                    &req->as.with_list.items[i].data, &result);
-			resp.as.with_list.items[i].result =
+			osp_dar_t dar =
 			    (r == OSP_OK) ? OSP_DAR_SUCCESS : ((r == OSP_ERR_SECURITY) ? OSP_DAR_SCOPE_OF_ACCESS : OSP_DAR_OBJECT_UNDEFINED);
-			resp.as.with_list.items[i].return_data = result;
+			if (osp_axdr_write_u8(&buf, (uint8_t)dar) != OSP_OK) {
+				return OSP_ERR_INVALID;
+			}
+			if (result.tag != OSP_TAG_NULL) {
+				if (osp_axdr_write_u8(&buf, 1) != OSP_OK || osp_axdr_write_u8(&buf, 0) != OSP_OK ||
+				    osp_value_write(&buf, &result) != OSP_OK) {
+					return OSP_ERR_INVALID;
+				}
+			} else if (osp_axdr_write_u8(&buf, 0) != OSP_OK) {
+				return OSP_ERR_INVALID;
+			}
 		}
-	} else {
-		resp.type = OSP_ACTION_RESP_NORMAL;
+		osp_err_t sr = server_send(s, buf.buf, buf.wr);
+		if (sr != OSP_OK) {
+			return sr;
+		}
+		if (s->hdlc_active && s->pending_push.pending) {
+			s->pending_push.defer_flush = true;
+			return OSP_OK;
+		}
+		return server_flush_pending_push(s);
+	}
+
+	osp_action_response_t resp;
+	memset(&resp, 0, sizeof(resp));
+	resp.invoke_id_priority = req->invoke_id_priority;
+	resp.type = OSP_ACTION_RESP_NORMAL;
+	{
 		osp_value_t result;
 		osp_err_t r = osp_dispatcher_action(
 		    &s->dispatcher, req->as.normal.items[0].method.class_id, &req->as.normal.items[0].method.instance_id,
