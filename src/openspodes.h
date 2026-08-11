@@ -196,16 +196,21 @@ typedef struct {
  * Leave NULL for bare-metal or single-threaded use — no locking overhead.
  *
  * @code
- *   // Linux/pthreads example:
+ *   // Linux/pthreads example — create() must return ONE long-lived mutex:
+ *   static pthread_mutex_t pool_mtx = PTHREAD_MUTEX_INITIALIZER;
+ *   static void *my_create(void *ctx) { (void)ctx; return &pool_mtx; }
  *   osp_mutex_t m = {
- *       .create  = my_pthread_mutex_create,
+ *       .create  = my_create,
  *       .lock    = my_pthread_mutex_lock,
  *       .unlock  = my_pthread_mutex_unlock,
- *       .destroy = my_pthread_mutex_destroy,
+ *       .destroy = NULL, // library never destroys the pooled lock
  *       .ctx     = NULL,
  *   };
  *   osp_hal_mutex = &m;
  * @endcode
+ *
+ * The library calls create() at most once and reuses the handle for all
+ * shared-state critical sections. destroy() is not invoked per operation.
  */
 typedef struct {
 	void *(*create)(void *ctx);
@@ -219,10 +224,16 @@ typedef struct {
  * @brief Global mutex HAL pointer (set by user, NULL = no locking).
  *
  * When non-NULL, the library acquires this mutex around shared static
- * state (value_read_pool, invocation counters). Each thread must use
- * its own osp_client_t/osp_server_t — only the codec pool is shared.
+ * state (value_read_pool). Each thread must use its own osp_client_t /
+ * osp_server_t. Association object_list encode scratch remains process-wide
+ * and non-reentrant until a caller-provided scratch API exists.
  */
 extern osp_mutex_t *osp_hal_mutex;
+
+/** @brief Lock shared library state (no-op if osp_hal_mutex is NULL). */
+void osp_hal_mutex_lock(void);
+/** @brief Unlock shared library state (no-op if osp_hal_mutex is NULL). */
+void osp_hal_mutex_unlock(void);
 
 typedef struct {
 	osp_transport_t transport;

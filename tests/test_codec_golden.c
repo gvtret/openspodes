@@ -1562,6 +1562,42 @@ static void test_aare_decode(void **state) {
 	assert_memory_equal(aare.user_info, expected_ui, 14);
 }
 
+static void test_aare_auth_value_too_long(void **state) {
+	(void)state;
+	uint8_t mem[256];
+	osp_buf_t w = make_wbuf(mem, sizeof(mem));
+
+	osp_aare_t aare;
+	memset(&aare, 0, sizeof(aare));
+	aare.result = OSP_RESULT_ACCEPTED;
+	aare.application_context = OSP_CTX_LN;
+	aare.include_authentication = 1;
+	aare.mechanism = 5;
+	aare.responding_auth_value_len = 8;
+	memcpy(aare.responding_auth_value, "ABCDEFGH", 8);
+	const uint8_t user_info[] = {0x01, 0x00, 0x00, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF};
+	memcpy(aare.user_info, user_info, sizeof(user_info));
+	aare.user_info_len = sizeof(user_info);
+
+	assert_int_equal(osp_aare_encode(&aare, &w), 0);
+
+	/* Mutate [10] Authentication-value length to 100 while keeping only 8 payload bytes:
+	 * find 0x80 <len> pattern after context [10] and inflate length — decode must reject. */
+	int mutated = 0;
+	for (uint32_t i = 0; i + 1 < w.wr; i++) {
+		if (mem[i] == 0x80 && mem[i + 1] == 8) {
+			mem[i + 1] = 100;
+			mutated = 1;
+			break;
+		}
+	}
+	assert_int_equal(mutated, 1);
+
+	osp_buf_t r = make_rbuf(mem, w.wr);
+	osp_aare_t decoded;
+	assert_int_not_equal(osp_aare_decode(&r, &decoded), 0);
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  *  17. AARQ/AARE ROUNDTRIPS
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -2495,6 +2531,7 @@ int main(void) {
 	    cmocka_unit_test(test_aarq_decode),
 	    cmocka_unit_test(test_aare_encode),
 	    cmocka_unit_test(test_aare_decode),
+	    cmocka_unit_test(test_aare_auth_value_too_long),
 	    cmocka_unit_test(test_aarq_roundtrip),
 	    cmocka_unit_test(test_aare_roundtrip),
 	    cmocka_unit_test(test_aarq_with_system_title),

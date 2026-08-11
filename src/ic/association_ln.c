@@ -2,6 +2,7 @@
 #include "ic_common.h"
 #include <string.h>
 #include "../data_hal.h"
+#include "../security/security.h"
 
 /* ── Helper: match OBIS + class_id in object_list ────────────────────────── */
 
@@ -58,12 +59,17 @@ bool osp_ic_association_ln_can_read(const osp_ic_association_ln_t *a, uint16_t c
 	if (!e) {
 		return false;
 	}
+	const bool authenticated = a->authentication_mechanism >= OSP_MECH_LLS;
 	for (uint8_t i = 0; i < e->access_rights.attr_count; i++) {
 		if (e->access_rights.attr_items[i].attribute_id == attr_id) {
-			return (e->access_rights.attr_items[i].access_mode == OSP_ACCESS_READ_ONLY) ||
-			    (e->access_rights.attr_items[i].access_mode == OSP_ACCESS_READ_WRITE) ||
-			    (e->access_rights.attr_items[i].access_mode == OSP_ACCESS_AUTH_READ_ONLY) ||
-			    (e->access_rights.attr_items[i].access_mode == OSP_ACCESS_AUTH_READ_WRITE);
+			osp_attr_access_t mode = e->access_rights.attr_items[i].access_mode;
+			if (mode == OSP_ACCESS_READ_ONLY || mode == OSP_ACCESS_READ_WRITE) {
+				return true;
+			}
+			if (mode == OSP_ACCESS_AUTH_READ_ONLY || mode == OSP_ACCESS_AUTH_READ_WRITE) {
+				return authenticated;
+			}
+			return false;
 		}
 	}
 	return false;
@@ -74,12 +80,17 @@ bool osp_ic_association_ln_can_write(const osp_ic_association_ln_t *a, uint16_t 
 	if (!e) {
 		return false;
 	}
+	const bool authenticated = a->authentication_mechanism >= OSP_MECH_LLS;
 	for (uint8_t i = 0; i < e->access_rights.attr_count; i++) {
 		if (e->access_rights.attr_items[i].attribute_id == attr_id) {
-			return (e->access_rights.attr_items[i].access_mode == OSP_ACCESS_WRITE_ONLY) ||
-			    (e->access_rights.attr_items[i].access_mode == OSP_ACCESS_READ_WRITE) ||
-			    (e->access_rights.attr_items[i].access_mode == OSP_ACCESS_AUTH_WRITE_ONLY) ||
-			    (e->access_rights.attr_items[i].access_mode == OSP_ACCESS_AUTH_READ_WRITE);
+			osp_attr_access_t mode = e->access_rights.attr_items[i].access_mode;
+			if (mode == OSP_ACCESS_WRITE_ONLY || mode == OSP_ACCESS_READ_WRITE) {
+				return true;
+			}
+			if (mode == OSP_ACCESS_AUTH_WRITE_ONLY || mode == OSP_ACCESS_AUTH_READ_WRITE) {
+				return authenticated;
+			}
+			return false;
 		}
 	}
 	return false;
@@ -90,9 +101,17 @@ bool osp_ic_association_ln_can_invoke(const osp_ic_association_ln_t *a, uint16_t
 	if (!e) {
 		return false;
 	}
+	const bool authenticated = a->authentication_mechanism >= OSP_MECH_LLS;
 	for (uint8_t i = 0; i < e->access_rights.method_count; i++) {
 		if (e->access_rights.method_items[i].method_id == method_id) {
-			return (e->access_rights.method_items[i].access_mode != OSP_METHOD_NO_ACCESS);
+			osp_method_access_t mode = e->access_rights.method_items[i].access_mode;
+			if (mode == OSP_METHOD_ACCESS) {
+				return true;
+			}
+			if (mode == OSP_METHOD_AUTHENTICATED_ACCESS) {
+				return authenticated;
+			}
+			return false;
 		}
 	}
 	return false;
@@ -242,8 +261,8 @@ static osp_err_t aln_set(void *inst, uint8_t attr_id, const osp_value_t *value) 
 		case 5:
 			return osp_ic_read_xdms_context(value, &a->xdms_context);
 		case 6:
-			a->authentication_mechanism = osp_get_enum(value);
-			return OSP_OK;
+			/* Mechanism is fixed per Association LN instance; use provisioning offline. */
+			return OSP_ERR_UNSUPPORTED;
 		case 7:
 			if (value->tag != OSP_TAG_OCTETSTRING || value->as.octetstring.len > sizeof(a->secret)) {
 				return OSP_ERR_INVALID;
@@ -252,8 +271,8 @@ static osp_err_t aln_set(void *inst, uint8_t attr_id, const osp_value_t *value) 
 			memcpy(a->secret, value->as.octetstring.data, a->secret_len);
 			return OSP_OK;
 		case 8:
-			a->association_status = osp_get_enum(value);
-			return OSP_OK;
+			/* association_status is managed by the session layer. */
+			return OSP_ERR_UNSUPPORTED;
 		case 9:
 			if (value->tag != OSP_TAG_OCTETSTRING || value->as.octetstring.len != 6) {
 				return OSP_ERR_INVALID;
@@ -291,20 +310,17 @@ static osp_err_t aln_invoke(void *inst, uint8_t method_id, const osp_value_t *pa
 			}
 			uint32_t len = param->as.octetstring.len;
 			if (len > sizeof(a->secret)) {
-				len = sizeof(a->secret);
+				return OSP_ERR_INVALID;
 			}
 			memcpy(a->secret, param->as.octetstring.data, len);
 			a->secret_len = (uint8_t)len;
 			return OSP_OK;
 		}
 		case 3: /* add_object */
-			return OSP_OK;
 		case 4: /* remove_object */
-			return OSP_OK;
 		case 5: /* add_user */
-			return OSP_OK;
 		case 6: /* remove_user */
-			return OSP_OK;
+			return OSP_ERR_UNSUPPORTED;
 		default:
 			return OSP_ERR_UNSUPPORTED;
 	}

@@ -58,6 +58,11 @@ osp_err_t osp_dispatcher_get(const osp_dispatcher_t *disp, uint16_t class_id, co
 	if (!e || !e->class_def->get_attr) {
 		return OSP_ERR_NOT_FOUND;
 	}
+#ifdef OSP_REQUIRE_ACL
+	if (!disp->association) {
+		return OSP_ERR_SECURITY;
+	}
+#endif
 	if (disp->association && obis && !osp_ic_association_ln_can_read(disp->association, class_id, obis, (int8_t)attr_id)) {
 		return OSP_ERR_SECURITY;
 	}
@@ -69,6 +74,11 @@ osp_err_t osp_dispatcher_set(osp_dispatcher_t *disp, uint16_t class_id, const os
 	if (!e || !e->class_def->set_attr) {
 		return OSP_ERR_NOT_FOUND;
 	}
+#ifdef OSP_REQUIRE_ACL
+	if (!disp->association) {
+		return OSP_ERR_SECURITY;
+	}
+#endif
 	if (disp->association && obis && !osp_ic_association_ln_can_write(disp->association, class_id, obis, (int8_t)attr_id)) {
 		return OSP_ERR_SECURITY;
 	}
@@ -81,6 +91,11 @@ osp_dispatcher_action(osp_dispatcher_t *disp, uint16_t class_id, const osp_obis_
 	if (!e || !e->class_def->invoke) {
 		return OSP_ERR_NOT_FOUND;
 	}
+#ifdef OSP_REQUIRE_ACL
+	if (!disp->association) {
+		return OSP_ERR_SECURITY;
+	}
+#endif
 	if (disp->association && obis && !osp_ic_association_ln_can_invoke(disp->association, class_id, obis, (int8_t)method_id)) {
 		return OSP_ERR_SECURITY;
 	}

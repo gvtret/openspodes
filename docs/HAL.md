@@ -176,7 +176,8 @@ static int hw_gcm_crypt(osp_gcm_dir_t dir, const uint8_t *key, uint32_t key_len,
 
 ### 3. Random (`osp_hal_random_fill`)
 
-Required for HLS challenge generation (server-side stoc). Without it, the server uses a deterministic fallback (insecure).
+Required for HLS challenge generation (server-side StoC and client-side CtoS).
+Without it, HLS association is **rejected** (no insecure deterministic fallback).
 
 ```c
 extern int (*osp_hal_random_fill)(uint8_t *buf, uint32_t len);
@@ -325,7 +326,7 @@ The library uses static buffers sized by these constants:
 |----------|---------|---------|
 | `OSP_CLIENT_MAX_PDU` | 1024 | Client TX/RX buffer size |
 | `OSP_SERVER_MAX_PDU` | 1024 | Server TX/RX buffer size |
-| `OSP_SERVER_PENDING_MAX` | 16384 | Block transfer reassembly buffer (×16 for ALN object_list) |
+| `OSP_SERVER_PENDING_MAX` | 32768 | Block transfer reassembly buffer (×32; override with `#ifndef` before include) |
 | `OSP_HDLC_MAX_FRAME_SIZE` | 1024 | Maximum HDLC frame (configurable via #ifndef) |
 | `OSP_GLO_MAX_PLAIN` | 1024 | Max plaintext for glo-ciphering |
 

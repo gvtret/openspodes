@@ -557,12 +557,17 @@ int osp_aare_decode(osp_buf_t *buf, osp_aare_t *aare) {
 				case 4: /* [4] responding-AP-title: EXPLICIT wraps OCTET STRING */
 				{
 					osp_ber_tag_t otag;
-					osp_ber_read_tag(buf, &otag);
+					if (osp_ber_read_tag(buf, &otag) != OSP_OK)
+						return -1;
 					uint32_t olen;
-					osp_ber_read_length(buf, &olen);
+					if (osp_ber_read_length(buf, &olen) != OSP_OK)
+						return -1;
+					if (olen > sizeof(aare->responding_ap_title))
+						return -1;
 					aare->responding_ap_title_len = (uint8_t)olen;
-					for (uint32_t i = 0; i < olen && i < 8; i++) {
-						osp_axdr_read_u8(buf, &aare->responding_ap_title[i]);
+					for (uint32_t i = 0; i < olen; i++) {
+						if (osp_axdr_read_u8(buf, &aare->responding_ap_title[i]) != OSP_OK)
+							return -1;
 					}
 				}
 					break;
@@ -586,10 +591,14 @@ int osp_aare_decode(osp_buf_t *buf, osp_aare_t *aare) {
 					osp_ber_tag_t atag;
 					if (osp_ber_read_tag(buf, &atag) == OSP_OK && atag.tag_number == 0 && !atag.tag_constructed) {
 						uint32_t alen;
-						osp_ber_read_length(buf, &alen);
+						if (osp_ber_read_length(buf, &alen) != OSP_OK)
+							return -1;
+						if (alen > sizeof(aare->responding_auth_value))
+							return -1;
 						aare->responding_auth_value_len = (uint8_t)alen;
-						for (uint32_t i = 0; i < alen && i < 64; i++) {
-							osp_axdr_read_u8(buf, &aare->responding_auth_value[i]);
+						for (uint32_t i = 0; i < alen; i++) {
+							if (osp_axdr_read_u8(buf, &aare->responding_auth_value[i]) != OSP_OK)
+								return -1;
 						}
 					}
 					break;
@@ -598,12 +607,17 @@ int osp_aare_decode(osp_buf_t *buf, osp_aare_t *aare) {
 				case 30: /* [30] user-information: EXPLICIT wraps OCTET STRING */
 				{
 					osp_ber_tag_t utag;
-					osp_ber_read_tag(buf, &utag);
+					if (osp_ber_read_tag(buf, &utag) != OSP_OK)
+						return -1;
 					uint32_t utlen;
-					osp_ber_read_length(buf, &utlen);
+					if (osp_ber_read_length(buf, &utlen) != OSP_OK)
+						return -1;
+					if (utlen > sizeof(aare->user_info))
+						return -1;
 					aare->user_info_len = utlen;
-					for (uint32_t i = 0; i < utlen && i < 128; i++) {
-						osp_axdr_read_u8(buf, &aare->user_info[i]);
+					for (uint32_t i = 0; i < utlen; i++) {
+						if (osp_axdr_read_u8(buf, &aare->user_info[i]) != OSP_OK)
+							return -1;
 					}
 					break;
 				}

@@ -600,11 +600,15 @@ static osp_err_t handle_aarq(osp_server_t *s, const osp_aarq_t *aarq) {
 
 						uint8_t stoc_len = (mech == OSP_MECH_HLS) ? 16 : 8;
 						s->security.stoc_len = stoc_len;
-						osp_hal_random_fill(s->security.stoc, stoc_len);
-						memcpy(aare.responding_auth_value, s->security.stoc, stoc_len);
-						aare.responding_auth_value_len = stoc_len;
-						aare.result = OSP_RESULT_ACCEPTED;
-						s->hls_pending = true;
+						if (osp_hal_random_fill(s->security.stoc, stoc_len) != 0) {
+							rejected = true;
+							reject.acse_diag = OSP_ACSE_DIAG_AUTH_FAILURE;
+						} else {
+							memcpy(aare.responding_auth_value, s->security.stoc, stoc_len);
+							aare.responding_auth_value_len = stoc_len;
+							aare.result = OSP_RESULT_ACCEPTED;
+							s->hls_pending = true;
+						}
 					}
 				}
 			}
@@ -1042,9 +1046,8 @@ static osp_err_t send_action_invoke_result(osp_server_t *s, uint8_t invoke_id_pr
 		return send_action_response(s, &resp);
 	}
 
-	uint8_t mem[OSP_SERVER_PENDING_MAX];
 	osp_buf_t w;
-	osp_buf_init(&w, mem, sizeof(mem));
+	osp_buf_init(&w, s->pending_action_out.data, sizeof(s->pending_action_out.data));
 	if (osp_value_write(&w, result) != OSP_OK) {
 		return OSP_ERR_INVALID;
 	}
@@ -1054,7 +1057,6 @@ static osp_err_t send_action_invoke_result(osp_server_t *s, uint8_t invoke_id_pr
 		s->pending_action_out.result = dar;
 		s->pending_action_out.data_len = w.wr;
 		s->pending_action_out.next_block = 1;
-		memcpy(s->pending_action_out.data, mem, w.wr);
 		return handle_action_resp_next(s, invoke_id_priority, 0);
 	}
 
@@ -1322,6 +1324,7 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 	}
 
 	/* Decipher before association gate: HLS pass 3 may arrive glo-/ded-ciphered. */
+	bool arrived_ciphered = false;
 	if (s->ciphering_enabled && osp_svc_is_ciphered_tag(tag)) {
 		static uint8_t plain[OSP_GBT_MAX_APDU];
 		uint32_t plain_len = 0;
@@ -1338,6 +1341,7 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 		memcpy(s->rx_buf, plain, plain_len);
 		rx_len = plain_len;
 		tag = s->rx_buf[0];
+		arrived_ciphered = true;
 		/* Keep outbound cipher IC/policy aligned with the peer frame we just accepted. */
 		if (s->cipher_rx.ic_valid) {
 			if (s->cipher_tx.invocation_counter <= s->cipher_rx.last_peer_ic) {
@@ -1398,6 +1402,12 @@ osp_err_t osp_server_accept(osp_server_t *s, uint32_t timeout_ms) {
 		memcpy(s->rx_buf, plain_gbt, plain_len);
 		rx_len = plain_len;
 		tag = s->rx_buf[0];
+		arrived_ciphered = true;
+	}
+
+	/* Ciphered associations must not accept plaintext xDLMS service APDUs. */
+	if (s->ciphering_enabled && !arrived_ciphered && osp_gbt_applies_to_apdu(s->rx_buf, rx_len)) {
+		return server_send_exception(s, OSP_EXC_STATE_SERVICE_NOT_ALLOWED, OSP_EXC_SVC_DECIPHERING_ERROR);
 	}
 
 	/* xDLMS service messages (A-XDR) */

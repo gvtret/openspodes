@@ -75,7 +75,7 @@ Two sublayers: HDLC (IEC 62056-46) and Wrapper (IEC 62056-47).
 - Frame format type 3 (ISO/IEC 13239): flag(7E) + format(2) + addr + control + [HCS] + info + FCS + flag
 - FCS: CRC-16/X.25 (polynomial 0x8408, init 0xFFFF)
 - Control field: I-frame [N(R):3][P/F][N(S):3][0], S-frame [N(R):3][P/F][mod:2][01], U-frame [mod_hi:3][P/F][mod_lo:2][11]
-- U-frame types: SNRM(0x83), UA(0x63), DISC(0x43), DM(0x0F), FRMR(0x87), UI(0x03), XID(0xBF)
+- U-frame types: SNRM(0x83), UA(0x63), DISC(0x43), DM(0x0F), FRMR(0x87), UI(0x03), XID(0xAF)
 
 **HDLC Session Layer:**
 ```
@@ -159,7 +159,7 @@ DLMS/COSEM protocol — ACSE + xDLMS APDUs.
 |----|------|---------------|
 | 0 | Lowest (no authentication) | N/A |
 | 1 | LLS | Password (constant-time verify) |
-| 2 | HLS (no crypto) | Maps to GMAC (5) for Suite 0 |
+| 2 | HLS (password AES) | Gurux-compatible password-AES via `hls_high.c` (not remapped to GMAC) |
 | 3 | HLS-MD5 | `osp_hal_md5` |
 | 4 | HLS-SHA1 | `osp_hal_sha1` |
 | 5 | HLS-GMAC | AES-GCM auth-only (key=GUEK, AAD carries GAK) |
@@ -340,7 +340,7 @@ Client:                              Server:
 |----------|-------|-------------|
 | `OSP_CLIENT_MAX_PDU` | 1024 | Maximum client APDU |
 | `OSP_SERVER_MAX_PDU` | 1024 | Maximum server APDU |
-| `OSP_SERVER_PENDING_MAX` | 16384 | Block transfer reassembly buffer (OSP_SERVER_MAX_PDU × 16) |
+| `OSP_SERVER_PENDING_MAX` | 32768 | Block transfer reassembly buffer (OSP_SERVER_MAX_PDU × 32) |
 | `OSP_CLIENT_REASSEMBLE_MAX` | 4096 | Reassembly buffer |
 | `OSP_CLIENT_BLOCK_SIZE` | 64 | Block transfer block size |
 | `OSP_HDLC_MAX_FRAME_SIZE` | 1024 | Maximum HDLC frame (configurable via #ifndef) |

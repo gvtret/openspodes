@@ -77,7 +77,9 @@ The `f()` function depends on the mechanism:
 
 ## HLS Mechanism 2 (Password AES)
 
-Mechanism 2 (generic HLS) is mapped to GMAC (5) for Suite 0 via `osp_hls_effective_mechanism()`. This allows certification AARQs that use mechanism ID 2 to work with the GMAC implementation.
+Mechanism 2 (generic HLS) uses the password-AES path in `hls_high.c` (Gurux-compatible).
+`osp_hls_effective_mechanism()` is currently an identity mapping — mechanism ID 2 is **not**
+rewritten to GMAC (5). Prefer mechanism 5+ for production Suite 0 deployments.
 
 The `hls_high.c` module implements the password-AES variant of mechanism 2 using:
 - Key derivation via `HLS_HIGH_KDF` (S-Box + Galois multiply)

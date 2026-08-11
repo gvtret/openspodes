@@ -4,9 +4,9 @@
  * Accepts incoming requests, performs AARQ/AARE association,
  * routes GET/SET/ACTION to registered IC objects.
  *
- * Memory configuration:
+ * Memory configuration (override with #define before including this header):
  * - OSP_SERVER_MAX_PDU (default 1024): rx/tx buffer size
- * - OSP_SERVER_PENDING_MAX (default 4096): block transfer reassembly
+ * - OSP_SERVER_PENDING_MAX (default MAX_PDU*32): block transfer reassembly
  * - OSP_MAX_OBJECTS (default 320): registered IC objects
  *
  * For constrained MCUs (< 32KB RAM), define before including:
@@ -30,9 +30,13 @@
 extern "C" {
 #endif
 
+#ifndef OSP_SERVER_MAX_PDU
 #define OSP_SERVER_MAX_PDU 1024
+#endif
 /* Association LN object_list with ACLs is several KB even for 64 entries. */
+#ifndef OSP_SERVER_PENDING_MAX
 #define OSP_SERVER_PENDING_MAX (OSP_SERVER_MAX_PDU * 32)
+#endif
 
 typedef enum {
 	OSP_ACSE_LOG_AARE = 0,

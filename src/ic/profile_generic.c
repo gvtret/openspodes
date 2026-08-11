@@ -189,7 +189,8 @@ static osp_err_t pg_invoke(void *inst, uint8_t method_id, const osp_value_t *par
 		return OSP_OK;
 	}
 	if (method_id == 2) {
-		return OSP_OK;
+		/* capture — not implemented without a data source / HAL */
+		return OSP_ERR_UNSUPPORTED;
 	}
 	return OSP_ERR_UNSUPPORTED;
 }

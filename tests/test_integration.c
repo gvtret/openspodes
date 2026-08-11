@@ -730,8 +730,9 @@ static void test_action_param_block_invoke(void **state) {
 
 	osp_value_t big_param = make_octets(0xAB, 80);
 	osp_value_t result;
-	assert_int_equal(osp_client_action(&client, 18, &obis, 2, &big_param, &result), OSP_OK);
-	assert_int_equal(img.image_transfer_status, OSP_IMAGE_TRANSFER_RUNNING);
+	/* Image methods are not implemented (no silent success); block reassembly must still complete. */
+	assert_int_equal(osp_client_action(&client, 18, &obis, 2, &big_param, &result), OSP_ERR_NOT_FOUND);
+	assert_int_equal(img.image_transfer_status, OSP_IMAGE_IDLE);
 }
 
 static void test_action_return_param_blocks(void **state) {

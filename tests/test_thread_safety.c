@@ -29,13 +29,13 @@
 #define NUM_THREADS 4
 #define ITERS_PER_THREAD 50
 
-/* ── POSIX mutex HAL implementation ──────────────────────────────────────── */
+/* ── POSIX mutex HAL — create() returns one process-wide lock ───────────── */
+
+static pthread_mutex_t g_pool_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static void *posix_mutex_create(void *ctx) {
 	(void)ctx;
-	pthread_mutex_t *m = malloc(sizeof(pthread_mutex_t));
-	if (m) pthread_mutex_init(m, NULL);
-	return m;
+	return &g_pool_mutex;
 }
 
 static int posix_mutex_lock(void *ctx, void *handle) {
@@ -50,10 +50,7 @@ static void posix_mutex_unlock(void *ctx, void *handle) {
 
 static void posix_mutex_destroy(void *ctx, void *handle) {
 	(void)ctx;
-	if (handle) {
-		pthread_mutex_destroy((pthread_mutex_t *)handle);
-		free(handle);
-	}
+	(void)handle; /* static mutex — not destroyed */
 }
 
 static osp_mutex_t test_mutex = {
@@ -243,6 +240,60 @@ static void test_concurrent_security_context(void **state) {
 	}
 }
 
+/* ── Concurrent nested array decode (hits value_read_pool) ───────────────── */
+
+static void *thread_nested_array_read(void *arg) {
+	int thread_id = *(int *)arg;
+
+	for (int i = 0; i < ITERS_PER_THREAD; i++) {
+		osp_buf_t buf;
+		uint8_t tx[512];
+		osp_buf_init(&buf, tx, sizeof(tx));
+
+		osp_value_t kids[3];
+		kids[0] = osp_val_u32((uint32_t)(thread_id * 1000 + i));
+		kids[1] = osp_val_u32((uint32_t)(thread_id * 1000 + i + 1));
+		kids[2] = osp_val_u32((uint32_t)(thread_id * 1000 + i + 2));
+
+		osp_value_t arr = {0};
+		arr.tag = OSP_TAG_ARRAY;
+		arr.as.array.elements.items = kids;
+		arr.as.array.elements.count = 3;
+		arr.as.array.elements.capacity = 3;
+
+		assert_int_equal(osp_value_write(&buf, &arr), OSP_OK);
+
+		osp_value_t decoded;
+		buf.rd = 0;
+		assert_int_equal(osp_value_read(&buf, &decoded), OSP_OK);
+		assert_int_equal(decoded.tag, OSP_TAG_ARRAY);
+		assert_int_equal(decoded.as.array.elements.count, 3);
+		assert_int_equal(decoded.as.array.elements.items[0].as.uint32.value,
+		                 (uint32_t)(thread_id * 1000 + i));
+		assert_int_equal(decoded.as.array.elements.items[2].as.uint32.value,
+		                 (uint32_t)(thread_id * 1000 + i + 2));
+	}
+	return NULL;
+}
+
+static void test_concurrent_nested_array_read(void **state) {
+	(void)state;
+	osp_hal_mutex = &test_mutex;
+
+	pthread_t threads[NUM_THREADS];
+	int ids[NUM_THREADS];
+
+	for (int i = 0; i < NUM_THREADS; i++) {
+		ids[i] = i;
+		pthread_create(&threads[i], NULL, thread_nested_array_read, &ids[i]);
+	}
+	for (int i = 0; i < NUM_THREADS; i++) {
+		pthread_join(threads[i], NULL);
+	}
+
+	osp_hal_mutex = NULL;
+}
+
 /* ── No-mutex single-threaded mode test ──────────────────────────────────── */
 
 static void test_single_threaded_no_mutex(void **state) {
@@ -272,6 +323,7 @@ int main(void) {
 	const struct CMUnitTest tests[] = {
 		cmocka_unit_test(test_single_threaded_no_mutex),
 		cmocka_unit_test(test_concurrent_value_read_write),
+		cmocka_unit_test(test_concurrent_nested_array_read),
 		cmocka_unit_test(test_concurrent_ber_codec),
 		cmocka_unit_test(test_concurrent_notification_codec),
 		cmocka_unit_test(test_concurrent_security_context),

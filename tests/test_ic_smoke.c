@@ -12,6 +12,7 @@
 
 #include "openspodes.h"
 #include "server/dispatcher.h"
+#include "security/security.h"
 
 #include "ic/activity_calendar.h"
 #include "ic/arbitrator.h"
@@ -185,10 +186,15 @@ static void test_ic_association_ln_smoke(void **state) {
 	assert_true(osp_ic_association_ln_can_invoke(&aln, 3, &TEST_OBIS, 1));
 	assert_false(osp_ic_association_ln_can_read(&aln, 3, &TEST_OBIS, 99));
 
+	/* AUTH_* modes require an authenticated association (LLS+). */
+	aln.authentication_mechanism = OSP_MECH_LOWEST;
 	osp_object_list_element_t auth_elem = elem;
 	auth_elem.access_rights.attr_items[0].access_mode = OSP_ACCESS_AUTH_READ_ONLY;
 	assert_int_equal(osp_ic_association_ln_remove_object(&aln, 3, &TEST_OBIS), OSP_OK);
 	assert_int_equal(osp_ic_association_ln_add_object(&aln, &auth_elem), OSP_OK);
+	assert_false(osp_ic_association_ln_can_read(&aln, 3, &TEST_OBIS, 2));
+
+	aln.authentication_mechanism = OSP_MECH_LLS;
 	assert_true(osp_ic_association_ln_can_read(&aln, 3, &TEST_OBIS, 2));
 	assert_false(osp_ic_association_ln_can_write(&aln, 3, &TEST_OBIS, 2));
 
@@ -206,7 +212,7 @@ static void test_ic_association_ln_smoke(void **state) {
 
 	const osp_ic_class_t *cls = osp_ic_association_ln_class();
 	osp_value_t result;
-	assert_int_equal(cls->invoke(&aln, 3, NULL, &result), OSP_OK);
+	assert_int_equal(cls->invoke(&aln, 3, NULL, &result), OSP_ERR_UNSUPPORTED);
 	assert_int_equal(cls->invoke(&aln, 1, NULL, &result), OSP_ERR_NOT_FOUND);
 
 	assert_int_equal(osp_ic_association_ln_remove_object(&aln, 3, &TEST_OBIS), OSP_OK);

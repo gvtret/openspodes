@@ -15,6 +15,27 @@
 /* Global mutex HAL pointer — defined here, declared in openspodes.h */
 osp_mutex_t *osp_hal_mutex = NULL;
 
+/* One long-lived handle from create(); never destroyed per osp_value_read. */
+static void *g_shared_mutex_handle = NULL;
+
+void osp_hal_mutex_lock(void) {
+	if (!osp_hal_mutex || !osp_hal_mutex->lock) {
+		return;
+	}
+	if (!g_shared_mutex_handle && osp_hal_mutex->create) {
+		g_shared_mutex_handle = osp_hal_mutex->create(osp_hal_mutex->ctx);
+	}
+	if (g_shared_mutex_handle) {
+		osp_hal_mutex->lock(osp_hal_mutex->ctx, g_shared_mutex_handle);
+	}
+}
+
+void osp_hal_mutex_unlock(void) {
+	if (g_shared_mutex_handle && osp_hal_mutex && osp_hal_mutex->unlock) {
+		osp_hal_mutex->unlock(osp_hal_mutex->ctx, g_shared_mutex_handle);
+	}
+}
+
 /* Bump pool for nested structure/array elements during osp_value_read (no malloc). */
 static osp_value_t value_read_pool[OSP_MAX_ARRAY_LEN * OSP_MAX_STRUCT_LEN];
 static uint16_t value_read_pool_used;
@@ -1102,13 +1123,7 @@ osp_err_t osp_value_read(osp_buf_t *buf, osp_value_t *val) {
 		return OSP_ERR_INVALID;
 	}
 
-	/* Lock if mutex is configured (thread-safe mode) */
-	void *mutex_handle = NULL;
-	if (osp_hal_mutex && osp_hal_mutex->create && osp_hal_mutex->lock) {
-		mutex_handle = osp_hal_mutex->create(osp_hal_mutex->ctx);
-		if (mutex_handle)
-			osp_hal_mutex->lock(osp_hal_mutex->ctx, mutex_handle);
-	}
+	osp_hal_mutex_lock();
 
 	if (value_read_depth == 0) {
 		value_read_pool_used = 0;
@@ -1117,13 +1132,7 @@ osp_err_t osp_value_read(osp_buf_t *buf, osp_value_t *val) {
 	osp_err_t r = osp_value_read_impl(buf, val);
 	value_read_depth--;
 
-	/* Unlock */
-	if (mutex_handle && osp_hal_mutex && osp_hal_mutex->unlock) {
-		osp_hal_mutex->unlock(osp_hal_mutex->ctx, mutex_handle);
-	}
-	if (mutex_handle && osp_hal_mutex && osp_hal_mutex->destroy) {
-		osp_hal_mutex->destroy(osp_hal_mutex->ctx, mutex_handle);
-	}
+	osp_hal_mutex_unlock();
 
 	return r;
 }

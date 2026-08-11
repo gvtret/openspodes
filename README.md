@@ -431,7 +431,8 @@ osp_server_send_event_notification(&server, &ev);
 
 ### What is the maximum APDU size?
 
-Default is 1024 bytes (`OSP_CLIENT_MAX_PDU`, `OSP_SERVER_MAX_PDU`). Increase for larger payloads:
+Default is 1024 bytes (`OSP_CLIENT_MAX_PDU`, `OSP_SERVER_MAX_PDU`). Override **before** including
+the headers (macros are `#ifndef`-guarded):
 
 ```c
 #define OSP_CLIENT_MAX_PDU 2048

@@ -66,24 +66,12 @@ static osp_err_t img_invoke(void *inst, uint8_t method_id, const osp_value_t *pa
 	}
 
 	osp_ic_image_transfer_t *i = (osp_ic_image_transfer_t *)inst;
+	(void)i;
 	(void)param;
 	*result = osp_val_null();
-	switch (method_id) {
-		case 1:
-			i->image_transfer_status = OSP_IMAGE_TRANSFER_INITIATED;
-			return OSP_OK;
-		case 2:
-			i->image_transfer_status = OSP_IMAGE_TRANSFER_RUNNING;
-			return OSP_OK;
-		case 3:
-			i->image_transfer_status = OSP_IMAGE_VERIFICATION_OK;
-			return OSP_OK;
-		case 4:
-			i->image_transfer_status = OSP_IMAGE_ACTIVATION_OK;
-			return OSP_OK;
-		default:
-			return OSP_ERR_UNSUPPORTED;
-	}
+	/* Block store / verify / activate require a signed image pipeline — not stubbed as success. */
+	(void)method_id;
+	return OSP_ERR_UNSUPPORTED;
 }
 
 static osp_err_t img_serialize(const void *inst, osp_buf_t *buf) {

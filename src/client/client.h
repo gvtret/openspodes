@@ -28,9 +28,15 @@
 extern "C" {
 #endif
 
+#ifndef OSP_CLIENT_MAX_PDU
 #define OSP_CLIENT_MAX_PDU 1024
+#endif
+#ifndef OSP_CLIENT_REASSEMBLE_MAX
 #define OSP_CLIENT_REASSEMBLE_MAX (OSP_CLIENT_MAX_PDU * 4)
+#endif
+#ifndef OSP_CLIENT_BLOCK_SIZE
 #define OSP_CLIENT_BLOCK_SIZE 64
+#endif
 
 typedef struct {
 	osp_transport_t *transport;

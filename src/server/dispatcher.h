@@ -36,6 +36,11 @@ void osp_dispatcher_init(osp_dispatcher_t *disp);
 /** @brief Set the association object used for access control lookups. */
 void osp_dispatcher_set_association(osp_dispatcher_t *disp, osp_ic_association_ln_t *association);
 
+/**
+ * When compiled with -DOSP_REQUIRE_ACL, GET/SET/ACTION without an association
+ * object return OSP_ERR_SECURITY (default-deny). Lab builds omit the define.
+ */
+
 /** @brief Register an IC class and its instance for request dispatching. */
 osp_err_t osp_dispatcher_register(osp_dispatcher_t *disp, const osp_ic_class_t *class_def, void *instance);
 

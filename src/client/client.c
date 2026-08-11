@@ -209,13 +209,29 @@ osp_err_t osp_client_connect(osp_client_t *c, uint32_t timeout_ms) {
 	memcpy(aarq.calling_ap_title, c->security.system_title, OSP_SEC_SYSTEM_TITLE_SIZE);
 	aarq.calling_ap_title_len = OSP_SEC_SYSTEM_TITLE_SIZE;
 
-	/* Generate CtoS challenge */
-	aarq.calling_auth_value_len = 8;
-	for (uint8_t i = 0; i < 8; i++) {
-		aarq.calling_auth_value[i] = (uint8_t)(i + 0x30);
+	/* Authentication value / CtoS challenge */
+	if (c->security.mechanism == OSP_MECH_LOWEST) {
+		aarq.calling_auth_value_len = 0;
+		c->security.ctos_len = 0;
+	} else if (c->security.mechanism == OSP_MECH_LLS) {
+		if (c->security.hls_secret_len == 0 ||
+		    c->security.hls_secret_len > sizeof(aarq.calling_auth_value)) {
+			return OSP_ERR_SECURITY;
+		}
+		aarq.calling_auth_value_len = c->security.hls_secret_len;
+		memcpy(aarq.calling_auth_value, c->security.hls_secret, aarq.calling_auth_value_len);
+		c->security.ctos_len = 0;
+	} else if (osp_hls_requires_handshake(c->security.mechanism)) {
+		uint8_t ctos_len = (c->security.mechanism == OSP_MECH_HLS) ? 16 : 8;
+		if (!osp_hal_random_fill || osp_hal_random_fill(aarq.calling_auth_value, ctos_len) != 0) {
+			return OSP_ERR_SECURITY;
+		}
+		aarq.calling_auth_value_len = ctos_len;
+		memcpy(c->security.ctos, aarq.calling_auth_value, ctos_len);
+		c->security.ctos_len = ctos_len;
+	} else {
+		return OSP_ERR_SECURITY;
 	}
-	memcpy(c->security.ctos, aarq.calling_auth_value, 8);
-	c->security.ctos_len = 8;
 
 	osp_initiate_request_t ireq;
 	osp_initiate_request_default(&ireq);
@@ -260,6 +276,10 @@ osp_err_t osp_client_connect(osp_client_t *c, uint32_t timeout_ms) {
 
 	/* Store StoC challenge and peer system title */
 	if (aare.responding_auth_value_len > 0) {
+		if (aare.responding_auth_value_len > sizeof(c->security.stoc) ||
+		    aare.responding_auth_value_len > sizeof(aare.responding_auth_value)) {
+			return OSP_ERR_INVALID;
+		}
 		memcpy(c->security.stoc, aare.responding_auth_value, aare.responding_auth_value_len);
 		c->security.stoc_len = aare.responding_auth_value_len;
 	}

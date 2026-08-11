@@ -96,24 +96,14 @@ static osp_err_t clock_invoke(void *inst, uint8_t method_id, const osp_value_t *
 	(void)inst;
 	(void)param;
 	switch (method_id) {
-		case 1: /* adjust_to_quarter */
-			*result = osp_val_null();
-			return OSP_OK;
+		case 1: /* adjust_to_quarter — needs HAL clock */
 		case 2: /* measuring_period */
-			*result = osp_val_null();
-			return OSP_OK;
-		case 3: /* minute */
-			*result = osp_val_null();
-			return OSP_OK;
-		case 4: /* preset_time */
-			*result = osp_val_null();
-			return OSP_OK;
+		case 3: /* shift_time to nearest minute — Blue Book naming varies */
+		case 4: /* preset_adjusting_time */
 		case 5: /* preset_adjusting_time */
-			*result = osp_val_null();
-			return OSP_OK;
 		case 6: /* shift_time */
 			*result = osp_val_null();
-			return OSP_OK;
+			return OSP_ERR_UNSUPPORTED;
 		default:
 			return OSP_ERR_UNSUPPORTED;
 	}

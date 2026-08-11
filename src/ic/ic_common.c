@@ -342,7 +342,9 @@ static osp_value_t ic_val_access_right(const osp_access_right_t *ar, osp_value_t
  * Scratch for object_list → osp_value_t encode.
  * Must NOT be _Thread_local: multi-MB TLS is carved from each pthread's stack
  * on glibc and leaves ~0 usable stack (SEGV on first non-trivial call).
- * Process-wide BSS is fine for host; encode is not re-entrant across threads.
+ * Process-wide BSS; not re-entrant. Caller must osp_value_write the result
+ * before the next osp_ic_val_object_list (any thread). Full MT object_list
+ * encode needs a caller-provided scratch (future).
  */
 typedef struct {
 	osp_value_t rows[OSP_MAX_OBJECT_LIST];

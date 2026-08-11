@@ -85,10 +85,9 @@ static osp_err_t ss_invoke(void *inst, uint8_t method_id, const osp_value_t *par
 
 	(void)inst;
 	(void)param;
-	if (method_id == 1 || method_id == 2) {
-		*result = osp_val_null();
-		return OSP_OK;
-	}
+	(void)method_id;
+	*result = osp_val_null();
+	/* security_activate / key_transfer require key store HAL */
 	return OSP_ERR_UNSUPPORTED;
 }
 

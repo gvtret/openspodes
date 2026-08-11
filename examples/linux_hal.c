@@ -9,6 +9,7 @@
  */
 
 #include "linux_hal.h"
+#include "../src/security/security.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -200,7 +201,7 @@ static int connect_tcp(const char *host, uint16_t port) {
 static int linux_gcm_crypt(osp_gcm_dir_t dir, const uint8_t *key, uint32_t key_len,
                             const uint8_t iv[12], const uint8_t *aad, uint32_t aad_len,
                             const uint8_t *in, uint32_t in_len, uint8_t *out,
-                            const uint8_t tag_in[16], uint8_t tag_out[16]) {
+                            const uint8_t tag_in[OSP_SEC_TAG_SIZE], uint8_t tag_out[OSP_SEC_TAG_SIZE]) {
 	const EVP_CIPHER *cipher = (key_len == 32) ? EVP_aes_256_gcm() : EVP_aes_128_gcm();
 	EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
 	if (!ctx)
@@ -228,10 +229,10 @@ static int linux_gcm_crypt(osp_gcm_dir_t dir, const uint8_t *key, uint32_t key_l
 		int final_len = 0;
 		if (EVP_CipherFinal_ex(ctx, out + out_len, &final_len) != 1)
 			goto done;
-		if (tag_out && EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, 16, tag_out) != 1)
+		if (tag_out && EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, OSP_SEC_TAG_SIZE, tag_out) != 1)
 			goto done;
 	} else {
-		if (tag_in && EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16, (void *)tag_in) != 1)
+		if (tag_in && EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, OSP_SEC_TAG_SIZE, (void *)tag_in) != 1)
 			goto done;
 		if (in && in_len > 0) {
 			if (EVP_CipherUpdate(ctx, out, &out_len, in, (int)in_len) != 1)
@@ -262,12 +263,14 @@ static void linux_sha256(const uint8_t *input, uint32_t len, uint8_t output[32])
 	EVP_Digest(input, len, output, &out_len, EVP_sha256(), NULL);
 }
 
+static int linux_hal_random_fill_noctx(uint8_t *buf, uint32_t len);
+
 void linux_hal_init_crypto(void) {
 	osp_hal_gcm_crypt = linux_gcm_crypt;
 	osp_hal_md5 = linux_md5;
 	osp_hal_sha1 = linux_sha1;
 	osp_hal_sha256 = linux_sha256;
-	osp_hal_random_fill = linux_random_fill;
+	osp_hal_random_fill = linux_hal_random_fill_noctx;
 }
 
 #else /* No OpenSSL */
@@ -316,6 +319,10 @@ static osp_err_t linux_random_fill(void *ctx, uint8_t *buf, uint32_t len) {
 	}
 	close(fd);
 	return OSP_OK;
+}
+
+static int linux_hal_random_fill_noctx(uint8_t *buf, uint32_t len) {
+	return (linux_random_fill(NULL, buf, len) == OSP_OK) ? 0 : -1;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
