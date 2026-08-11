@@ -24,8 +24,12 @@ extern "C" {
 #define OSP_MAX_NAME_LEN 64
 #endif
 #ifndef OSP_MAX_OBJECT_LIST
-/* Must fit in osp_value array count/capacity (uint8_t); Category A needs ~205. */
-#define OSP_MAX_OBJECT_LIST 255
+/*
+ * Object-list encode scratch scales as O(N * ACCESS_ITEMS) × sizeof(osp_value_t).
+ * Default 32 (~1 MiB scratch) fits constrained hosts; Category A (~205 OBIS) needs 255.
+ * CMake: -DOPENSPODES_CATEGORY_A=ON sets 255 on the library (default for this repo).
+ */
+#define OSP_MAX_OBJECT_LIST 32
 #endif
 #ifndef OSP_MAX_ACCESS_ITEMS
 #define OSP_MAX_ACCESS_ITEMS 16

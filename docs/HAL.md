@@ -327,18 +327,20 @@ The library uses static buffers sized by these constants:
 | `OSP_CLIENT_MAX_PDU` | 1024 | Client TX/RX buffer size |
 | `OSP_SERVER_MAX_PDU` | 1024 | Server TX/RX buffer size |
 | `OSP_SERVER_PENDING_MAX` | 32768 | Block transfer reassembly buffer (×32; override with `#ifndef` before include) |
+| `OSP_MAX_OBJECT_LIST` | 32 (255 w/ Category A) | Association LN object_list + encode scratch |
 | `OSP_HDLC_MAX_FRAME_SIZE` | 1024 | Maximum HDLC frame (configurable via #ifndef) |
 | `OSP_GLO_MAX_PLAIN` | 1024 | Max plaintext for glo-ciphering |
 
 **Recommendations:**
-- For small meters: keep defaults (total RAM ~12-16 KB)
-- For concentrators: increase `OSP_SERVER_MAX_PDU` and `OSP_SPODUS_MAX_METERS`
-- For constrained MCUs (< 32 KB RAM): reduce all buffers to 256-512 bytes
+- For MCU / small meters: `cmake -DOPENSPODES_CATEGORY_A=OFF` (object_list=32, ~1 MiB encode scratch) and shrink PDU/pending macros
+- For Category A / Yellow Book / concentrators: keep `OPENSPODES_CATEGORY_A=ON` (255) — expect multi‑MiB BSS for object-list encode
+- For constrained MCUs (< 256 KB RAM): Category A OFF is required; full streaming encode is still future work for <<1 MiB targets
 
-**Total static RAM usage** (default config, per connection):
-- `osp_client_t`: ~8 KB (tx_buf + rx_buf + reassembly)
-- `osp_server_t`: ~40 KB (tx_buf + rx_buf + 2× pending_get/set + action buffers)
-- `osp_value_read_pool`: ~4 KB (shared, thread-safe via mutex)
+**Session structs** (order-of-magnitude, depends on PDU macros):
+- `osp_client_t`: ~8 KB
+- `osp_server_t`: ~200 KB with default pending×32 (four pending buffers)
+- `osp_value_read_pool`: shared codec pool (mutex-protected when `osp_hal_mutex` is set)
+- Association LN object-list encode scratch: ~1 MiB at N=32, ~7.9 MiB at N=255
 
 ---
 
@@ -353,7 +355,7 @@ static osp_client_t client;
 
 // BAD — stack allocation (may overflow on MCU)
 void handler(void) {
-    osp_server_t server;  // ~40 KB on stack!
+    osp_server_t server;  // large on stack with default pending buffers
     osp_server_init(&server, ...);
 }
 ```

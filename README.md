@@ -337,7 +337,15 @@ OpenSPODES is a portable C11 implementation of the IEC 62056 DLMS/COSEM protocol
 
 ### Can I use this on a bare-metal MCU?
 
-Yes. The library uses no `malloc`/`free`, no OS primitives, and no threads. All HAL interfaces are optional function pointers. See [docs/HAL.md](docs/HAL.md) for porting guide.
+Yes for the **no-heap** hot path, with caveats on static RAM:
+
+- Build with `-DOPENSPODES_CATEGORY_A=OFF` so `OSP_MAX_OBJECT_LIST` stays at the header default (**32**). Category A / Yellow Book builds keep `ON` (255) and need multi‑MiB BSS for Association LN object-list encode scratch.
+- Override PDU / pending sizes with `#ifndef` macros before including `client.h` / `server.h`.
+- HAL interfaces are optional function pointers — see [docs/HAL.md](docs/HAL.md).
+
+```bash
+cmake -B build-mcu -DOPENSPODES_CATEGORY_A=OFF -DCMAKE_BUILD_TYPE=MinSizeRel
+```
 
 ### What platforms are supported?
 

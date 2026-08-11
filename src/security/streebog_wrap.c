@@ -45,11 +45,13 @@ int osp_gost_hmac_streebog256(const uint8_t *key, uint32_t key_len, const uint8_
 		opad[i] = (uint8_t)(k_block[i] ^ 0x5C);
 	}
 
-	/* Thread-local buffer to avoid 65KB stack allocation.
-	 * Per-thread on Linux/FreeRTOS/Zephyr; plain static on bare-metal. */
-	OSP_TLS uint8_t inner[STREEBOG_BLOCK + 65536];
+	/* Cap message size: DLMS HLS/KDF use small inputs; avoid 64 KiB BSS/TLS. */
+#ifndef OSP_STREEBOG_HMAC_MAX_MSG
+#define OSP_STREEBOG_HMAC_MAX_MSG 1024
+#endif
+	OSP_TLS uint8_t inner[STREEBOG_BLOCK + OSP_STREEBOG_HMAC_MAX_MSG];
 	int rc = -1;
-	if (msg_len <= sizeof(inner) - STREEBOG_BLOCK) {
+	if (msg_len <= OSP_STREEBOG_HMAC_MAX_MSG) {
 		memcpy(inner, ipad, STREEBOG_BLOCK);
 		memcpy(inner + STREEBOG_BLOCK, msg, msg_len);
 		uint8_t inner_hash[32];

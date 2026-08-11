@@ -16,6 +16,10 @@ if(ENABLE_ASAN)
 	add_link_options(-fsanitize=address,undefined)
 endif()
 
+# Association LN object_list capacity (ABI). Category A / Yellow Book need 255;
+# MCU builds should use -DOPENSPODES_CATEGORY_A=OFF (header default 32).
+option(OPENSPODES_CATEGORY_A "Large object_list (255) for Category A / Yellow Book" ON)
+
 # Library
 add_library(openspodes STATIC
     src/codec/codec.c
@@ -99,6 +103,9 @@ target_include_directories(openspodes PRIVATE src/security/streebog)
 # Hardening flags
 target_compile_options(openspodes PRIVATE -Wall -Wextra -Werror -fstack-protector-strong)
 target_compile_definitions(openspodes PRIVATE _FORTIFY_SOURCE=2)
+if(OPENSPODES_CATEGORY_A)
+	target_compile_definitions(openspodes PUBLIC OSP_MAX_OBJECT_LIST=255)
+endif()
 
 # Tests
 include(FetchContent)
