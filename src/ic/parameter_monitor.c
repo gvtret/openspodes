@@ -47,23 +47,10 @@ static osp_err_t pm_set(void *inst, uint8_t attr_id, const osp_value_t *value) {
 	osp_ic_parameter_monitor_t *i = (osp_ic_parameter_monitor_t *)inst;
 	if (!value) return OSP_ERR_INVALID;
 	switch (attr_id) {
-		case 2: {
-			/* Store monitored_value (value_definition structure) */
-			if (value->tag != OSP_TAG_STRUCTURE || value->as.structure.elements.count < 2) {
-				return OSP_ERR_INVALID;
-			}
-			const osp_value_t *elems = value->as.structure.elements.items;
-			i->monitored_value.class_id = elems[0].as.uint16.value;
-			if (elems[1].tag == OSP_TAG_OCTETSTRING) {
-				memcpy(&i->monitored_value.logical_name, elems[1].as.octetstring.data, sizeof(osp_obis_t));
-			}
-			if (value->as.structure.elements.count >= 3) {
-				i->monitored_value.attribute_index = elems[2].as.int8.value;
-			}
-			return OSP_OK;
-		}
-		case 3: /* thresholds: complex nested structure, store as-is */
-			return OSP_OK;
+		case 2:
+			return osp_ic_read_value_definition(value, &i->monitored_value);
+		case 3:
+			return osp_ic_read_threshold_list(value, &i->thresholds);
 		case 4: {
 			/* Store events from incoming array */
 			if (value->tag != OSP_TAG_ARRAY) {

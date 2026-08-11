@@ -239,8 +239,22 @@ static osp_err_t aln_set(void *inst, uint8_t attr_id, const osp_value_t *value) 
 			}
 			memcpy(&a->security_setup_reference, value->as.octetstring.data, 6);
 			return OSP_OK;
-		case 10:
+		case 10: {
+			if (value->tag != OSP_TAG_ARRAY) {
+				return OSP_ERR_INVALID;
+			}
+			uint8_t n = value->as.array.elements.count;
+			if (n > (uint8_t)(sizeof(a->user_list) / sizeof(a->user_list[0]))) {
+				n = (uint8_t)(sizeof(a->user_list) / sizeof(a->user_list[0]));
+			}
+			for (uint8_t i = 0; i < n; i++) {
+				if (osp_ic_read_user_list_item(&value->as.array.elements.items[i], &a->user_list[i]) != OSP_OK) {
+					return OSP_ERR_INVALID;
+				}
+			}
+			a->user_count = n;
 			return OSP_OK;
+		}
 		case 11:
 			return osp_ic_read_user_list_item(value, &a->current_user);
 		default:

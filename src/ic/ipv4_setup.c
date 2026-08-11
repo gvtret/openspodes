@@ -87,7 +87,20 @@ static osp_err_t ipv4_set(void *inst, uint8_t attr_id, const osp_value_t *value)
 		case 3:
 			s->ip_address = osp_get_u32(value);
 			return OSP_OK;
-		case 4:
+		case 4: {
+			if (value->tag != OSP_TAG_ARRAY) {
+				return OSP_ERR_INVALID;
+			}
+			uint8_t n = value->as.array.elements.count;
+			if (n > OSP_MAX_IP_MULTICAST) {
+				n = OSP_MAX_IP_MULTICAST;
+			}
+			for (uint8_t i = 0; i < n; i++) {
+				s->multicast_ip[i] = osp_get_u32(&value->as.array.elements.items[i]);
+			}
+			s->multicast_count = n;
+			return OSP_OK;
+		}
 		case 5:
 			return OSP_OK;
 		case 6:

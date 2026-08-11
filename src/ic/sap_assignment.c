@@ -91,15 +91,19 @@ static osp_err_t sap_invoke(void *inst, uint8_t method_id, const osp_value_t *pa
 	const osp_value_t *ldn = &param->as.structure.elements.items[1];
 	int idx = sap_find(s, sap);
 	if (ldn->tag == OSP_TAG_OCTETSTRING && ldn->as.octetstring.len > 0) {
+		uint32_t len = ldn->as.octetstring.len;
+		if (len > sizeof(s->sap_list.items[0].logical_device_name)) {
+			len = sizeof(s->sap_list.items[0].logical_device_name);
+		}
 		if (idx >= 0) {
 			osp_sap_assignment_item_t *item = &s->sap_list.items[idx];
-			item->logical_device_name_len = (uint8_t)ldn->as.octetstring.len;
-			memcpy(item->logical_device_name, ldn->as.octetstring.data, ldn->as.octetstring.len);
+			item->logical_device_name_len = (uint8_t)len;
+			memcpy(item->logical_device_name, ldn->as.octetstring.data, len);
 		} else if (s->sap_list.count < 16) {
 			osp_sap_assignment_item_t *item = &s->sap_list.items[s->sap_list.count++];
 			item->sap = sap;
-			item->logical_device_name_len = (uint8_t)ldn->as.octetstring.len;
-			memcpy(item->logical_device_name, ldn->as.octetstring.data, ldn->as.octetstring.len);
+			item->logical_device_name_len = (uint8_t)len;
+			memcpy(item->logical_device_name, ldn->as.octetstring.data, len);
 		} else {
 			return OSP_ERR_NOMEM;
 		}
