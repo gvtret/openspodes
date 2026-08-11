@@ -25,9 +25,9 @@ extern "C" {
 #endif
 #ifndef OSP_MAX_OBJECT_LIST
 /*
- * Object-list encode scratch scales as O(N * ACCESS_ITEMS) × sizeof(osp_value_t).
- * Default 32 (~1 MiB scratch) fits constrained hosts; Category A (~205 OBIS) needs 255.
- * CMake: -DOPENSPODES_CATEGORY_A=ON sets 255 on the library (default for this repo).
+ * Association LN object_list storage scales as O(N) × sizeof(element).
+ * Each element embeds access_right (~attr+method ACL). Default 32; Category A
+ * needs ~205–255 (CMake OPENSPODES_CATEGORY_A=ON → 255).
  */
 #define OSP_MAX_OBJECT_LIST 32
 #endif
@@ -163,6 +163,12 @@ typedef enum {
 
 /* ── Access descriptors ──────────────────────────────────────────────────── */
 
+/*
+ * Selective-access parameter blob (Blue Book access_selectors CHOICE).
+ * Not stored on object_list ACL rows — wire encode always emits NULL and
+ * decode skips the CHOICE. Kept as a standalone type for future SET/GET of
+ * selector metadata without bloating every ACL entry (~40 B × N_attr).
+ */
 typedef struct {
 	osp_access_selector_type type;
 	int32_t values[8];
@@ -172,7 +178,6 @@ typedef struct {
 typedef struct {
 	int8_t attribute_id;
 	osp_attr_access_t access_mode;
-	osp_access_selectors_t access_selectors;
 } osp_attribute_access_item_t;
 
 typedef struct {

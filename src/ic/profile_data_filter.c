@@ -74,30 +74,37 @@ static bool passes_all(const osp_ic_profile_data_filter_t *f, const osp_value_t 
 	return true;
 }
 
-static osp_err_t project_row(const osp_ic_profile_data_filter_t *f, const osp_value_t *row_fields, uint8_t field_count, const osp_value_t *selected,
+/*
+ * Project one matching row into out (structure). No TLS scratch:
+ *  - no column selection → alias source row fields (zero-copy)
+ *  - with selection → pack projected values into the unused tail of the
+ *    source row's fields[] (stable until the next mutating invoke)
+ */
+static osp_err_t project_row(const osp_ic_profile_data_filter_t *f, osp_ic_row_t *row, const osp_value_t *selected,
                              uint8_t selected_count, osp_value_t *out) {
-	out->tag = OSP_TAG_STRUCTURE;
-	out->as.structure.elements.count = 0;
-	out->as.structure.elements.capacity = OSP_MAX_STRUCT_LEN;
-	out->as.structure.elements.items = out->as.structure.elements.items;
-
-	OSP_TLS osp_value_t proj_fields[OSP_MAX_STRUCT_LEN];
-	uint8_t n = 0;
-
 	if (selected_count == 0) {
-		for (uint8_t i = 0; i < field_count && n < OSP_MAX_STRUCT_LEN; i++) {
-			proj_fields[n++] = row_fields[i];
-		}
-	} else {
-		for (uint8_t s = 0; s < selected_count; s++) {
-			int idx = column_index(f, &selected[s]);
-			if (idx >= 0 && (uint8_t)idx < field_count && n < OSP_MAX_STRUCT_LEN) {
-				proj_fields[n++] = row_fields[idx];
-			}
+		return osp_ic_row_to_value(row, out);
+	}
+
+	osp_value_t picked[OSP_IC_ROW_MAX_FIELDS];
+	uint8_t n = 0;
+	for (uint8_t s = 0; s < selected_count && n < OSP_IC_ROW_MAX_FIELDS; s++) {
+		int idx = column_index(f, &selected[s]);
+		if (idx >= 0 && (uint8_t)idx < row->field_count) {
+			picked[n++] = row->fields[idx];
 		}
 	}
-	out->as.structure.elements.items = proj_fields;
+	if ((uint16_t)row->field_count + n > OSP_IC_ROW_MAX_FIELDS) {
+		return OSP_ERR_NOMEM;
+	}
+	uint8_t base = row->field_count;
+	for (uint8_t i = 0; i < n; i++) {
+		row->fields[base + i] = picked[i];
+	}
+	out->tag = OSP_TAG_STRUCTURE;
+	out->as.structure.elements.items = &row->fields[base];
 	out->as.structure.elements.count = n;
+	out->as.structure.elements.capacity = n;
 	return OSP_OK;
 }
 
@@ -105,11 +112,14 @@ static osp_err_t filtered(const osp_ic_profile_data_filter_t *f, const osp_value
                           uint8_t filter_count, osp_ic_profile_data_filter_t *mutable_f, osp_value_t *result) {
 	uint8_t n = 0;
 	for (uint8_t i = 0; i < f->row_count && n < OSP_MAX_ARRAY_LEN; i++) {
-		const osp_ic_row_t *row = &f->rows[i];
+		osp_ic_row_t *row = &mutable_f->rows[i];
 		if (!passes_all(f, row->fields, row->field_count, filters, filter_count)) {
 			continue;
 		}
-		project_row(f, row->fields, row->field_count, selected, selected_count, &mutable_f->result_buf[n++]);
+		if (project_row(f, row, selected, selected_count, &mutable_f->result_buf[n]) != OSP_OK) {
+			return OSP_ERR_NOMEM;
+		}
+		n++;
 	}
 	result->tag = OSP_TAG_ARRAY;
 	result->as.array.elements.items = mutable_f->result_buf;

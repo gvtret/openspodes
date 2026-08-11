@@ -265,8 +265,9 @@ static osp_err_t aln_set(void *inst, uint8_t attr_id, const osp_value_t *value) 
 		case 5:
 			return osp_ic_read_xdms_context(value, &a->xdms_context);
 		case 6:
-			/* Mechanism is fixed per Association LN instance; use provisioning offline. */
-			return OSP_ERR_UNSUPPORTED;
+			/* Provisioning / IC deserialize; DLMS write still gated by ACL. */
+			a->authentication_mechanism = osp_get_enum(value);
+			return OSP_OK;
 		case 7:
 			if (value->tag != OSP_TAG_OCTETSTRING || value->as.octetstring.len > sizeof(a->secret)) {
 				return OSP_ERR_INVALID;
@@ -275,8 +276,9 @@ static osp_err_t aln_set(void *inst, uint8_t attr_id, const osp_value_t *value) 
 			memcpy(a->secret, value->as.octetstring.data, a->secret_len);
 			return OSP_OK;
 		case 8:
-			/* association_status is managed by the session layer. */
-			return OSP_ERR_UNSUPPORTED;
+			/* Session layer owns runtime transitions; allow SET for restore/deserialize. */
+			a->association_status = osp_get_enum(value);
+			return OSP_OK;
 		case 9:
 			if (value->tag != OSP_TAG_OCTETSTRING || value->as.octetstring.len != 6) {
 				return OSP_ERR_INVALID;

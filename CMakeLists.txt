@@ -108,6 +108,8 @@ if(OPENSPODES_CATEGORY_A)
 else()
 	# Nested A-XDR decode pool; default 32×16=512 is ~136 KiB. MCU profile trims it.
 	target_compile_definitions(openspodes PUBLIC OSP_VALUE_READ_POOL_LEN=128)
+	# Most IC methods are few; 8 slots covers typical meters (ALN still has 16 attrs).
+	target_compile_definitions(openspodes PUBLIC OSP_MAX_METHOD_ITEMS=8)
 endif()
 
 # Tests

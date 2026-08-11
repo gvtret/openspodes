@@ -624,10 +624,10 @@ static void test_ic_clock(void **state) {
 	assert_int_equal(osp_cosem_datetime_read_value(&v, &got), OSP_OK);
 	assert_int_equal(got.year, 2026);
 
-	/* Methods: adjust_to_quarter, minute, etc. */
+	/* Methods: adjust_to_quarter, minute, etc. — need HAL clock */
 	osp_value_t result;
 	for (uint8_t m = 1; m <= 6; m++) {
-		assert_int_equal(cls->invoke(&clock, m, NULL, &result), OSP_OK);
+		assert_int_equal(cls->invoke(&clock, m, NULL, &result), OSP_ERR_UNSUPPORTED);
 	}
 }
 
@@ -694,7 +694,7 @@ static void test_ic_security_setup(void **state) {
 	assert_int_equal(ss.client_system_title.len, 4);
 
 	osp_value_t result;
-	assert_int_equal(cls->invoke(&ss, 1, NULL, &result), OSP_OK);
+	assert_int_equal(cls->invoke(&ss, 1, NULL, &result), OSP_ERR_UNSUPPORTED);
 	assert_int_equal(result.tag, OSP_TAG_NULL);
 }
 
@@ -2151,7 +2151,9 @@ static void test_sap_assignment_get_attr(void **state) {
 	memcpy(s.sap_list.items[1].logical_device_name, "MDL2", 4);
 
 	assert_int_equal(cls->get_attr(&s, 2, &result), OSP_OK);
-	assert_int_equal(result.as.array.elements.count, 2);
+	assert_int_equal(result.tag, OSP_TAG_SAP_ASSIGNMENT_LIST_REF);
+	assert_non_null(result.as.ref);
+	assert_int_equal(((const osp_sap_assignment_list_t *)result.as.ref)->count, 2);
 	assert_int_equal(cls->get_attr(&s, 3, &result), OSP_ERR_NOT_FOUND);
 }
 
@@ -2266,7 +2268,9 @@ static void test_status_mapping_get_attr(void **state) {
 	m.entries[1].status_flag_id = 2;
 	memcpy(m.entries[1].status_reference, "\x0A\x0B\x0C\x0D\x0E\x0F", 6);
 	assert_int_equal(cls->get_attr(&m, 2, &result), OSP_OK);
-	assert_int_equal(result.as.array.elements.count, 2);
+	assert_int_equal(result.tag, OSP_TAG_STATUS_MAPPING_TABLE_REF);
+	assert_non_null(result.as.ref);
+	assert_int_equal(((const osp_status_mapping_table_view_t *)result.as.ref)->count, 2);
 	assert_int_equal(cls->get_attr(&m, 3, &result), OSP_ERR_NOT_FOUND);
 }
 
