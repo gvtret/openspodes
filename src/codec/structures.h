@@ -591,6 +591,16 @@ typedef struct {
 	uint8_t week_name_len;
 } osp_season_t;
 
+typedef struct {
+	const osp_season_t *seasons;
+	uint8_t count;
+} osp_season_profile_table_view_t;
+
+typedef struct {
+	const osp_week_profile_t *weeks;
+	uint8_t count;
+} osp_week_profile_table_view_t;
+
 /* ═══════════════════════════════════════════════════════════════════════════
  *  CLASS 21: Register Monitor
  * ═══════════════════════════════════════════════════════════════════════════ */

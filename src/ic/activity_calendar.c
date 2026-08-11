@@ -21,6 +21,38 @@ static osp_value_t ac_val_day_profile_table(const osp_day_profile_t *profiles, u
 	return v;
 }
 
+static osp_value_t ac_val_season_profile_table(const osp_season_t *seasons, uint8_t count) {
+	OSP_TLS osp_season_profile_table_view_t view;
+	osp_value_t v = {0};
+	if (!seasons || count == 0) {
+		return osp_ic_val_empty_array();
+	}
+	if (count > OSP_MAX_SEASON_PROFILE) {
+		count = OSP_MAX_SEASON_PROFILE;
+	}
+	view.seasons = seasons;
+	view.count = count;
+	v.tag = OSP_TAG_SEASON_PROFILE_TABLE_REF;
+	v.as.ref = &view;
+	return v;
+}
+
+static osp_value_t ac_val_week_profile_table(const osp_week_profile_t *weeks, uint8_t count) {
+	OSP_TLS osp_week_profile_table_view_t view;
+	osp_value_t v = {0};
+	if (!weeks || count == 0) {
+		return osp_ic_val_empty_array();
+	}
+	if (count > OSP_MAX_WEEK_PROFILE) {
+		count = OSP_MAX_WEEK_PROFILE;
+	}
+	view.weeks = weeks;
+	view.count = count;
+	v.tag = OSP_TAG_WEEK_PROFILE_TABLE_REF;
+	v.as.ref = &view;
+	return v;
+}
+
 /* ── Helper: copy season profile ────────────────────────────────────────── */
 
 static void copy_season(osp_season_t *dst, const osp_season_t *src) {
@@ -73,66 +105,19 @@ static osp_err_t ac_get(const void *inst, uint8_t attr_id, osp_value_t *result) 
 			memcpy(result->as.octetstring.data, a->calendar_name_active, a->calendar_name_active_len);
 			return OSP_OK;
 		case 3: {
-			OSP_TLS osp_value_t items[OSP_MAX_SEASON_PROFILE];
-			OSP_TLS osp_value_t fields[OSP_MAX_SEASON_PROFILE][3];
 			uint8_t n = a->season_count_active;
 			if (n > OSP_MAX_SEASON_PROFILE) {
 				n = OSP_MAX_SEASON_PROFILE;
 			}
-			*result = osp_ic_val_empty_array();
-			if (n == 0) {
-				return OSP_OK;
-			}
-			for (uint8_t i = 0; i < n; i++) {
-				const osp_season_t *s = &a->season_profile_active[i];
-				fields[i][0].tag = OSP_TAG_OCTETSTRING;
-				fields[i][0].as.octetstring.len = s->name_len;
-				memcpy(fields[i][0].as.octetstring.data, s->name, s->name_len);
-				fields[i][1].tag = OSP_TAG_OCTETSTRING;
-				fields[i][1].as.octetstring.len = 12;
-				memset(fields[i][1].as.octetstring.data, 0, 12);
-				memcpy(fields[i][1].as.octetstring.data, &s->start,
-				       sizeof(s->start) < 12 ? sizeof(s->start) : 12);
-				fields[i][2].tag = OSP_TAG_OCTETSTRING;
-				fields[i][2].as.octetstring.len = s->week_name_len;
-				memcpy(fields[i][2].as.octetstring.data, s->week_name, s->week_name_len);
-				items[i].tag = OSP_TAG_STRUCTURE;
-				items[i].as.structure.elements.items = fields[i];
-				items[i].as.structure.elements.count = 3;
-				items[i].as.structure.elements.capacity = 3;
-			}
-			result->as.array.elements.items = items;
-			result->as.array.elements.count = n;
-			result->as.array.elements.capacity = n;
+			*result = ac_val_season_profile_table(a->season_profile_active, n);
 			return OSP_OK;
 		}
 		case 4: {
-			OSP_TLS osp_value_t items[OSP_MAX_WEEK_PROFILE];
-			OSP_TLS osp_value_t fields[OSP_MAX_WEEK_PROFILE][8];
 			uint8_t n = a->week_count_active;
 			if (n > OSP_MAX_WEEK_PROFILE) {
 				n = OSP_MAX_WEEK_PROFILE;
 			}
-			*result = osp_ic_val_empty_array();
-			if (n == 0) {
-				return OSP_OK;
-			}
-			for (uint8_t i = 0; i < n; i++) {
-				const osp_week_profile_t *wp = &a->week_profile_table_active[i];
-				fields[i][0].tag = OSP_TAG_OCTETSTRING;
-				fields[i][0].as.octetstring.len = wp->name_len;
-				memcpy(fields[i][0].as.octetstring.data, wp->name, wp->name_len);
-				for (int d = 0; d < 7; d++) {
-					fields[i][1 + d] = osp_val_u8(wp->day_names[d][0]);
-				}
-				items[i].tag = OSP_TAG_STRUCTURE;
-				items[i].as.structure.elements.items = fields[i];
-				items[i].as.structure.elements.count = 8;
-				items[i].as.structure.elements.capacity = 8;
-			}
-			result->as.array.elements.items = items;
-			result->as.array.elements.count = n;
-			result->as.array.elements.capacity = n;
+			*result = ac_val_week_profile_table(a->week_profile_table_active, n);
 			return OSP_OK;
 		}
 		case 5: {
@@ -151,66 +136,19 @@ static osp_err_t ac_get(const void *inst, uint8_t attr_id, osp_value_t *result) 
 			memcpy(result->as.octetstring.data, a->calendar_name_passive, a->calendar_name_passive_len);
 			return OSP_OK;
 		case 7: {
-			OSP_TLS osp_value_t items[OSP_MAX_SEASON_PROFILE];
-			OSP_TLS osp_value_t fields[OSP_MAX_SEASON_PROFILE][3];
 			uint8_t n = a->season_count_passive;
 			if (n > OSP_MAX_SEASON_PROFILE) {
 				n = OSP_MAX_SEASON_PROFILE;
 			}
-			*result = osp_ic_val_empty_array();
-			if (n == 0) {
-				return OSP_OK;
-			}
-			for (uint8_t i = 0; i < n; i++) {
-				const osp_season_t *s = &a->season_profile_passive[i];
-				fields[i][0].tag = OSP_TAG_OCTETSTRING;
-				fields[i][0].as.octetstring.len = s->name_len;
-				memcpy(fields[i][0].as.octetstring.data, s->name, s->name_len);
-				fields[i][1].tag = OSP_TAG_OCTETSTRING;
-				fields[i][1].as.octetstring.len = 12;
-				memset(fields[i][1].as.octetstring.data, 0, 12);
-				memcpy(fields[i][1].as.octetstring.data, &s->start,
-				       sizeof(s->start) < 12 ? sizeof(s->start) : 12);
-				fields[i][2].tag = OSP_TAG_OCTETSTRING;
-				fields[i][2].as.octetstring.len = s->week_name_len;
-				memcpy(fields[i][2].as.octetstring.data, s->week_name, s->week_name_len);
-				items[i].tag = OSP_TAG_STRUCTURE;
-				items[i].as.structure.elements.items = fields[i];
-				items[i].as.structure.elements.count = 3;
-				items[i].as.structure.elements.capacity = 3;
-			}
-			result->as.array.elements.items = items;
-			result->as.array.elements.count = n;
-			result->as.array.elements.capacity = n;
+			*result = ac_val_season_profile_table(a->season_profile_passive, n);
 			return OSP_OK;
 		}
 		case 8: {
-			OSP_TLS osp_value_t items[OSP_MAX_WEEK_PROFILE];
-			OSP_TLS osp_value_t fields[OSP_MAX_WEEK_PROFILE][8];
 			uint8_t n = a->week_count_passive;
 			if (n > OSP_MAX_WEEK_PROFILE) {
 				n = OSP_MAX_WEEK_PROFILE;
 			}
-			*result = osp_ic_val_empty_array();
-			if (n == 0) {
-				return OSP_OK;
-			}
-			for (uint8_t i = 0; i < n; i++) {
-				const osp_week_profile_t *wp = &a->week_profile_table_passive[i];
-				fields[i][0].tag = OSP_TAG_OCTETSTRING;
-				fields[i][0].as.octetstring.len = wp->name_len;
-				memcpy(fields[i][0].as.octetstring.data, wp->name, wp->name_len);
-				for (int d = 0; d < 7; d++) {
-					fields[i][1 + d] = osp_val_u8(wp->day_names[d][0]);
-				}
-				items[i].tag = OSP_TAG_STRUCTURE;
-				items[i].as.structure.elements.items = fields[i];
-				items[i].as.structure.elements.count = 8;
-				items[i].as.structure.elements.capacity = 8;
-			}
-			result->as.array.elements.items = items;
-			result->as.array.elements.count = n;
-			result->as.array.elements.capacity = n;
+			*result = ac_val_week_profile_table(a->week_profile_table_passive, n);
 			return OSP_OK;
 		}
 		case 9: {

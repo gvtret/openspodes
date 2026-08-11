@@ -1495,6 +1495,22 @@ osp_err_t osp_value_write(osp_buf_t *buf, const osp_value_t *val) {
 			return osp_day_profile_table_write(buf, (const osp_day_profile_table_view_t *)val->as.ref);
 		}
 
+		case OSP_TAG_SEASON_PROFILE_TABLE_REF: {
+			if (buf->wr == 0) {
+				return OSP_ERR_INVALID;
+			}
+			buf->wr--;
+			return osp_season_profile_table_write(buf, (const osp_season_profile_table_view_t *)val->as.ref);
+		}
+
+		case OSP_TAG_WEEK_PROFILE_TABLE_REF: {
+			if (buf->wr == 0) {
+				return OSP_ERR_INVALID;
+			}
+			buf->wr--;
+			return osp_week_profile_table_write(buf, (const osp_week_profile_table_view_t *)val->as.ref);
+		}
+
 		default:
 			return OSP_ERR_UNSUPPORTED;
 	}
@@ -1970,6 +1986,95 @@ osp_err_t osp_day_profile_table_write(osp_buf_t *buf, const osp_day_profile_tabl
 				return r;
 			}
 			r = osp_axdr_write_u16(buf, selector);
+			if (r != OSP_OK) {
+				return r;
+			}
+		}
+	}
+	return OSP_OK;
+}
+
+osp_err_t osp_season_profile_table_write(osp_buf_t *buf, const osp_season_profile_table_view_t *view) {
+	if (!buf) {
+		return OSP_ERR_INVALID;
+	}
+	uint8_t n = (view && view->seasons) ? view->count : 0;
+	if (n > OSP_MAX_SEASON_PROFILE) {
+		n = OSP_MAX_SEASON_PROFILE;
+	}
+	osp_err_t r = osp_array_begin(buf, n);
+	if (r != OSP_OK) {
+		return r;
+	}
+	for (uint8_t i = 0; i < n; i++) {
+		const osp_season_t *s = &view->seasons[i];
+		uint8_t start[12];
+		memset(start, 0, sizeof(start));
+		memcpy(start, &s->start, sizeof(s->start) < sizeof(start) ? sizeof(s->start) : sizeof(start));
+		r = osp_struct_begin(buf, 3);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_OCTETSTRING);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_octet_string(buf, (const uint8_t *)s->name, s->name_len);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_OCTETSTRING);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_octet_string(buf, start, 12);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_OCTETSTRING);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_octet_string(buf, (const uint8_t *)s->week_name, s->week_name_len);
+		if (r != OSP_OK) {
+			return r;
+		}
+	}
+	return OSP_OK;
+}
+
+osp_err_t osp_week_profile_table_write(osp_buf_t *buf, const osp_week_profile_table_view_t *view) {
+	if (!buf) {
+		return OSP_ERR_INVALID;
+	}
+	uint8_t n = (view && view->weeks) ? view->count : 0;
+	if (n > OSP_MAX_WEEK_PROFILE) {
+		n = OSP_MAX_WEEK_PROFILE;
+	}
+	osp_err_t r = osp_array_begin(buf, n);
+	if (r != OSP_OK) {
+		return r;
+	}
+	for (uint8_t i = 0; i < n; i++) {
+		const osp_week_profile_t *wp = &view->weeks[i];
+		r = osp_struct_begin(buf, 8);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_u8(buf, OSP_TAG_OCTETSTRING);
+		if (r != OSP_OK) {
+			return r;
+		}
+		r = osp_axdr_write_octet_string(buf, (const uint8_t *)wp->name, wp->name_len);
+		if (r != OSP_OK) {
+			return r;
+		}
+		for (int d = 0; d < 7; d++) {
+			r = osp_axdr_write_u8(buf, OSP_TAG_UNSIGNED);
+			if (r != OSP_OK) {
+				return r;
+			}
+			r = osp_axdr_write_u8(buf, wp->day_names[d][0]);
 			if (r != OSP_OK) {
 				return r;
 			}
