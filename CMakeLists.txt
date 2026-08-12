@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(openspodes VERSION 2.4.0 LANGUAGES C)
+project(openspodes VERSION 2.5.0 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -118,7 +118,7 @@ endif()
 include(FetchContent)
 FetchContent_Declare(
     cmocka
-    GIT_REPOSITORY https://git.cryptomilk.org/projects/cmocka.git
+    GIT_REPOSITORY https://gitlab.com/cmocka/cmocka.git
     GIT_TAG        cmocka-1.1.7
 )
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)

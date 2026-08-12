@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file.
 
 Format is based on [Keep a Changelog](https://keepachangelog.com/), project follows [Semantic Versioning](https://semver.org/).
 
+## [2.5.0] - 2026-08-12
+
+### Security
+- Reject plaintext xDLMS when association ciphering is enabled
+- AARE auth-value / title / user-info length clamps; client CtoS via HAL RNG
+- linux_hal: GCM tag size and `osp_hal_random_fill` ABI aligned with core
+
+### Fixed
+- MCU / Category A RAM: stream large IC list encodes, shared TLS scratch, trimmed object_list ACL and pending buffers
+- IC SET/GET honesty: Calendar / Schedule / Script / Profile / ALN / IPv4 / SAP / Register Activation and remaining stub attributes
+- Concurrent nested `osp_value_read`: HAL lock must cover read + inspect of pool-backed ARRAY pointers (thread test)
+- Fetch cmocka from `gitlab.com/cmocka/cmocka` (cryptomilk.org returns HTTP 406 in CI)
+
+### Changed
+- Long-lived shared mutex for `value_read_pool` (create once; no per-op destroy)
+- `OPENSPODES_CATEGORY_A=OFF` MCU profile with smaller decode pool / pending defaults
+
 ## [2.4.0] - 2026-07-21
 
 ### Fixed (Blue Book Compliance)

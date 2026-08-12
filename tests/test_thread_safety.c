@@ -29,12 +29,22 @@
 #define NUM_THREADS 4
 #define ITERS_PER_THREAD 50
 
-/* ── POSIX mutex HAL — create() returns one process-wide lock ───────────── */
+/* ── POSIX mutex HAL — recursive so callers can hold lock across read+inspect ─ */
 
-static pthread_mutex_t g_pool_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t g_pool_mutex;
+static pthread_once_t g_pool_mutex_once = PTHREAD_ONCE_INIT;
+
+static void pool_mutex_init(void) {
+	pthread_mutexattr_t attr;
+	pthread_mutexattr_init(&attr);
+	pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+	pthread_mutex_init(&g_pool_mutex, &attr);
+	pthread_mutexattr_destroy(&attr);
+}
 
 static void *posix_mutex_create(void *ctx) {
 	(void)ctx;
+	pthread_once(&g_pool_mutex_once, pool_mutex_init);
 	return &g_pool_mutex;
 }
 
@@ -263,15 +273,23 @@ static void *thread_nested_array_read(void *arg) {
 
 		assert_int_equal(osp_value_write(&buf, &arr), OSP_OK);
 
+		/*
+		 * osp_value_read returns ARRAY item pointers into the shared
+		 * value_read_pool. Those pointers are only valid until the next
+		 * top-level read; under concurrency the caller must hold the HAL
+		 * lock across read + copy (recursive mutex).
+		 */
 		osp_value_t decoded;
 		buf.rd = 0;
+		osp_hal_mutex_lock();
 		assert_int_equal(osp_value_read(&buf, &decoded), OSP_OK);
 		assert_int_equal(decoded.tag, OSP_TAG_ARRAY);
 		assert_int_equal(decoded.as.array.elements.count, 3);
-		assert_int_equal(decoded.as.array.elements.items[0].as.uint32.value,
-		                 (uint32_t)(thread_id * 1000 + i));
-		assert_int_equal(decoded.as.array.elements.items[2].as.uint32.value,
-		                 (uint32_t)(thread_id * 1000 + i + 2));
+		uint32_t v0 = decoded.as.array.elements.items[0].as.uint32.value;
+		uint32_t v2 = decoded.as.array.elements.items[2].as.uint32.value;
+		osp_hal_mutex_unlock();
+		assert_int_equal(v0, (uint32_t)(thread_id * 1000 + i));
+		assert_int_equal(v2, (uint32_t)(thread_id * 1000 + i + 2));
 	}
 	return NULL;
 }
